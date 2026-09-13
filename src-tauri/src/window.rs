@@ -434,6 +434,60 @@ pub fn save_preferences(dir: &Path, preferences: &Preferences) -> Result<(), Str
 mod tests {
     use super::*;
 
+    fn resizable() -> WindowConfig {
+        WindowConfig {
+            width: 1000.0,
+            height: 800.0,
+            min_width: 400.0,
+            min_height: 300.0,
+            resizable: true,
+        }
+    }
+
+    #[test]
+    fn a_resize_passes_through_when_it_is_big_enough() {
+        assert_eq!(
+            resolve_size(&resizable(), 1200.0, 900.0).unwrap(),
+            (1200.0, 900.0)
+        );
+    }
+
+    #[test]
+    fn the_configured_minimums_win_over_a_smaller_request() {
+        // A page asking for 100x100 should get a window someone can still use,
+        // not one the app declared too small to be usable.
+        assert_eq!(
+            resolve_size(&resizable(), 100.0, 100.0).unwrap(),
+            (400.0, 300.0)
+        );
+    }
+
+    #[test]
+    fn a_window_declared_fixed_stays_fixed() {
+        let config = WindowConfig {
+            resizable: false,
+            ..resizable()
+        };
+        assert!(resolve_size(&config, 1200.0, 900.0).is_err());
+    }
+
+    #[test]
+    fn nonsense_sizes_are_refused_rather_than_applied() {
+        for (w, h) in [
+            (0.0, 600.0),
+            (-10.0, 600.0),
+            (f64::NAN, 600.0),
+            (800.0, f64::INFINITY),
+        ] {
+            assert!(
+                resolve_size(&resizable(), w, h).is_err(),
+                "{}x{} should have been refused",
+                w,
+                h
+            );
+        }
+    }
+
     fn scratch(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("turbo-desktop-config-{name}"));
         std::fs::remove_dir_all(&dir).ok();
@@ -822,6 +876,111 @@ pub fn deliver_to_all<R: tauri::Runtime>(
 
     for window in app.webview_windows().values() {
         deliver_to_page(window, kind, payload);
+    }
+}
+
+/// What size a resize request should actually produce, or why it is refused.
+///
+/// Kept separate from the window so the rules can be tested without one. Two
+/// rules, both taken from the app's own config rather than invented here: a
+/// window the app declared non-resizable stays that way, and the configured
+/// minimums win over a smaller request. A page asking for 100x100 gets the
+/// minimum, not a window nobody can use.
+pub fn resolve_size(config: &WindowConfig, width: f64, height: f64) -> Result<(f64, f64), String> {
+    if !config.resizable {
+        return Err("Refused: this window is configured as not resizable".to_string());
+    }
+    if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 {
+        return Err(format!(
+            "Refused: {}x{} is not a usable size",
+            width, height
+        ));
+    }
+    Ok((width.max(config.min_width), height.max(config.min_height)))
+}
+
+/// Native window control, exposed to the page as the `window` bridge component.
+///
+/// Everything here is something the browser genuinely cannot do. Zoom, scroll
+/// and layout stay in CSS where they belong; this is only the frame around them.
+pub async fn handle_window(
+    app: &tauri::AppHandle,
+    message: &crate::bridge::BridgeMessage,
+) -> Result<serde_json::Value, String> {
+    use tauri::Manager;
+
+    let label = message.window_label.as_deref().unwrap_or("main");
+    let window = app
+        .get_webview_window(label)
+        .ok_or_else(|| format!("No window labelled '{}'", label))?;
+
+    let flag = |name: &str| -> bool { message.data[name].as_bool().unwrap_or(true) };
+
+    // Most of these are fire-and-forget: do the thing, report ok. Naming the
+    // shape once keeps the match arms readable.
+    let done = |result: tauri::Result<()>| -> Result<serde_json::Value, String> {
+        result.map_err(|e| e.to_string())?;
+        Ok(serde_json::json!({ "status": "ok" }))
+    };
+
+    match message.event.as_str() {
+        "resize" => {
+            let config = app.state::<TurboDesktopConfig>();
+            let width = message.data["width"]
+                .as_f64()
+                .ok_or("Missing 'width' in window resize")?;
+            let height = message.data["height"]
+                .as_f64()
+                .ok_or("Missing 'height' in window resize")?;
+            let (width, height) = resolve_size(&config.window, width, height)?;
+            window
+                .set_size(tauri::LogicalSize::new(width, height))
+                .map_err(|e| format!("Could not resize the window: {}", e))?;
+            Ok(serde_json::json!({ "status": "ok", "width": width, "height": height }))
+        }
+        "minimize" => done(window.minimize()),
+        "unminimize" => done(window.unminimize()),
+        "maximize" => done(window.maximize()),
+        "unmaximize" => done(window.unmaximize()),
+        "center" => done(window.center()),
+        "focus" => done(window.set_focus()),
+        "toggle-maximize" | "toggle_maximize" => {
+            let maximized = window.is_maximized().map_err(|e| e.to_string())?;
+            if maximized {
+                window.unmaximize()
+            } else {
+                window.maximize()
+            }
+            .map_err(|e| e.to_string())?;
+            Ok(serde_json::json!({ "status": "ok", "isMaximized": !maximized }))
+        }
+        "fullscreen" => {
+            let enabled = flag("enabled");
+            window.set_fullscreen(enabled).map_err(|e| e.to_string())?;
+            Ok(serde_json::json!({ "status": "ok", "isFullscreen": enabled }))
+        }
+        "always-on-top" | "always_on_top" => {
+            let enabled = flag("enabled");
+            window
+                .set_always_on_top(enabled)
+                .map_err(|e| e.to_string())?;
+            Ok(serde_json::json!({ "status": "ok", "isAlwaysOnTop": enabled }))
+        }
+        "state" => {
+            let size = window.inner_size().map_err(|e| e.to_string())?;
+            let scale = window.scale_factor().map_err(|e| e.to_string())?;
+            Ok(serde_json::json!({
+                "status": "ok",
+                "label": window.label(),
+                "width": (size.width as f64) / scale,
+                "height": (size.height as f64) / scale,
+                "isFullscreen": window.is_fullscreen().map_err(|e| e.to_string())?,
+                "isMaximized": window.is_maximized().map_err(|e| e.to_string())?,
+                "isMinimized": window.is_minimized().map_err(|e| e.to_string())?,
+                "scaleFactor": scale,
+            }))
+        }
+        _ => Ok(serde_json::json!({ "status": "unknown_event" })),
     }
 }
 

@@ -61,6 +61,7 @@ pub async fn handle_bridge_message(
         "shell" => crate::shell_bridge::handle_shell(&app, &message).await,
         "filesystem" => crate::fs_bridge::handle_filesystem(&app, &message).await,
         "sudo" => crate::sudo_bridge::handle_sudo(&app, &message).await,
+        "window" => crate::window::handle_window(&app, &message).await,
         "clipboard" => handle_clipboard(&app, &message).await,
         "autostart" => handle_autostart(&app, &message).await,
         // The page drains files the OS asked the app to open. Pull rather than
