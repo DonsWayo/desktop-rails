@@ -63,6 +63,31 @@ jobs:
       - name: Launch the bundle and talk to it
         run: python3 packaging/smoke/launch_check.py dist/Smoke.app/Contents/MacOS/launch
 
+      # The shell is what a person double-clicks. Everything above proves the
+      # server half; this builds the GUI in and drives the whole chain.
+      #
+      # A clean runner matters here: this could not be made to run repeatably on
+      # a developer machine after a long session, and the check itself was the
+      # cause of some of that — see shell_check.sh on writing inside a signed
+      # bundle. continue-on-error until it has a track record, so a flake does
+      # not mask the rest.
+      - name: Pack again with the GUI shell embedded
+        continue-on-error: true
+        id: gui
+        run: |
+          set -euo pipefail
+          (cd src-tauri && cargo build --release)
+          packaging/pack.sh \
+            --app "$PWD/example" --runtime "$PWD/out/ruby" --gems "$PWD/out/gems" \
+            --shell src-tauri/target/release/turbo-desktop \
+            --name "SmokeGui" --bundle-id dev.turbodesktop.smokegui \
+            --out "$PWD/dist-gui"
+
+      - name: Drive the whole chain through the shell
+        continue-on-error: true
+        if: steps.gui.outcome == 'success'
+        run: packaging/smoke/shell_check.sh dist-gui/SmokeGui.app/Contents/MacOS/turbo-desktop
+
       - name: Build the disk image
         run: packaging/dmg.sh dist/Smoke.app
 
