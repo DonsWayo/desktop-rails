@@ -31,6 +31,11 @@ tauri-plugin-deep-link = "2.4.9"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-autostart = "2"
 
+[dev-dependencies]
+# The mock runtime, so the control channel can be driven against a real app
+# handle in tests without opening a window.
+tauri = { version = "2", features = ["test"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.26"
 objc = "0.2"

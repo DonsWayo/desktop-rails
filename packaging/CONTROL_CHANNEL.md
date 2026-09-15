@@ -75,21 +75,66 @@ A shell that should be there but is not answering raises
 `TurboDesktop::Native::Error` with the address it tried, because that is a
 genuine fault rather than a normal condition.
 
+## Every component, not only the ones with sugar
+
+`dispatch` is the whole bridge, so anything a page can ask for, Ruby can ask
+for. The `window` component is the one that shows it: resize, minimize,
+fullscreen, centre, always-on-top and state, all from a background job with no
+page in sight.
+
+```ruby
+TurboDesktop::Native.call("window", "resize", width: 1200, height: 900)
+# => {"status" => "ok", "width" => 1200.0, "height" => 900.0}
+```
+
+The rules belong to the app, not to the caller: a window declared
+`"resizable": false` refuses whoever asks, and the configured `min_width` and
+`min_height` win over a smaller request. So a resize can come back larger than
+what was asked for, which is why the size actually applied is in the reply.
+
+A refusal is a 500 with its reason, which Ruby raises as
+`TurboDesktop::Native::CallFailed` rather than returning quietly.
+
 ## Tested
 
-- **Rust**, 6 tests: token length and uniqueness, constant-time comparison,
-  header parsing whatever the casing, a missing token parsing as empty rather
-  than matching, a malformed `Content-Length` neither panicking nor allocating,
-  and only `POST /invoke` routing to the dispatcher.
-- **Ruby**, 10 tests: unavailable without a handshake, calls as a no-op on the
+- **Rust**, 6 tests on the channel: token length and uniqueness, constant-time
+  comparison, header parsing whatever the casing, a missing token parsing as
+  empty rather than matching, a malformed `Content-Length` neither panicking nor
+  allocating, and only `POST /invoke` routing to the dispatcher.
+- **Rust**, 5 tests on the `window` component, driven with the message a Ruby
+  call puts on the wire and a window from Tauri's mock runtime: a resize applied
+  and reported back, the configured minimums binding a call from Ruby too, a
+  refusal carrying its reason, a message with no `window_label` meaning the main
+  window (Ruby never sends one), and an unknown event not passing as an ok.
+- **Ruby**, 12 tests: unavailable without a handshake, calls as a no-op on the
   web, the handshake parsed, **exactly one line of stdin consumed**, a
   non-handshake line ignored so a developer running `rails server` by hand still
   boots, messages arriving with the right component and payload, reply values
-  coming back, a wrong token refused, and a clear error when nothing answers.
+  coming back, **a window resize reporting the size the shell applied**, **a
+  refused capability raised rather than returned**, a wrong token refused, and a
+  clear error when nothing answers.
+
+## Measured end to end, by hand
+
+The shell, the channel and the real Ruby client, in one process tree: a debug
+build of the shell with a `server.command` that boots a Ruby script instead of
+Rails — handshake off stdin, address on stdout, then `TurboDesktop::Native`.
+
+```
+available=true control=http://127.0.0.1:55221
+too_small={"height":600.0,"status":"ok","width":800.0}
+ordinary={"height":910.0,"status":"ok","width":1240.0}
+state={"height":910.0,...,"label":"main","scaleFactor":2.0,"status":"ok","width":1240.0}
+```
+
+A window that really moved: `state` reports what the resize left behind, not
+what the reply claimed. 100x100 came back as the configured 800x600 minimum.
 
 ## Not yet done
 
-The Rust listener is unit-tested at the parsing and token layer, but no test
-drives the real listener end to end, because that needs a running Tauri app.
-The Ruby tests run against a stub that matches `control.rs` by hand, which would
-not catch the two drifting apart.
+That run is not automated. The Rust listener is unit-tested at the parsing and
+token layer and the components it dispatches to are tested on the mock runtime,
+but nothing drives the socket end to end in CI: `start` is typed to the real
+runtime's `AppHandle`, which a unit test cannot produce. The Ruby tests still run
+against a stub that matches `control.rs` by hand, which would not catch the two
+drifting apart.

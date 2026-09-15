@@ -88,6 +88,31 @@ class NativeTest < Minitest::Test
     assert_equal({ "width" => 1200, "height" => 900 }, message["data"])
   end
 
+  def test_a_window_resize_reports_the_size_the_shell_actually_applied
+    # The shell clamps a resize to the minimums the app configured, so what came
+    # back is the only way Ruby knows what it got. (The clamping itself is the
+    # shell's, and is tested there; this is the half that has to survive the
+    # trip home.)
+    with_handshake
+    reply = TurboDesktop::Native.call("window", "resize", width: 100, height: 100)
+
+    assert_equal "ok", reply["status"]
+    assert_equal 800, reply["width"]
+    assert_equal 600, reply["height"]
+  end
+
+  def test_a_capability_the_shell_refuses_is_raised_rather_than_returned
+    # The shell answers a refused resize with 500 and a reason, and a job that
+    # asked for it should hear about that rather than carry on as if it worked.
+    with_handshake
+    error = assert_raises(TurboDesktop::Native::CallFailed) do
+      TurboDesktop::Native.call("window", "resize", width: 0, height: 0)
+    end
+
+    assert_match(%r{window/resize failed}, error.message)
+    assert_match(/not a usable size/, error.message)
+  end
+
   def test_a_reply_value_comes_back_to_ruby
     with_handshake
     assert_equal "from the clipboard", TurboDesktop::Native.clipboard_read
@@ -144,13 +169,31 @@ class NativeTest < Minitest::Test
       elsif head[%r{^POST (\S+)}, 1] != "/invoke"
         write(conn, "404 Not Found", { error: "POST /invoke only" })
       else
-        @received << JSON.parse(body)
-        write(conn, "200 OK", { status: "ok", text: "from the clipboard" })
+        message = JSON.parse(body)
+        @received << message
+        status, payload = reply_to(message)
+        write(conn, status, payload)
       end
       conn.close
     end
   rescue IOError, Errno::EBADF, Errno::ECONNRESET
     nil
+  end
+
+  # What the shell answers. Only the window component needs more than "ok":
+  # resize reports the size it applied after the app's minimums, and refuses a
+  # size nobody could use — both of which Ruby has to carry back to its caller.
+  def reply_to(message)
+    return ["200 OK", { status: "ok", text: "from the clipboard" }] unless
+      message["component"] == "window" && message["event"] == "resize"
+
+    width = message["data"]["width"].to_i
+    height = message["data"]["height"].to_i
+    if width <= 0 || height <= 0
+      ["500 Internal Server Error", { error: "Refused: #{width}x#{height} is not a usable size" }]
+    else
+      ["200 OK", { status: "ok", width: [width, 800].max, height: [height, 600].max }]
+    end
   end
 
   def write(conn, status, payload)
