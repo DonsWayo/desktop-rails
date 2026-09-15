@@ -101,6 +101,71 @@ TurboDesktop.configure do |config|
 end
 ```
 
+## Packaging, from Rails
+
+Building a desktop app should not mean running a shell script with five flags.
+The generator sets up the desktop environment, and three rake tasks do the rest.
+
+```bash
+bin/rails generate turbo_desktop:install   # initializer, desktop env, bin/desktop-boot
+bin/rails desktop:runtime                  # fetch or build a relocatable Ruby, once
+bin/rails desktop:run                      # boot the app the way a bundle will
+bin/rails desktop:package                  # a .app, a Linux tree, or a Windows zip
+```
+
+The tasks shell out to the packaging scripts in the turbo_desktop repository
+rather than reimplementing them, and each one fails with a message naming what is
+missing and how to supply it. Point them at a checkout with
+`TURBO_DESKTOP_PACKAGING`, or in the initializer with `config.packaging_dir`.
+
+### The desktop environment
+
+`config/environments/desktop.rb` is not production and not development. A desktop
+app is a single-user server on loopback inside a read-only, code-signed bundle,
+and each setting follows from one of those facts:
+
+- **`eager_load`, no reloading.** The bundle cannot be edited while it runs, and
+  eager loading moves an autoload error to boot instead of to a page the user has
+  already opened.
+- **`config.hosts` is loopback and nothing else.** The webview asks for the exact
+  origin the server announced. Clearing `config.hosts` instead would also accept a
+  request carrying someone else's `Host` header.
+- **`:async` jobs.** A forking job supervisor is the most effective way there is
+  to orphan a server: the shell closes the child's stdin, the child exits on EOF,
+  and the workers it forked keep the port and never notice. In-process jobs share
+  the fate of the process that owns the window. The cost is real — jobs die with
+  the app and are not retried — so durable background work needs a database-backed
+  queue with its own lifecycle, not a forking supervisor inside the bundle.
+- **Everything writable lives in `TurboDesktop.data_dir`**, including a
+  `secret_key_base` generated on first run at mode 0600, because a bundle a
+  stranger downloads has no credentials key and no operator to give it one.
+
+`bin/desktop-boot` is the script both `desktop:run` and the packaged app execute,
+so a failure in one is a failure in the other.
+
+### Where a desktop app may write
+
+Rails has no concept of an OS data directory, because a server owns its
+deployment directory. A desktop app does not.
+
+```ruby
+TurboDesktop.data_dir             # => Pathname
+TurboDesktop.data_dir(create: true).join("ledger.sqlite3")
+```
+
+| Platform | Directory |
+| --- | --- |
+| macOS | `~/Library/Application Support/<app id>` |
+| Windows | `%LOCALAPPDATA%\<app id>` |
+| Linux | `$XDG_DATA_HOME/<app id>`, or `~/.local/share/<app id>` |
+
+`DESKTOP_DATA_DIR` overrides all three. The launchers the packers write export it
+after making the same decision in shell, so the shell and the Rails app can never
+disagree about where state lives.
+
+The app id defaults to `dev.turbodesktop.<your-app-name>`; set
+`config.app_id` and `config.app_name` in the initializer to choose your own.
+
 ## Requirements
 
 - Ruby >= 3.3

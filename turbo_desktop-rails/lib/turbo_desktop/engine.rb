@@ -10,6 +10,12 @@ module TurboDesktop
       ActionView::Base.include TurboDesktop::ViewHelpers unless ActionView::Base < TurboDesktop::ViewHelpers
     end
 
+    # desktop:runtime, desktop:package and desktop:run, available in the host
+    # app as soon as the gem is in the Gemfile.
+    rake_tasks do
+      load File.expand_path("tasks/desktop.rake", __dir__)
+    end
+
     # The shell writes one line of handshake to our stdin before anything
     # else. Read it at boot so `TurboDesktop::Native` works everywhere in the
     # app, including from a background job with no page open.
