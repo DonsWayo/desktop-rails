@@ -71,8 +71,12 @@ if not exist "%DESKTOP_DATA_DIR%\tmp" mkdir "%DESKTOP_DATA_DIR%\tmp"
 if not exist "%DESKTOP_DATA_DIR%\log" mkdir "%DESKTOP_DATA_DIR%\log"
 if not exist "%DESKTOP_DATA_DIR%\storage" mkdir "%DESKTOP_DATA_DIR%\storage"
 
-set "GEM_HOME=%HERE%lib\gems"
-set "GEM_PATH=%HERE%lib\gems;%HERE%lib\ruby\lib\ruby\gems\3.4.0"
+rem Gems may sit flat (GEM_HOME) or nested under ruby\<abi> (BUNDLE_PATH).
+rem Accept both rather than depending on how they were installed.
+set "GEMS=%HERE%lib\gems"
+if exist "%GEMS%\ruby" for /d %%D in ("%GEMS%\ruby\*") do set "GEMS=%%~fD"
+set "GEM_HOME=%GEMS%"
+set "GEM_PATH=%GEMS%;%HERE%lib\ruby\lib\ruby\gems\3.4.0"
 if "%RAILS_ENV%"=="" set "RAILS_ENV=production"
 set "BUNDLE_GEMFILE=%HERE%lib\app\Gemfile"
 

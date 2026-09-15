@@ -183,7 +183,11 @@ jobs:
           gem install railties --no-document
           rails new C:\example --minimal --skip-git --skip-bundle --skip-action-cable
           Copy-Item packaging\smoke\Gemfile C:\example\Gemfile -Force
-          $env:BUNDLE_PATH = "$env:GITHUB_WORKSPACE\out\gems"
+          # GEM_HOME, not BUNDLE_PATH. BUNDLE_PATH nests gems under
+          # ruby/<abi>/gems while GEM_HOME keeps them flat, and the launcher
+          # looks for flat — as macOS and Linux already produce.
+          $env:GEM_HOME = "$env:GITHUB_WORKSPACE\out\gems"
+          $env:GEM_PATH = "$env:GITHUB_WORKSPACE\out\gems"
           Push-Location C:\example
           bundle install
           if ($LASTEXITCODE -ne 0) { throw "bundle install failed" }
