@@ -330,21 +330,31 @@ pub const SERVER_PROCESS_ID: &str = "turbo-desktop:app-server";
 mod tests {
     use super::*;
 
-    /// A directory holding one executable and one plain file, for the
-    /// invocation tests below.
-    fn scratch_with_launcher(name: &str) -> PathBuf {
+    /// A directory holding one runnable launcher and one file that is not.
+    ///
+    /// What "runnable" means is platform-specific, and the fixture has to say
+    /// so rather than assume unix: a permission bit there, an extension on
+    /// Windows. Getting this wrong made two tests pass on macOS and fail on
+    /// Windows for reasons that had nothing to do with the code under test.
+    fn scratch_with_launcher(name: &str) -> (PathBuf, String) {
         let dir = std::env::temp_dir().join(format!("turbo-desktop-invocation-{name}"));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let launcher = dir.join("launch");
-        std::fs::write(&launcher, "#!/bin/sh\nexit 0\n").unwrap();
+
+        let launcher_name = if cfg!(unix) { "launch" } else { "launch.cmd" };
+        let launcher = dir.join(launcher_name);
+        std::fs::write(&launcher, if cfg!(unix) { "#!/bin/sh\nexit 0\n" } else { "@echo off\r\n" })
+            .unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
+
+        // Not runnable on either platform: no exec bit, and no runnable extension.
         std::fs::write(dir.join("not-executable"), "plain").unwrap();
-        dir
+
+        (dir, launcher_name.to_string())
     }
 
     #[test]
@@ -352,11 +362,11 @@ mod tests {
         // A login shell costs ~2.3s per launch, which is the entire budget an
         // app icon gets. A packaged app has its interpreter inside the bundle
         // and needs none of what the shell was for.
-        let dir = scratch_with_launcher("plain");
-        let (program, args) = server_invocation("launch", Some(&dir));
+        let (dir, launcher) = scratch_with_launcher("plain");
+        let (program, args) = server_invocation(&launcher, Some(&dir));
 
         assert!(args.is_empty(), "a direct exec takes no shell arguments");
-        assert_eq!(PathBuf::from(&program), dir.join("launch"));
+        assert_eq!(PathBuf::from(&program), dir.join(&launcher));
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -365,8 +375,8 @@ mod tests {
         // Through `$SHELL -l -c` this word-splits and dies with exit 127:
         // "no such file or directory: /private/tmp/space". /Applications/My App.app
         // is an ordinary path, so this is not a corner case.
-        let dir = scratch_with_launcher("with space");
-        let (program, args) = server_invocation("launch", Some(&dir));
+        let (dir, launcher) = scratch_with_launcher("with space");
+        let (program, args) = server_invocation(&launcher, Some(&dir));
 
         assert!(program.contains(' '), "the fixture must actually contain a space");
         assert!(args.is_empty(), "the path must not be handed to a shell to re-split");
@@ -378,7 +388,7 @@ mod tests {
     fn a_command_line_still_goes_through_a_shell() {
         // `bin/rails server -p 3000` is not a file, and a developer running it
         // has a version manager the login shell exists to set up.
-        let dir = scratch_with_launcher("commandline");
+        let (dir, _) = scratch_with_launcher("commandline");
         let (program, args) = server_invocation("bin/rails server -p 3000", Some(&dir));
 
         assert!(!args.is_empty(), "a command line needs a shell");
@@ -393,7 +403,7 @@ mod tests {
         // permission bit on unix, a non-runnable extension on Windows. Either
         // way it must fall back to the shell rather than be handed to
         // CreateProcess or exec.
-        let dir = scratch_with_launcher("notexec");
+        let (dir, _) = scratch_with_launcher("notexec");
         let (_, args) = server_invocation("not-executable", Some(&dir));
         assert!(
             !args.is_empty(),
@@ -405,7 +415,7 @@ mod tests {
     #[cfg(not(unix))]
     #[test]
     fn on_windows_a_runnable_extension_is_what_counts() {
-        let dir = scratch_with_launcher("windows-ext");
+        let (dir, _) = scratch_with_launcher("windows-ext");
         for (name, direct) in [("launch.cmd", true), ("launch.bat", true), ("launch.txt", false)] {
             std::fs::write(dir.join(name), "@echo off\r\n").unwrap();
             let (_, args) = server_invocation(name, Some(&dir));
