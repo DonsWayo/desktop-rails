@@ -488,6 +488,124 @@ mod tests {
         }
     }
 
+    // ─── the window component ───────────────────────────────────────────────
+    //
+    // resolve_size above is the rule on its own. These drive the component the
+    // way both callers do — a page, and the app's Rails process over the
+    // control channel — against a window from the mock runtime, so the reply
+    // that goes back over the wire is the thing under test.
+
+    /// A shell with one window and a config for the component to answer to.
+    /// The app comes back because dropping it takes the window with it.
+    fn mock_shell(window: WindowConfig) -> tauri::App<tauri::test::MockRuntime> {
+        use tauri::Manager;
+
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("the mock shell should build");
+        tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("the mock shell should have a main window");
+
+        // Through the app's own parser, so the minimums under test are the ones
+        // a real config would get.
+        let mut config = parse_config(r#"{"server_url":"http://127.0.0.1:3000"}"#)
+            .expect("the minimal config should parse");
+        config.window = window;
+        app.manage(config);
+        app
+    }
+
+    /// Exactly what `TurboDesktop::Native.call("window", "resize", ...)` puts on
+    /// the control channel, parsed the way `control::serve` parses it. Going
+    /// through the wire format rather than building the struct by hand is the
+    /// point: it is what proves Ruby's payload arrives whole.
+    fn from_the_wire(body: &str) -> crate::bridge::BridgeMessage {
+        serde_json::from_str(body).expect("the control channel should parse this body")
+    }
+
+    fn call(
+        app: &tauri::App<tauri::test::MockRuntime>,
+        body: &str,
+    ) -> Result<serde_json::Value, String> {
+        let message = from_the_wire(body);
+        tauri::async_runtime::block_on(handle_window(app.handle(), &message))
+    }
+
+    #[test]
+    fn a_resize_from_ruby_is_applied_and_the_size_reported_back() {
+        let app = mock_shell(WindowConfig::default());
+
+        let reply = call(
+            &app,
+            r#"{"component":"window","event":"resize","data":{"width":1200,"height":900}}"#,
+        )
+        .expect("the resize should be accepted");
+
+        assert_eq!(reply["status"], "ok");
+        assert_eq!(reply["width"], 1200.0);
+        assert_eq!(reply["height"], 900.0);
+    }
+
+    #[test]
+    fn the_configured_minimums_bind_a_call_from_ruby_too() {
+        // The rule belongs to the app, not to the page, so it has to hold on
+        // the channel a Rails process uses and not only on the page's.
+        let app = mock_shell(WindowConfig::default());
+
+        let reply = call(
+            &app,
+            r#"{"component":"window","event":"resize","data":{"width":100,"height":100}}"#,
+        )
+        .expect("a too-small request is clamped, not refused");
+
+        assert_eq!(reply["width"], 800.0, "the configured minimum width");
+        assert_eq!(reply["height"], 600.0, "the configured minimum height");
+    }
+
+    #[test]
+    fn a_refusal_carries_its_reason_back_to_the_caller() {
+        // Ruby turns this into Native::CallFailed, so the reason has to be in
+        // the message rather than only in the shell's log.
+        let app = mock_shell(WindowConfig {
+            resizable: false,
+            ..WindowConfig::default()
+        });
+
+        let error = call(
+            &app,
+            r#"{"component":"window","event":"resize","data":{"width":1200,"height":900}}"#,
+        )
+        .expect_err("a fixed window should refuse");
+
+        assert!(error.contains("not resizable"), "unhelpful: {}", error);
+    }
+
+    #[test]
+    fn a_message_without_a_window_label_means_the_main_window() {
+        // Ruby never sends one: a Rails process is not a page and has no window
+        // of its own. Defaulting is what lets it call at all.
+        let app = mock_shell(WindowConfig::default());
+
+        let reply = call(&app, r#"{"component":"window","event":"state","data":{}}"#)
+            .expect("state should answer");
+
+        assert_eq!(reply["label"], "main");
+    }
+
+    #[test]
+    fn an_event_the_component_does_not_know_is_not_silently_an_ok() {
+        let app = mock_shell(WindowConfig::default());
+
+        let reply = call(
+            &app,
+            r#"{"component":"window","event":"teleport","data":{}}"#,
+        )
+        .expect("an unknown event is answered, not an error");
+
+        assert_eq!(reply["status"], "unknown_event");
+    }
+
     fn scratch(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("turbo-desktop-config-{name}"));
         std::fs::remove_dir_all(&dir).ok();
@@ -913,12 +1031,18 @@ pub fn resolve_size(config: &WindowConfig, width: f64, height: f64) -> Result<(f
     Ok((width.max(config.min_width), height.max(config.min_height)))
 }
 
-/// Native window control, exposed to the page as the `window` bridge component.
+/// Native window control, exposed as the `window` bridge component.
 ///
 /// Everything here is something the browser genuinely cannot do. Zoom, scroll
 /// and layout stay in CSS where they belong; this is only the frame around them.
-pub async fn handle_window(
-    app: &tauri::AppHandle,
+///
+/// Both callers of `bridge::dispatch` land here: a page over the webview, and
+/// the app's own Rails process over the control channel. Generic over the
+/// runtime so the rules can be driven by the mock one in tests — the real
+/// runtime needs a window server and a main thread, neither of which a unit
+/// test has.
+pub async fn handle_window<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
     message: &crate::bridge::BridgeMessage,
 ) -> Result<serde_json::Value, String> {
     use tauri::Manager;

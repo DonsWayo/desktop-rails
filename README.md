@@ -556,6 +556,17 @@ Also `minimize()`, `unminimize()`, `maximize()`, `unmaximize()`,
 over a smaller request. A page cannot shrink the window to something nobody can
 use, and the size it actually got comes back in the response.
 
+The same component is reachable from Ruby, over the control channel, so a
+background job can move the window with no page involved:
+
+```ruby
+TurboDesktop::Native.call("window", "resize", width: 1200, height: 900)
+TurboDesktop::Native.call("window", "fullscreen", enabled: true)
+```
+
+The config's rules apply there too, and a refusal raises
+`TurboDesktop::Native::CallFailed`. See `packaging/CONTROL_CHANNEL.md`.
+
 ### Clipboard
 
 The browser clipboard API needs a user gesture and a focused document; the
