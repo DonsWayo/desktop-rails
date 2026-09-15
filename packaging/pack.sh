@@ -22,7 +22,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 HERE="$PWD/packaging"
 
-APP_SRC=""; RUNTIME=""; GEMS=""; NAME="Turbo Desktop App"
+APP_SRC=""; RUNTIME=""; GEMS=""; SHELL_BIN=""; NAME="Turbo Desktop App"
 BUNDLE_ID="dev.turbodesktop.app"; IDENTITY="-"; OUT="$PWD/dist"; KEEP_DEV=0
 
 while [ $# -gt 0 ]; do
@@ -30,6 +30,7 @@ while [ $# -gt 0 ]; do
     --app)       APP_SRC="$2"; shift 2 ;;
     --runtime)   RUNTIME="$2"; shift 2 ;;
     --gems)      GEMS="$2"; shift 2 ;;
+    --shell)     SHELL_BIN="$2"; shift 2 ;;
     --name)      NAME="$2"; shift 2 ;;
     --bundle-id) BUNDLE_ID="$2"; shift 2 ;;
     --identity)  IDENTITY="$2"; shift 2 ;;
@@ -63,7 +64,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <dict>
   <key>CFBundleName</key><string>$NAME</string>
   <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
-  <key>CFBundleExecutable</key><string>launch</string>
+  <key>CFBundleExecutable</key><string>__EXECUTABLE__</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>1.0</string>
   <key>LSMinimumSystemVersion</key><string>12.0</string>
@@ -73,6 +74,29 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+
+# With a shell, the bundle's executable is the GUI and the launcher becomes the
+# script it spawns. Without one, the bundle is a server with no window — useful
+# for testing the packaging, not something to hand a person.
+if [ -n "$SHELL_BIN" ]; then
+  [ -x "$SHELL_BIN" ] || { echo "--shell must be an executable"; exit 1; }
+  cp "$SHELL_BIN" "$APP/Contents/MacOS/$(basename "$SHELL_BIN")"
+  SHELL_NAME="$(basename "$SHELL_BIN")"
+  echo "  shell embedded: $SHELL_NAME"
+
+  # The shell runs the bundled interpreter, not a developer's Ruby. Relative to
+  # the config, which sits beside it in Resources.
+  cat > "$RES/turbo-desktop.config.json" <<CONFIG
+{
+  "app_name": "$NAME",
+  "server_url": "http://127.0.0.1:0",
+  "window": { "width": 1100, "height": 800 },
+  "server": { "command": "../MacOS/launch", "directory": "." }
+}
+CONFIG
+else
+  SHELL_NAME="launch"
+fi
 
 cat > "$APP/Contents/MacOS/launch" <<'LAUNCH'
 #!/bin/bash
@@ -97,6 +121,10 @@ exec "$here/Resources/ruby/bin/ruby" "${@:-boot.rb}"
 LAUNCH
 chmod +x "$APP/Contents/MacOS/launch"
 
+# Written after the launcher, because the executable depends on whether a shell
+# was embedded.
+sed -i.bak "s|__EXECUTABLE__|$SHELL_NAME|" "$APP/Contents/Info.plist" && rm -f "$APP/Contents/Info.plist.bak"
+
 cp "$HERE/templates/boot.rb" "$RES/app/boot.rb"
 
 step "Pruning"
@@ -111,6 +139,13 @@ while IFS= read -r -d '' f; do
   codesign "${args[@]}" "$f" 2>/dev/null && n=$((n + 1)) || true
 done < <(find "$RES" \( -name '*.dylib' -o -name '*.bundle' -o -name '*.so' \) -type f -print0)
 codesign "${args[@]}" "$RES/ruby/bin/ruby"
+# Everything in MacOS/ counts as code, scripts included. An unsigned launcher
+# there makes the bundle signature invalid with "code object is not signed at
+# all", which reads like a problem with the binary and is not.
+codesign "${args[@]}" "$APP/Contents/MacOS/launch"
+if [ -n "$SHELL_BIN" ]; then
+  codesign "${args[@]}" "$APP/Contents/MacOS/$SHELL_NAME"
+fi
 codesign "${args[@]}" "$APP"
 echo "  signed $n nested binaries, the interpreter and the bundle"
 

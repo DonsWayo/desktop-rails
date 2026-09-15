@@ -23,7 +23,7 @@ use connection::{ConnectionMonitor, Transition, VisitError};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::webview::PageLoadEvent;
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Listener, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_deep_link::DeepLinkExt;
 
 /// How often to check that the app server is still answering.
@@ -186,6 +186,26 @@ fn main() {
                     format!("error.html?error={}", VisitError::NetworkFailure.slug()).into(),
                 )
             };
+
+            // A bundled server picks its own port, so the window opens on the
+            // waiting page and moves across when the handshake arrives. Nothing
+            // polls: the server says when it is ready.
+            let waiting = app.handle().clone();
+            let listening_on = app.handle().clone();
+            listening_on.listen("turbo-desktop://server-ready", move |event| {
+                let payload = event.payload().trim_matches('"').to_string();
+                if payload.is_empty() {
+                    return;
+                }
+                if let Ok(target) = payload.parse::<url::Url>() {
+                    if let Some(window) = waiting.get_webview_window("main") {
+                        log::info!("The app server is up; moving the window to {}", target);
+                        if let Err(e) = window.navigate(target) {
+                            log::warn!("Could not move the window to the app: {}", e);
+                        }
+                    }
+                }
+            });
 
             let main_window = window::apply_shell_defaults(
                 WebviewWindowBuilder::new(app, "main", target),

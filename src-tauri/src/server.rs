@@ -11,6 +11,39 @@
 use crate::window::ServerConfig;
 use std::path::{Path, PathBuf};
 
+
+/// Where the app server is listening, once it has said so.
+///
+/// A bundled app does not know its own port ahead of time: the server binds
+/// 127.0.0.1:0 and the OS picks, which removes the race you get from probing
+/// for a free port and then binding it. So the shell learns the address from
+/// the server rather than deciding it.
+#[derive(Default)]
+pub struct ServerAddress(std::sync::Mutex<Option<String>>);
+
+impl ServerAddress {
+    pub fn set(&self, url: String) {
+        if let Ok(mut guard) = self.0.lock() {
+            *guard = Some(url);
+        }
+    }
+
+    pub fn get(&self) -> Option<String> {
+        self.0.lock().ok().and_then(|g| g.clone())
+    }
+}
+
+/// The one line of handshake a bundled server writes before anything else.
+///
+/// Parsed rather than matched loosely: a line that is not a handshake is
+/// ordinary output, which a developer running `bin/rails server` by hand
+/// produces plenty of.
+pub fn handshake_url(line: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(line).ok()?;
+    let url = value.get("url")?.as_str()?;
+    url.starts_with("http").then(|| url.to_string())
+}
+
 /// Whether to start a server, and why not when we won't.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
@@ -132,7 +165,9 @@ pub async fn start(
         )
         .await?;
 
+    let app_for_output = app.clone();
     tauri::async_runtime::spawn(async move {
+        use tauri::{Emitter, Manager};
         // Moved in so the pipe lives as long as the child. Dropping it closes
         // stdin, which is the signal a well-behaved backend exits on.
         let _stdin = stdin;
@@ -146,7 +181,20 @@ pub async fn start(
         loop {
             tokio::select! {
                 line = async { match out.as_mut() { Some(l) => l.next_line().await, None => std::future::pending().await } } => {
-                    match line { Ok(Some(l)) => log::info!("[server] {}", l), _ => out = None }
+                    match line {
+                        Ok(Some(l)) => {
+                            // The first line a bundled server writes says where
+                            // it is listening. Anything else is ordinary output.
+                            if let Some(url) = handshake_url(&l) {
+                                log::info!("The app server is listening at {}", url);
+                                app_for_output.state::<ServerAddress>().set(url.clone());
+                                let _ = app_for_output.emit("turbo-desktop://server-ready", url);
+                            } else {
+                                log::info!("[server] {}", l);
+                            }
+                        }
+                        _ => out = None,
+                    }
                 }
                 line = async { match err.as_mut() { Some(l) => l.next_line().await, None => std::future::pending().await } } => {
                     match line { Ok(Some(l)) => log::warn!("[server] {}", l), _ => err = None }
@@ -174,6 +222,32 @@ pub const SERVER_PROCESS_ID: &str = "turbo-desktop:app-server";
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_handshake_gives_up_the_address() {
+        let line = r#"{"protocol":"1.0","url":"http://127.0.0.1:53411","pid":9}"#;
+        assert_eq!(
+            handshake_url(line),
+            Some("http://127.0.0.1:53411".to_string())
+        );
+    }
+
+    #[test]
+    fn ordinary_server_output_is_not_a_handshake() {
+        // A developer running `bin/rails server` by hand produces plenty of
+        // this, and none of it should be mistaken for an address.
+        for line in [
+            "Puma starting in single mode...",
+            "* Listening on http://127.0.0.1:3000",
+            "",
+            "{}",
+            r#"{"url":"not-a-url"}"#,
+            r#"{"url":42}"#,
+            "{ broken json",
+        ] {
+            assert_eq!(handshake_url(line), None, "{line:?} should not parse as a handshake");
+        }
+    }
 
     fn configured() -> ServerConfig {
         ServerConfig {
