@@ -1,0 +1,84 @@
+name: Package a Rails app end to end
+
+# The acceptance test for the packaging chain. Nothing here is mocked: it
+# builds the interpreter, generates a real Rails app, packs it into a bundle,
+# prunes it, signs it, then launches the result and talks to it over HTTP.
+#
+# Ad-hoc signing is used because CI has no Developer ID. That is enough to
+# exercise the hardened runtime, which is where Ruby and macOS actually
+# disagree — see packaging/DISTRIBUTION.md for what it cannot tell us.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "packaging/**"
+      - ".github/workflows/package-smoke.yml"
+
+jobs:
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache the vendored dependencies
+        uses: actions/cache@v4
+        with:
+          path: .runtime-build/vendor
+          key: vendor-arm64-darwin-openssl3.5.4-yaml0.2.5
+
+      - name: Build the interpreter
+        run: packaging/build-runtime.sh --out "$PWD/out/ruby"
+
+      - name: It relocates
+        run: packaging/verify-runtime.sh "$PWD/out/ruby"
+
+      - name: Generate a Rails app with the interpreter we just built
+        run: |
+          set -euo pipefail
+          export GEM_HOME="$PWD/out/gems"
+          GEM_PATH="$GEM_HOME:$(echo "$PWD"/out/ruby/lib/ruby/gems/*)"
+          export GEM_PATH
+          export PATH="$PWD/out/ruby/bin:$GEM_HOME/bin:$PATH"
+
+          # railties rather than the full rails meta-gem: a desktop app has one
+          # user and no cable server, so actioncable is not part of the payload.
+          gem install railties --no-document
+          rails new "$PWD/example" --minimal --skip-git --skip-bundle --skip-action-cable
+
+          cp packaging/smoke/Gemfile "$PWD/example/Gemfile"
+          cd "$PWD/example" && bundle install
+          echo "app generated and bundled"
+
+      - name: Pack, prune and sign
+        run: |
+          packaging/pack.sh \
+            --app "$PWD/example" \
+            --runtime "$PWD/out/ruby" \
+            --gems "$PWD/out/gems" \
+            --name "Smoke" --bundle-id dev.turbodesktop.smoke \
+            --out "$PWD/dist"
+
+      - name: Launch the bundle and talk to it
+        run: python3 packaging/smoke/launch_check.py dist/Smoke.app/Contents/MacOS/launch
+
+      - name: Build the disk image
+        run: packaging/dmg.sh dist/Smoke.app
+
+      - name: What Gatekeeper makes of it
+        run: |
+          # Expected to be rejected: CI has no Developer ID. Recorded rather
+          # than asserted, so the day that changes is visible in the log.
+          echo "codesign: $(codesign --verify --strict dist/Smoke.app 2>&1 && echo pass || echo fail)"
+          echo "spctl:    $(spctl -a -vv dist/Smoke.app 2>&1 | head -2 | tr '\n' ' ')"
+
+      - name: Sizes
+        run: |
+          du -sh out/ruby dist/Smoke.app dist/Smoke.dmg | sed 's/^/  /'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smoke-dmg
+          path: dist/*.dmg
+          retention-days: 7
