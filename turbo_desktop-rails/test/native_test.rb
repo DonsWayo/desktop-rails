@@ -184,15 +184,15 @@ class NativeTest < Minitest::Test
   # resize reports the size it applied after the app's minimums, and refuses a
   # size nobody could use — both of which Ruby has to carry back to its caller.
   def reply_to(message)
-    return ["200 OK", { status: "ok", text: "from the clipboard" }] unless
+    return [ "200 OK", { status: "ok", text: "from the clipboard" } ] unless
       message["component"] == "window" && message["event"] == "resize"
 
     width = message["data"]["width"].to_i
     height = message["data"]["height"].to_i
     if width <= 0 || height <= 0
-      ["500 Internal Server Error", { error: "Refused: #{width}x#{height} is not a usable size" }]
+      [ "500 Internal Server Error", { error: "Refused: #{width}x#{height} is not a usable size" } ]
     else
-      ["200 OK", { status: "ok", width: [width, 800].max, height: [height, 600].max }]
+      [ "200 OK", { status: "ok", width: [ width, 800 ].max, height: [ height, 600 ].max } ]
     end
   end
 
