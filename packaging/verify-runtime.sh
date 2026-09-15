@@ -27,8 +27,31 @@ BAD=$(find "$MOVED" \( -name '*.so' -o -name '*.bundle' -o -name '*.dylib' -o -n
 "$MOVED/bin/ruby" -v >/dev/null 2>&1 && pass "runs from the new path" || bad "will not run after being moved"
 "$MOVED/bin/ruby" -e 'require "psych"; exit(Psych.load("- 1") == [1] ? 0 : 1)' 2>/dev/null \
   && pass "psych loads and parses — Rails cannot boot without it" || bad "psych failed"
-"$MOVED/bin/ruby" -e 'require "openssl"; print OpenSSL::OPENSSL_VERSION' >/dev/null 2>&1 \
-  && pass "openssl works ($("$MOVED/bin/ruby" -e 'require "openssl"; print OpenSSL::OPENSSL_VERSION'))" || bad "openssl failed"
+# OpenSSL::OPENSSL_VERSION is a compile-time constant: it reports the version
+# the extension was *built* against even when a different library is what loads.
+# So do real work with it — a digest, an HMAC and a cipher all go through
+# symbols that differ between versions, which is exactly how a mismatched
+# system library shows itself.
+OPENSSL_CHECK=$("$MOVED/bin/ruby" -e '
+  require "openssl"
+  raise "digest"  unless OpenSSL::Digest::SHA256.hexdigest("x").length == 64
+  raise "hmac"    unless OpenSSL::HMAC.hexdigest("SHA256", "k", "m").length == 64
+  c = OpenSSL::Cipher.new("aes-256-gcm").encrypt
+  c.key = "0" * 32
+  raise "cipher"  if c.random_iv.empty?
+  print "#{OpenSSL::OPENSSL_VERSION} | runtime #{OpenSSL::OPENSSL_LIBRARY_VERSION}"
+' 2>&1)
+if [ $? -eq 0 ]; then
+  pass "openssl does real work ($OPENSSL_CHECK)"
+  # The two versions disagreeing means the extension is loading a library it was
+  # not built against, which is the failure this whole check exists to catch.
+  BUILT=$(echo "$OPENSSL_CHECK" | sed "s/ |.*//")
+  RUNTIME=$(echo "$OPENSSL_CHECK" | sed "s/.*runtime //")
+  [ "$BUILT" = "$RUNTIME" ] && pass "built and runtime OpenSSL agree" \
+    || bad "built against $BUILT but loading $RUNTIME — a system library is winning"
+else
+  bad "openssl failed: $(echo "$OPENSSL_CHECK" | head -2 | tr '\n' ' ')"
+fi
 "$MOVED/bin/ruby" -e 'require "zlib"; require "json"; require "socket"; require "fiddle"' 2>/dev/null \
   && pass "zlib, json, socket, fiddle all load" || bad "a core extension failed"
 "$MOVED/bin/ruby" -e 'exit(RbConfig::CONFIG["prefix"].include?("relocated") ? 0 : 1)' \

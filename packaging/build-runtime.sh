@@ -78,10 +78,16 @@ else
   step "Building OpenSSL $OPENSSL_VERSION (static) — the long pole, ~20 min"
   tar -xzf "$(fetch "https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL_VERSION/openssl-$OPENSSL_VERSION.tar.gz")" -C "$SRC"
   ( cd "$SRC/openssl-$OPENSSL_VERSION"
-    ./Configure "$SSL_TARGET" no-shared no-tests no-docs --prefix="$VENDOR" --openssldir="$VENDOR/ssl" >/dev/null
+    # --libdir=lib matters more than it looks. OpenSSL installs to lib64 on
+    # most Linux targets, while Ruby's configure looks in lib. libyaml is built
+    # first and creates lib/, so a "symlink lib64 to lib if lib is missing"
+    # fallback never fires — and Ruby then finds no static OpenSSL, silently
+    # links the system one, and the extension fails at runtime with an
+    # undefined symbol. Putting it in lib from the start removes the class.
+    ./Configure "$SSL_TARGET" no-shared no-tests no-docs \
+      --prefix="$VENDOR" --openssldir="$VENDOR/ssl" --libdir=lib >/dev/null
     make -j"$JOBS" >/dev/null && make install_sw >/dev/null )
-  # Some targets install to lib64; Ruby's configure looks in lib.
-  [ -d "$VENDOR/lib64" ] && [ ! -d "$VENDOR/lib" ] && ln -s lib64 "$VENDOR/lib" || true
+  [ -f "$VENDOR/lib/libcrypto.a" ] || { echo "OpenSSL did not install a static libcrypto into $VENDOR/lib"; exit 1; }
 fi
 
 if [ -x "$PREFIX/bin/ruby" ]; then

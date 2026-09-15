@@ -26,7 +26,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .runtime-build/vendor
-          key: vendor-arm64-darwin-openssl3.5.4-yaml0.2.5
+          key: vendor-arm64-darwin-openssl3.5.4-libdir-yaml0.2.5
 
       - name: Build the interpreter
         run: packaging/build-runtime.sh --out "$PWD/out/ruby"
@@ -96,7 +96,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .runtime-build/vendor
-          key: vendor-x86_64-linux-openssl3.5.4-yaml0.2.5
+          key: vendor-x86_64-linux-openssl3.5.4-libdir-yaml0.2.5
 
       - name: Build the interpreter
         run: packaging/build-runtime.sh --out "$PWD/out/ruby"

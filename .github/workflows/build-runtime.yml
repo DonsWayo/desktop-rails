@@ -45,7 +45,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .runtime-build/vendor
-          key: vendor-${{ matrix.triple }}-openssl3.5.4-yaml0.2.5
+          key: vendor-${{ matrix.triple }}-openssl3.5.4-libdir-yaml0.2.5
 
       - name: Build
         run: packaging/build-runtime.sh --out "$PWD/out/ruby"
