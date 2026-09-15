@@ -1,0 +1,15 @@
+{
+  "version": "1.2.0",
+  "notes": "A release, for the purposes of this test.",
+  "pub_date": "2026-09-15T10:00:00Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHR1cmJvLWRlc2t0b3Agc2VjcmV0IGtleQpSVVF6a2JPV3FXVGRQTWJ1Vlh4RFljNnZwRTkwUlNvVlFRS3BsaE9ab0w5MFMvcG9sSDVXWUtnVGJCNi9mbkxQNnhrY2NEdWpKR2xaWVkwM29wUmd3QzBHMFdHYlNDU3JoQUk9CnRydXN0ZWQgY29tbWVudDogdGltZXN0YW1wOjE3ODk0NzUwMDAJZmlsZTphcnRpZmFjdC5iaW4JZml4dHVyZQloYXNoZWQKQitmeE1Uc0tFaU40RHVYVExHQzFXc1hPYXJIUTY3aDRYT2Npb2NFWVQ1WUh2NVlWWnl4U2RCbGlnZnlQWVM4WmJsTEpHSFNBcWM0NXRad0RxVjgrRGc9PQo=",
+      "url": "https://downloads.example.com/1.2.0/Ledger.app.tar.gz"
+    },
+    "linux-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHR1cmJvLWRlc2t0b3Agc2VjcmV0IGtleQpSVVF6a2JPV3FXVGRQTWJ1Vlh4RFljNnZwRTkwUlNvVlFRS3BsaE9ab0w5MFMvcG9sSDVXWUtnVGJCNi9mbkxQNnhrY2NEdWpKR2xaWVkwM29wUmd3QzBHMFdHYlNDU3JoQUk9CnRydXN0ZWQgY29tbWVudDogdGltZXN0YW1wOjE3ODk0NzUwMDAJZmlsZTphcnRpZmFjdC5iaW4JZml4dHVyZQloYXNoZWQKQitmeE1Uc0tFaU40RHVYVExHQzFXc1hPYXJIUTY3aDRYT2Npb2NFWVQ1WUh2NVlWWnl4U2RCbGlnZnlQWVM4WmJsTEpHSFNBcWM0NXRad0RxVjgrRGc9PQo=",
+      "url": "https://downloads.example.com/1.2.0/Ledger.AppImage.tar.gz"
+    }
+  }
+}

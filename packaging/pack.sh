@@ -17,6 +17,15 @@
 #
 # Usage:
 #   packaging/pack.sh --app ../my_rails_app --runtime /path/to/ruby --name "My App"
+#
+# To ship an app that can update itself, give it the manifest URL and the public
+# half of the key that will sign releases (packaging/generate-key.sh):
+#
+#   --version 1.1.0 \
+#   --update-url https://downloads.example.com/ledger/latest.json \
+#   --update-key .signing/updater.pub
+#
+# See AUTO_UPDATE.md. Without these the app simply never looks for an update.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -24,6 +33,7 @@ HERE="$PWD/packaging"
 
 APP_SRC=""; RUNTIME=""; GEMS=""; SHELL_BIN=""; NAME="Turbo Desktop App"
 BUNDLE_ID="dev.turbodesktop.app"; IDENTITY="-"; OUT="$PWD/dist"; KEEP_DEV=0
+VERSION="1.0"; UPDATE_URL=""; UPDATE_PUBKEY=""; UPDATE_PUBKEY_FILE=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -35,8 +45,11 @@ while [ $# -gt 0 ]; do
     --bundle-id) BUNDLE_ID="$2"; shift 2 ;;
     --identity)  IDENTITY="$2"; shift 2 ;;
     --out)       OUT="$2"; shift 2 ;;
+    --version)   VERSION="$2"; shift 2 ;;
+    --update-url) UPDATE_URL="$2"; shift 2 ;;
+    --update-key) UPDATE_PUBKEY_FILE="$2"; shift 2 ;;
     --keep-dev)  KEEP_DEV=1; shift ;;
-    -h|--help)   sed -n '2,20p' "$0"; exit 0 ;;
+    -h|--help)   sed -n '2,29p' "$0"; exit 0 ;;
     *) echo "unknown option: $1"; exit 1 ;;
   esac
 done
@@ -44,6 +57,20 @@ done
 [ -d "$APP_SRC" ]            || { echo "--app must be a Rails app directory"; exit 1; }
 [ -x "$RUNTIME/bin/ruby" ]   || { echo "--runtime must contain bin/ruby"; exit 1; }
 [ -f "$APP_SRC/config.ru" ]  || { echo "$APP_SRC has no config.ru — is it a Rails app?"; exit 1; }
+
+# The updater takes the endpoint and the key together or not at all: an endpoint
+# without a key would mean installing whatever that server offered.
+if [ -n "$UPDATE_PUBKEY_FILE" ]; then
+  [ -f "$UPDATE_PUBKEY_FILE" ] || { echo "--update-key must be a .pub file"; exit 1; }
+  command -v node >/dev/null || { echo "node is required to read --update-key"; exit 1; }
+  UPDATE_PUBKEY="$(node "$HERE/lib/updater-cli.mjs" pubkey --public "$UPDATE_PUBKEY_FILE")"
+fi
+if [ -n "$UPDATE_URL" ] && [ -z "$UPDATE_PUBKEY" ]; then
+  echo "--update-url needs --update-key: an unsigned update is worse than none"; exit 1
+fi
+if [ -n "$UPDATE_PUBKEY" ] && [ -z "$UPDATE_URL" ]; then
+  echo "--update-key needs --update-url"; exit 1
+fi
 
 step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 APP="$OUT/$NAME.app"
@@ -66,7 +93,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
   <key>CFBundleExecutable</key><string>__EXECUTABLE__</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>LSMinimumSystemVersion</key><string>12.0</string>
   <!-- macOS prompts per app bundle for these, whatever language asks. -->
   <key>NSDocumentsFolderUsageDescription</key><string>$NAME needs access to files you open.</string>
@@ -84,6 +111,23 @@ if [ -n "$SHELL_BIN" ]; then
   SHELL_NAME="$(basename "$SHELL_BIN")"
   echo "  shell embedded: $SHELL_NAME"
 
+  # The updater block is written only when both halves were given: the shell
+  # treats a half-filled one as "not configured" anyway, so an empty one in the
+  # file would be nothing but noise to read past.
+  UPDATER_BLOCK=""
+  if [ -n "$UPDATE_URL" ]; then
+    UPDATER_BLOCK=$(cat <<UPDATER
+,
+  "updater": {
+    "endpoints": ["$UPDATE_URL"],
+    "pubkey": "$UPDATE_PUBKEY",
+    "current_version": "$VERSION"
+  }
+UPDATER
+)
+    echo "  updates: $UPDATE_URL (v$VERSION)"
+  fi
+
   # The shell runs the bundled interpreter, not a developer's Ruby. Relative to
   # the config, which sits beside it in Resources.
   cat > "$RES/turbo-desktop.config.json" <<CONFIG
@@ -91,7 +135,7 @@ if [ -n "$SHELL_BIN" ]; then
   "app_name": "$NAME",
   "server_url": "http://127.0.0.1:0",
   "window": { "width": 1100, "height": 800 },
-  "server": { "command": "../MacOS/launch", "directory": "." }
+  "server": { "command": "../MacOS/launch", "directory": "." }$UPDATER_BLOCK
 }
 CONFIG
 else

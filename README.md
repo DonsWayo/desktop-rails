@@ -201,6 +201,37 @@ yours on quit. A server the app did start is stopped when the app quits.
 
 Omit `command` (or the whole block) to manage the server yourself.
 
+#### Updating a shipped app
+
+With an `updater` block, the app can check a URL for a newer version and replace
+itself. The endpoint and the signing key live here rather than in
+`tauri.conf.json` because that file is compiled into the shell, and one shell
+binary serves every app built with this fork:
+
+```json
+{
+  "updater": {
+    "endpoints": ["https://downloads.example.com/ledger/latest.json"],
+    "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6...",
+    "current_version": "1.1.0"
+  }
+}
+```
+
+- `pubkey` is the minisign public key `packaging/generate-key.sh` prints.
+  Downloads that are not signed by its private half are refused, so the key is
+  what makes an update server safe to trust.
+- `endpoints` must be https. The plugin allows plain http in development and
+  refuses it in a release build, so an http endpoint works until you ship.
+- `current_version` is the version this installation actually is. Without it the
+  comparison uses the shell's own version, which belongs to the framework rather
+  than to your app.
+
+Omit the block, or either required field, and the app does not check for updates
+at all — `TurboDesktop.updater.check()` answers `{ status: "not_configured" }`.
+
+Making the key and signing a release: [packaging/AUTO_UPDATE.md](packaging/AUTO_UPDATE.md).
+
 ### 3. Add the Rails gem
 
 ```ruby

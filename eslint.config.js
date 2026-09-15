@@ -56,8 +56,9 @@ export default [
   js.configs.recommended,
   { rules: { "no-unused-vars": unusedVars } },
   {
-    // The CLI, the config itself and the test suite run in Node.
-    files: ["cli/**/*.js", "test/**/*.js", "eslint.config.js"],
+    // The CLI, the packaging helpers, the config itself and the test suite all
+    // run in Node.
+    files: ["cli/**/*.js", "packaging/**/*.mjs", "test/**/*.js", "eslint.config.js"],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: "module",
