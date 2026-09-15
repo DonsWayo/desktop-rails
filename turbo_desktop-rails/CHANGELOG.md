@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Rails-native packaging workflow: `rake desktop:runtime`, `desktop:package` and
+  `desktop:run`. They shell out to the packaging scripts rather than
+  reimplementing them, and fail with a message naming the missing prerequisite.
+- The install generator writes `config/environments/desktop.rb` (eager loading,
+  loopback-only `config.hosts`, the `:async` job adapter so a forking supervisor
+  cannot orphan a server, and writable state under the OS data directory) and an
+  executable `bin/desktop-boot`. `--no-desktop-env` skips both.
+- `TurboDesktop.data_dir`: the per-platform directory a packaged app may write
+  to — Application Support, %LOCALAPPDATA% or $XDG_DATA_HOME — honouring the
+  `DESKTOP_DATA_DIR` the launchers export. With `TurboDesktop.secret_key_base`,
+  generated on first run and kept at mode 0600.
+
+### Fixed
+
+- A packaged bundle booted `production` even when the app had a desktop
+  environment, so none of the settings above reached the app that ships.
+  `packaging/templates/boot.rb` now selects it, and `TURBO_DESKTOP_ENV` overrides.
+
 ## 0.2.1 (2026-07-29)
 
 Version aligned with the desktop shell's 0.2.1 release, which fixes bridge
