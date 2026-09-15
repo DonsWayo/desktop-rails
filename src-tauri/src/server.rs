@@ -105,7 +105,11 @@ pub async fn start(
         .args(&args)
         .stdin(Stdio::piped()) // the handshake goes in here, and EOF reaps the child
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stderr(Stdio::piped())
+        // A backstop for the orphan rule: if the task that owns the child ever
+        // goes away without stopping it, kill it rather than leave a server
+        // running with nothing attached to it.
+        .kill_on_drop(true);
 
     if let Some(dir) = &directory {
         spawner.current_dir(dir);
@@ -165,20 +169,23 @@ pub async fn start(
         )
         .await?;
 
+    // Two tasks, not one. The child and its stdin are kept away from anything
+    // that parses output: closing that pipe is how the server is told to exit,
+    // so it must only ever happen deliberately. When both lived in the same
+    // task, a panic while handling a line of output unwound the task, dropped
+    // the pipe, and the server quit — moments after announcing its address.
+    tauri::async_runtime::spawn(supervise(child, stdin, kill_rx));
+
     let app_for_output = app.clone();
     tauri::async_runtime::spawn(async move {
         use tauri::{Emitter, Manager};
-        // Moved in so the pipe lives as long as the child. Dropping it closes
-        // stdin, which is the signal a well-behaved backend exits on.
-        let _stdin = stdin;
-        let mut kill_rx = kill_rx;
 
         // The server's own output is the only clue when it fails to boot, so it
         // goes to the log rather than into a pipe nobody reads.
         let mut out = stdout.map(|s| BufReader::new(s).lines());
         let mut err = stderr.map(|s| BufReader::new(s).lines());
 
-        loop {
+        while out.is_some() || err.is_some() {
             tokio::select! {
                 line = async { match out.as_mut() { Some(l) => l.next_line().await, None => std::future::pending().await } } => {
                     match line {
@@ -187,8 +194,18 @@ pub async fn start(
                             // it is listening. Anything else is ordinary output.
                             if let Some(url) = handshake_url(&l) {
                                 log::info!("The app server is listening at {}", url);
-                                app_for_output.state::<ServerAddress>().set(url.clone());
-                                let _ = app_for_output.emit("turbo-desktop://server-ready", url);
+                                // Announced first: moving the window to the app
+                                // is the point, and it must not be lost to a
+                                // failure in the bookkeeping below it.
+                                let _ = app_for_output.emit("turbo-desktop://server-ready", url.clone());
+                                match app_for_output.try_state::<ServerAddress>() {
+                                    Some(address) => address.set(url),
+                                    // `state()` would panic here, and a panic in
+                                    // this task used to cost us the server.
+                                    None => log::warn!(
+                                        "Nowhere to record the app server's address: ServerAddress was never managed"
+                                    ),
+                                }
                             } else {
                                 log::info!("[server] {}", l);
                             }
@@ -199,20 +216,36 @@ pub async fn start(
                 line = async { match err.as_mut() { Some(l) => l.next_line().await, None => std::future::pending().await } } => {
                     match line { Ok(Some(l)) => log::warn!("[server] {}", l), _ => err = None }
                 }
-                _ = &mut kill_rx => {
-                    log::info!("Stopping the app server");
-                    let _ = child.kill().await;
-                    return;
-                }
-                status = child.wait() => {
-                    log::warn!("The app server exited: {:?}", status.ok().and_then(|s| s.code()));
-                    return;
-                }
             }
         }
     });
 
     Ok(())
+}
+
+/// Own the app server until it is asked to stop, holding its stdin open.
+///
+/// The open pipe is the orphan rule: a backend that reads stdin exits when it
+/// reaches EOF, which is the only layer that survives the shell being
+/// force-quit, since no Rust code runs then. So this task holds the write end
+/// and does nothing else that could fail.
+async fn supervise(
+    mut child: tokio::process::Child,
+    stdin: Option<tokio::process::ChildStdin>,
+    kill_rx: tokio::sync::oneshot::Receiver<()>,
+) {
+    let _stdin = stdin;
+    let mut kill_rx = kill_rx;
+
+    tokio::select! {
+        _ = &mut kill_rx => {
+            log::info!("Stopping the app server");
+            let _ = child.kill().await;
+        }
+        status = child.wait() => {
+            log::warn!("The app server exited: {:?}", status.ok().and_then(|s| s.code()));
+        }
+    }
 }
 
 /// ProcessManager id for the server, so it is distinguishable from anything the
@@ -314,6 +347,74 @@ mod tests {
             api.canonicalize().unwrap()
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A stand-in for the bundled server: it exits when stdin reaches EOF, the
+    /// way `packaging/templates/boot.rb` does, and leaves a file behind when it
+    /// goes so the test can tell without racing on a pid.
+    #[cfg(unix)]
+    fn a_server_that_exits_on_eof(
+        marker: &Path,
+    ) -> (tokio::process::Child, tokio::process::ChildStdin) {
+        let mut child = tokio::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg(format!("cat > /dev/null; : > '{}'", marker.display()))
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .expect("could not start the stand-in server");
+        let stdin = child.stdin.take().expect("no stdin on the stand-in server");
+        (child, stdin)
+    }
+
+    /// The regression. The task that parsed the server's output used to hold
+    /// the child's stdin as well, so a panic while handling a line closed the
+    /// pipe, and the server exited on EOF seconds after announcing its address.
+    /// Supervision owns the pipe now, and nothing that parses can reach it.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_server_outlives_a_panic_in_the_code_that_reads_its_output() {
+        let marker = std::env::temp_dir().join("turbo-desktop-supervise-panic");
+        std::fs::remove_file(&marker).ok();
+        let (child, stdin) = a_server_that_exits_on_eof(&marker);
+
+        let (kill_tx, kill_rx) = tokio::sync::oneshot::channel::<()>();
+        let supervisor = tokio::spawn(supervise(child, Some(stdin), kill_rx));
+
+        // What `state()` on unmanaged state did, in the task next door.
+        let reader = tokio::spawn(async { panic!("something in the reader") });
+        assert!(reader.await.is_err(), "the reader was supposed to panic");
+
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        assert!(
+            !marker.exists(),
+            "the app server saw EOF and exited when the output reader panicked"
+        );
+
+        // And it still stops when it is told to.
+        kill_tx.send(()).ok();
+        supervisor.await.ok();
+        std::fs::remove_file(&marker).ok();
+    }
+
+    /// The other half of the contract: quitting the app stops the server it
+    /// started, rather than leaving it behind on a port nobody remembers.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_kill_signal_stops_the_server() {
+        let marker = std::env::temp_dir().join("turbo-desktop-supervise-kill");
+        std::fs::remove_file(&marker).ok();
+        let (child, stdin) = a_server_that_exits_on_eof(&marker);
+
+        let (kill_tx, kill_rx) = tokio::sync::oneshot::channel::<()>();
+        let supervisor = tokio::spawn(supervise(child, Some(stdin), kill_rx));
+
+        kill_tx.send(()).expect("nothing was listening for the kill");
+        let stopped = tokio::time::timeout(std::time::Duration::from_secs(5), supervisor).await;
+        assert!(stopped.is_ok(), "supervision did not return after the kill");
+        std::fs::remove_file(&marker).ok();
     }
 
     #[test]

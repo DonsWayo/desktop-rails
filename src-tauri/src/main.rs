@@ -45,6 +45,7 @@ fn main() {
         ))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(process_manager::ProcessManager::new())
+        .manage(server::ServerAddress::default())
         .manage(window::LastWindowSize::default())
         .manage(window::FocusTracker::default())
         .manage(security::UserGrants::default())
