@@ -89,6 +89,60 @@ pub fn working_directory(config: &ServerConfig, config_dir: Option<&Path>) -> Op
     Some(joined.canonicalize().unwrap_or(joined))
 }
 
+
+/// How to run the configured server command.
+///
+/// The login shell exists so a version manager can set itself up — rbenv and
+/// mise only configure themselves in a configured shell, and a developer's
+/// `bin/rails server` needs that. A packaged app needs none of it: the
+/// interpreter is inside the bundle.
+///
+/// Two things follow, and both were measured:
+///
+///   * A login shell costs ~2.3s per launch here against ~0.02s for a direct
+///     exec. That is the whole budget an app icon gets before it feels broken,
+///     spent on nothing.
+///   * `$SHELL -l -c "<command>"` word-splits, so an absolute path containing a
+///     space dies with `no such file or directory: /private/tmp/space` and exit
+///     127. `/Applications/My App.app` is an entirely ordinary path.
+///
+/// So: when the command names an executable that exists, run it directly. When
+/// it is a command line — `bin/rails server -p 3000` — it needs a shell, and a
+/// developer running that has a version manager to set up anyway.
+pub fn server_invocation(
+    command: &str,
+    working_dir: Option<&Path>,
+) -> (String, Vec<String>) {
+    let trimmed = command.trim();
+    let candidate = match working_dir {
+        Some(dir) => dir.join(trimmed),
+        None => PathBuf::from(trimmed),
+    };
+
+    let is_executable_file = candidate.is_file()
+        && {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                candidate
+                    .metadata()
+                    .map(|m| m.permissions().mode() & 0o111 != 0)
+                    .unwrap_or(false)
+            }
+            #[cfg(not(unix))]
+            {
+                true
+            }
+        };
+
+    if is_executable_file {
+        // The path is passed as one argument, so spaces in it are not special.
+        return (candidate.to_string_lossy().into_owned(), Vec::new());
+    }
+
+    crate::shell_bridge::shell_invocation(trimmed)
+}
+
 /// Start the configured server and hand it to ProcessManager.
 ///
 /// The command runs the way the platform runs commands — through a login shell
@@ -109,7 +163,7 @@ pub async fn start(
     };
     let directory = working_directory(config, config_dir);
 
-    let (program, args) = crate::shell_bridge::shell_invocation(command);
+    let (program, args) = server_invocation(command, directory.as_deref());
     let mut spawner = tokio::process::Command::new(&program);
     spawner
         .args(&args)
@@ -265,6 +319,71 @@ pub const SERVER_PROCESS_ID: &str = "turbo-desktop:app-server";
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A directory holding one executable and one plain file, for the
+    /// invocation tests below.
+    fn scratch_with_launcher(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("turbo-desktop-invocation-{name}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let launcher = dir.join("launch");
+        std::fs::write(&launcher, "#!/bin/sh\nexit 0\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        std::fs::write(dir.join("not-executable"), "plain").unwrap();
+        dir
+    }
+
+    #[test]
+    fn an_executable_launcher_runs_without_a_shell() {
+        // A login shell costs ~2.3s per launch, which is the entire budget an
+        // app icon gets. A packaged app has its interpreter inside the bundle
+        // and needs none of what the shell was for.
+        let dir = scratch_with_launcher("plain");
+        let (program, args) = server_invocation("launch", Some(&dir));
+
+        assert!(args.is_empty(), "a direct exec takes no shell arguments");
+        assert_eq!(PathBuf::from(&program), dir.join("launch"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_path_containing_a_space_is_passed_as_one_argument() {
+        // Through `$SHELL -l -c` this word-splits and dies with exit 127:
+        // "no such file or directory: /private/tmp/space". /Applications/My App.app
+        // is an ordinary path, so this is not a corner case.
+        let dir = scratch_with_launcher("with space");
+        let (program, args) = server_invocation("launch", Some(&dir));
+
+        assert!(program.contains(' '), "the fixture must actually contain a space");
+        assert!(args.is_empty(), "the path must not be handed to a shell to re-split");
+        assert!(PathBuf::from(&program).is_file());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_command_line_still_goes_through_a_shell() {
+        // `bin/rails server -p 3000` is not a file, and a developer running it
+        // has a version manager the login shell exists to set up.
+        let dir = scratch_with_launcher("commandline");
+        let (program, args) = server_invocation("bin/rails server -p 3000", Some(&dir));
+
+        assert!(!args.is_empty(), "a command line needs a shell");
+        assert!(args.iter().any(|a| a.contains("bin/rails server")));
+        assert_ne!(program, "bin/rails server -p 3000");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_file_that_is_not_executable_is_not_run_directly() {
+        let dir = scratch_with_launcher("notexec");
+        let (_, args) = server_invocation("not-executable", Some(&dir));
+        assert!(!args.is_empty(), "a non-executable falls back to the shell rather than failing");
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn the_handshake_gives_up_the_address() {
