@@ -33,6 +33,54 @@ pub struct TurboDesktopConfig {
     /// How to start the app server, when the app should start one itself
     #[serde(default)]
     pub server: ServerConfig,
+    /// Where updates come from, and which key signs them
+    #[serde(default)]
+    pub updater: UpdaterConfig,
+}
+
+/// Where this app looks for updates.
+///
+/// These live here rather than in `tauri.conf.json` because that file is baked
+/// into the shell binary at compile time, and one shell binary serves every app
+/// built with this fork. Both values are per app — a different update server and
+/// a different signing key — so they have to be readable at runtime, and
+/// `tauri_plugin_updater` supports exactly that through `UpdaterBuilder`.
+///
+/// Leaving either empty turns updating off for the app rather than failing:
+/// plenty of apps are installed by other means and should not be reaching out
+/// to an update server at all.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UpdaterConfig {
+    /// Manifest URLs, tried in order until one answers. `{{target}}`,
+    /// `{{arch}}` and `{{current_version}}` are substituted by the plugin.
+    ///
+    /// Must be https: the plugin refuses plain http in a release build, so an
+    /// http endpoint is a bug that only shows up in the shipped app.
+    #[serde(default)]
+    pub endpoints: Vec<String>,
+    /// The minisign public key updates are verified against, as
+    /// `packaging/generate-key.sh` prints it: base64 of the whole `.pub` file.
+    #[serde(default)]
+    pub pubkey: String,
+    /// The version this installation actually is.
+    ///
+    /// Needed because the shell reports its own crate version, which is the
+    /// framework's, not the app's — so without this every app would be
+    /// comparing releases against "0.2.1". Set it to the same version the
+    /// manifest will carry when the app ships.
+    #[serde(default)]
+    pub current_version: Option<String>,
+}
+
+impl UpdaterConfig {
+    /// Whether this app has been given enough to check for updates.
+    ///
+    /// Both halves are required. An endpoint without a key would mean
+    /// downloading and running whatever that server offered, so a half-filled
+    /// block is treated as "not configured" rather than as a weaker setup.
+    pub fn is_configured(&self) -> bool {
+        !self.endpoints.is_empty() && !self.pubkey.trim().is_empty()
+    }
 }
 
 /// The app server this shell puts in its window.
@@ -191,6 +239,7 @@ fn default_config() -> TurboDesktopConfig {
         sudo: SudoConfig::default(),
         navigation: NavigationConfig::default(),
         server: ServerConfig::default(),
+        updater: UpdaterConfig::default(),
     }
 }
 
@@ -433,6 +482,91 @@ pub fn save_preferences(dir: &Path, preferences: &Preferences) -> Result<(), Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Exactly what `packaging/pack.sh --update-url --update-key` writes into a
+    /// bundle. Kept verbatim so a change to either side that stops them agreeing
+    /// fails here rather than in a shipped app, where a config that does not
+    /// parse is fatal at startup.
+    const PACKED_CONFIG: &str = r#"{
+      "app_name": "Ledger",
+      "server_url": "http://127.0.0.1:0",
+      "window": { "width": 1100, "height": 800 },
+      "server": { "command": "../MacOS/launch", "directory": "." },
+      "updater": {
+        "endpoints": ["https://downloads.example.com/ledger/latest.json"],
+        "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXkK",
+        "current_version": "1.1.0"
+      }
+    }"#;
+
+    #[test]
+    fn the_updater_settings_a_packaged_app_ships_with_parse() {
+        let config = parse_config(PACKED_CONFIG).expect("pack.sh must write a config that parses");
+
+        assert_eq!(
+            config.updater.endpoints,
+            vec!["https://downloads.example.com/ledger/latest.json"]
+        );
+        assert_eq!(config.updater.current_version.as_deref(), Some("1.1.0"));
+        assert!(config.updater.is_configured());
+    }
+
+    #[test]
+    fn an_app_that_does_not_update_itself_needs_no_updater_block() {
+        // The overwhelming majority of apps. This must not be an error, and it
+        // must not leave the app checking some default endpoint.
+        let config = parse_config(r#"{"server_url":"http://localhost:3000"}"#).unwrap();
+
+        assert!(config.updater.endpoints.is_empty());
+        assert!(!config.updater.is_configured());
+    }
+
+    #[test]
+    fn half_an_updater_block_is_not_configured() {
+        // An endpoint with no key would mean downloading and running whatever
+        // that server offered, so it is treated as off rather than as a weaker
+        // setup that still reaches out.
+        let endpoint_only = parse_config(
+            r#"{"server_url":"http://x","updater":{"endpoints":["https://example.com/u.json"]}}"#,
+        )
+        .unwrap();
+        assert!(!endpoint_only.updater.is_configured());
+
+        let key_only =
+            parse_config(r#"{"server_url":"http://x","updater":{"pubkey":"abc"}}"#).unwrap();
+        assert!(!key_only.updater.is_configured());
+
+        // Whitespace is not a key. This one matters because the value is pasted
+        // in by hand and a lone newline is invisible in an editor.
+        let blank = parse_config(
+            r#"{"server_url":"http://x","updater":{"endpoints":["https://e/u.json"],"pubkey":"  \n"}}"#,
+        )
+        .unwrap();
+        assert!(!blank.updater.is_configured());
+    }
+
+    #[test]
+    fn the_updater_settings_cannot_be_set_from_the_user_writable_preferences() {
+        // preferences.json sits in a directory any process running as the user
+        // can write. It must stay unable to point the updater somewhere else —
+        // that would be a way to install arbitrary code.
+        let preferences: Preferences = serde_json::from_str(
+            r#"{"window":{"width":900,"height":700},
+                "updater":{"endpoints":["https://attacker.example/u.json"],"pubkey":"theirs"}}"#,
+        )
+        .expect("unknown keys in preferences are ignored, not fatal");
+
+        assert_eq!(
+            preferences,
+            Preferences {
+                window: Some(WindowPreferences {
+                    width: 900.0,
+                    height: 700.0
+                })
+            },
+            "preferences must carry geometry and nothing else"
+        );
+    }
 
     fn scratch(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("turbo-desktop-config-{name}"));

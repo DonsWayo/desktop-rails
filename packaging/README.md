@@ -23,10 +23,14 @@ packaging\pack-windows.ps1 -App ..\my_app -Runtime out\ruby -Gems out\gems -Name
 | `prune.sh` / `prune.ps1` | Removes what a user's machine never reads. |
 | `dmg.sh` | Disk image. No certificate needed. |
 | `notarize.sh` | Signs and notarises. Needs a Developer ID. |
+| `generate-key.sh` | The minisign keypair that signs updates. Once, ever. |
+| `sign-update.sh` | Signs a release and writes the updater's manifest. |
 | `templates/boot.rb` | The boot sequence all three platforms share. |
 
 Longer notes: [CONTROL_CHANNEL.md](CONTROL_CHANNEL.md) for calling native from
-Ruby, [DISTRIBUTION.md](DISTRIBUTION.md) for what Gatekeeper actually does.
+Ruby, [DISTRIBUTION.md](DISTRIBUTION.md) for what Gatekeeper actually does,
+[AUTO_UPDATE.md](AUTO_UPDATE.md) for shipping a second version to people who
+already have the first.
 
 ## The four things that decide whether this works
 
@@ -127,8 +131,20 @@ macOS   175M -> 108M, signature verifies, GET /up 200, exited 0.2s, 63M dmg
 Linux   357M -> 145M, GET /up 200 twice (packed and read-only), 52M tarball
 ```
 
+## Updates
+
+Signing a release and signing an application are unrelated problems, and only
+the second one needs Apple. `generate-key.sh` makes a minisign keypair,
+`sign-update.sh` signs a bundle and writes the manifest, and the endpoint and
+public key live in `turbo-desktop.config.json` so one shell binary can still
+serve every app. See [AUTO_UPDATE.md](AUTO_UPDATE.md).
+
+An update has not yet been watched to apply end to end; everything up to the
+install is covered by tests, including verification by the same crate the
+shipped app verifies with.
+
 ## Not yet done
 
-Notarisation and a stapled first launch, both gated on a Developer ID.
-Auto-update. A Windows installer — Tauri's bundler already produces the MSI and
-NSIS packages, so this deliberately stops at a directory and a zip.
+Notarisation and a stapled first launch, both gated on a Developer ID. A
+Windows installer — Tauri's bundler already produces the MSI and NSIS packages,
+so this deliberately stops at a directory and a zip.

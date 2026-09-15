@@ -5518,13 +5518,16 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 name = "turbo-desktop"
 version = "0.2.1"
 dependencies = [
+ "base64 0.22.1",
  "cocoa",
  "env_logger",
  "getrandom 0.3.4",
  "log",
+ "minisign-verify",
  "objc",
  "regex-lite",
  "reqwest 0.12.28",
+ "semver",
  "serde",
  "serde_json",
  "tauri",
