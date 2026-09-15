@@ -822,8 +822,16 @@ pub fn apply_shell_defaults<'a, M: tauri::Manager<tauri::Wry>>(
     builder
         .user_agent(&config.user_agent)
         .initialization_script(&globals)
+        // Asked at navigation time rather than captured here: a bundled app
+        // learns its own origin from the server after this window is built.
         .on_navigation(move |url| {
-            match crate::security::destination_for(&navigation_server, &navigation_hosts, url) {
+            let announced = crate::server::ServerAddress::announced(&navigation_app);
+            match crate::security::destination_for_discovered(
+                &navigation_server,
+                announced.as_deref(),
+                &navigation_hosts,
+                url,
+            ) {
                 crate::security::LinkDestination::App => true,
                 crate::security::LinkDestination::SystemBrowser => {
                     crate::open_externally(&navigation_app, url);
@@ -832,7 +840,13 @@ pub fn apply_shell_defaults<'a, M: tauri::Manager<tauri::Wry>>(
             }
         })
         .on_new_window(move |url, _features| {
-            match crate::security::destination_for(&server_url, &internal_hosts, &url) {
+            let announced = crate::server::ServerAddress::announced(&new_window_app);
+            match crate::security::destination_for_discovered(
+                &server_url,
+                announced.as_deref(),
+                &internal_hosts,
+                &url,
+            ) {
                 crate::security::LinkDestination::App => tauri::webview::NewWindowResponse::Allow,
                 crate::security::LinkDestination::SystemBrowser => {
                     crate::open_externally(&new_window_app, &url);
