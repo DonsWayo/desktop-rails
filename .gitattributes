@@ -1,0 +1,12 @@
+# Git translates line endings on checkout by default. For signed fixtures that
+# is not cosmetic: rewriting LF to CRLF changes the bytes the signature was made
+# over, so the artifact no longer verifies and the updater tests fail on Windows
+# for a reason that has nothing to do with the updater.
+src-tauri/tests/fixtures/updater/** -text
+
+# Shell scripts must keep LF wherever they are checked out; CRLF makes the
+# shebang line unparseable.
+*.sh text eol=lf
+
+# PowerShell is the other way round.
+*.ps1 text eol=crlf
