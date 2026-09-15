@@ -183,9 +183,15 @@ class PackagingRuntimeTest < Minitest::Test
     # minutes to compile.
     with_sandbox do |paths|
       with_env("TURBO_DESKTOP_BUILD" => nil) do
-        refute_includes TurboDesktop::Packaging.build_dir.to_s, "#{File::SEPARATOR}tmp"
-        assert_equal File.join(paths[:app], ".turbo-desktop"),
-                     TurboDesktop::Packaging.build_dir.to_s
+        # Compare against the app's own tmp, not the substring "/tmp". On Linux
+        # the sandbox itself lives under /tmp, so the looser check failed there
+        # while passing on macOS, where mktmpdir returns /var/folders.
+        build_dir = TurboDesktop::Packaging.build_dir.to_s
+        rails_tmp = File.join(paths[:app], "tmp")
+
+        refute build_dir.start_with?(rails_tmp),
+               "#{build_dir} is inside #{rails_tmp}, which `rails tmp:clear` deletes"
+        assert_equal File.join(paths[:app], ".turbo-desktop"), build_dir
       end
     end
   end

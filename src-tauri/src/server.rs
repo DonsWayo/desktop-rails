@@ -131,7 +131,17 @@ pub fn server_invocation(
             }
             #[cfg(not(unix))]
             {
-                true
+                // Windows has no execute bit; what makes a file runnable is its
+                // extension. Returning true for any file would hand a .txt to
+                // CreateProcess instead of falling back to the shell.
+                candidate
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| {
+                        let e = e.to_ascii_lowercase();
+                        matches!(e.as_str(), "exe" | "cmd" | "bat" | "com")
+                    })
+                    .unwrap_or(false)
             }
         };
 
@@ -379,9 +389,33 @@ mod tests {
 
     #[test]
     fn a_file_that_is_not_executable_is_not_run_directly() {
+        // "Not executable" means different things per platform: a missing
+        // permission bit on unix, a non-runnable extension on Windows. Either
+        // way it must fall back to the shell rather than be handed to
+        // CreateProcess or exec.
         let dir = scratch_with_launcher("notexec");
         let (_, args) = server_invocation("not-executable", Some(&dir));
-        assert!(!args.is_empty(), "a non-executable falls back to the shell rather than failing");
+        assert!(
+            !args.is_empty(),
+            "a non-executable falls back to the shell rather than failing"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[cfg(not(unix))]
+    #[test]
+    fn on_windows_a_runnable_extension_is_what_counts() {
+        let dir = scratch_with_launcher("windows-ext");
+        for (name, direct) in [("launch.cmd", true), ("launch.bat", true), ("launch.txt", false)] {
+            std::fs::write(dir.join(name), "@echo off\r\n").unwrap();
+            let (_, args) = server_invocation(name, Some(&dir));
+            assert_eq!(
+                args.is_empty(),
+                direct,
+                "{name} should {} run directly",
+                if direct { "" } else { "not" }
+            );
+        }
         std::fs::remove_dir_all(&dir).ok();
     }
 
