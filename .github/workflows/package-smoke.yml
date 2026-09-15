@@ -82,3 +82,67 @@ jobs:
           name: smoke-dmg
           path: dist/*.dmg
           retention-days: 7
+
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq build-essential zlib1g-dev rsync
+
+      - name: Cache the vendored dependencies
+        uses: actions/cache@v4
+        with:
+          path: .runtime-build/vendor
+          key: vendor-x86_64-linux-openssl3.5.4-yaml0.2.5
+
+      - name: Build the interpreter
+        run: packaging/build-runtime.sh --out "$PWD/out/ruby"
+
+      - name: It relocates
+        run: packaging/verify-runtime.sh "$PWD/out/ruby"
+
+      - name: Generate a Rails app with the interpreter we just built
+        run: |
+          set -euo pipefail
+          export GEM_HOME="$PWD/out/gems"
+          GEM_PATH="$GEM_HOME:$(echo "$PWD"/out/ruby/lib/ruby/gems/*)"
+          export GEM_PATH
+          export PATH="$PWD/out/ruby/bin:$GEM_HOME/bin:$PATH"
+          gem install railties --no-document
+          rails new "$PWD/example" --minimal --skip-git --skip-bundle --skip-action-cable
+          cp packaging/smoke/Gemfile "$PWD/example/Gemfile"
+          cd "$PWD/example" && bundle install
+
+      - name: Pack
+        run: |
+          packaging/pack-linux.sh \
+            --app "$PWD/example" \
+            --runtime "$PWD/out/ruby" \
+            --gems "$PWD/out/gems" \
+            --name "Smoke" --app-id dev.turbodesktop.smoke \
+            --out "$PWD/dist"
+
+      - name: Launch it and talk to it
+        run: python3 packaging/smoke/launch_check.py dist/smoke/bin/smoke
+
+      - name: It runs from somewhere else entirely, and read-only
+        run: |
+          set -euo pipefail
+          # The tarball is the artifact people unpack wherever they like, often
+          # somewhere they cannot write. Both need to work.
+          mkdir -p /tmp/elsewhere && tar -C /tmp/elsewhere -xzf dist/smoke-linux-*.tar.gz
+          chmod -R a-w /tmp/elsewhere/smoke
+          python3 packaging/smoke/launch_check.py /tmp/elsewhere/smoke/bin/smoke
+          chmod -R u+w /tmp/elsewhere/smoke
+
+      - name: Sizes
+        run: du -sh out/ruby dist/smoke dist/smoke-linux-*.tar.gz | sed 's/^/  /'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smoke-linux
+          path: dist/*.tar.gz
+          retention-days: 7
