@@ -55,6 +55,7 @@ pub async fn start(
     app: &tauri::AppHandle,
     config: &ServerConfig,
     config_dir: Option<&Path>,
+    control: Option<&crate::control::ControlChannel>,
 ) -> Result<(), String> {
     use std::process::Stdio;
     use tauri::Manager;
@@ -69,6 +70,7 @@ pub async fn start(
     let mut spawner = tokio::process::Command::new(&program);
     spawner
         .args(&args)
+        .stdin(Stdio::piped()) // the handshake goes in here, and EOF reaps the child
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
@@ -89,6 +91,33 @@ pub async fn start(
         .spawn()
         .map_err(|e| format!("Could not start the app server: {}", e))?;
 
+    // One line of handshake, then the pipe stays open. The token travels here
+    // rather than in the environment or the command line so another process on
+    // the machine cannot read it out of `ps`.
+    //
+    // Holding the pipe open is also what reaps the server: a backend that reads
+    // stdin exits on EOF, which is the only layer that survives the shell being
+    // force-quit, since no Rust code runs then.
+    let mut stdin = child.stdin.take();
+    if let (Some(pipe), Some(control)) = (stdin.as_mut(), control) {
+        use tokio::io::AsyncWriteExt;
+        let line = serde_json::json!({
+            "protocol": "1.0",
+            "control": control.url,
+            "token": control.token,
+            "header": crate::control::TOKEN_HEADER,
+        });
+        if let Err(e) = pipe.write_all(format!("{}\n", line).as_bytes()).await {
+            log::warn!("Could not hand the app server its handshake: {}", e);
+        } else {
+            let _ = pipe.flush().await;
+            log::info!(
+                "Handed the app server the control channel at {}",
+                control.url
+            );
+        }
+    }
+
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
 
@@ -104,6 +133,9 @@ pub async fn start(
         .await?;
 
     tauri::async_runtime::spawn(async move {
+        // Moved in so the pipe lives as long as the child. Dropping it closes
+        // stdin, which is the signal a well-behaved backend exits on.
+        let _stdin = stdin;
         let mut kill_rx = kill_rx;
 
         // The server's own output is the only clue when it fails to boot, so it

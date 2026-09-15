@@ -45,6 +45,21 @@ pub async fn handle_bridge_message(
     message: BridgeMessage,
 ) -> Result<serde_json::Value, String> {
     ensure_trusted_caller(&app, &webview)?;
+    dispatch(&app, &message).await
+}
+
+/// Route a bridge message to the component that handles it.
+///
+/// Split out from the command so the control channel can reach the same
+/// components without a webview: a Rails process is not a page, and has no
+/// origin to check. The command above does the origin check; the control
+/// channel authenticates with a token instead. Both end up here.
+pub async fn dispatch(
+    app: &tauri::AppHandle,
+    message: &BridgeMessage,
+) -> Result<serde_json::Value, String> {
+    let app = app.clone();
+    let message = message.clone();
 
     log::info!(
         "Bridge message: component={}, event={}",

@@ -4,6 +4,7 @@
 mod bridge;
 mod config;
 mod connection;
+mod control;
 mod deep_link;
 mod fs_bridge;
 mod menu;
@@ -149,10 +150,21 @@ fn main() {
                     let server_config = shell_defaults.server.clone();
                     let dir = config_dir.map(|d| d.to_path_buf());
 
+                    // Opened before the server starts, so the handshake can carry
+                    // it. Without this the app's own Ruby cannot reach a single
+                    // native capability.
+                    let control = tauri::async_runtime::block_on(control::start(handle.clone()))
+                        .map_err(|e| log::warn!("{}", e))
+                        .ok();
+                    if let Some(channel) = &control {
+                        app.manage(channel.clone());
+                    }
+
                     if let Err(e) = tauri::async_runtime::block_on(server::start(
                         &handle,
                         &server_config,
                         dir.as_deref(),
+                        control.as_ref(),
                     )) {
                         log::warn!("{}", e);
                     }
