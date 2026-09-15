@@ -117,3 +117,44 @@ exited cleanly 0.2s after stdin closed
 
 Notarization, which needs a real Developer ID. A DMG. Gatekeeper on a
 quarantined download. Linux and Windows equivalents of this script.
+
+## Getting a runtime without building one
+
+`packaging/build-runtime.sh` builds the interpreter, but a developer packaging an
+app should not have to. `packaging/gem.sh` wraps a build in a **platform gem**,
+one per triple, so RubyGems resolves the right one automatically — the same
+mechanism nokogiri and sqlite3 use:
+
+```ruby
+gem "turbo_desktop-runtime"   # resolves to the build for this machine
+```
+
+```ruby
+require "turbo_desktop/runtime"
+TurboDesktop::Runtime.ruby       # => .../runtime/ruby/bin/ruby
+TurboDesktop::Runtime.version    # => "3.4.8"
+TurboDesktop::Runtime.available? # => false on a platform with no build
+```
+
+This is **not** the Ruby the app is developed with — that comes from the
+developer's own version manager. This is the artifact that goes inside the
+bundle.
+
+Measured on arm64-darwin: a 27 MB gem, installing to a working interpreter with
+psych 5.2.2 against the vendored libyaml, OpenSSL 3.5.4, and no references to a
+package manager anywhere in it.
+
+## Building the runtimes
+
+`.github/workflows/build-runtime.yml` builds one per platform and proves each
+relocates before publishing it.
+
+| Triple | How |
+|---|---|
+| `arm64-darwin` | built, `macos-14` |
+| `x86_64-darwin` | built, `macos-15-intel` |
+| `x86_64-linux` | built, `ubuntu-24.04` |
+| `x64-mingw-ucrt` | fetched — RubyInstaller's portable archive already relocates |
+
+OpenSSL is the ~20 minute leg and changes only when its version does, so it is
+cached on the version rather than rebuilt each run.
