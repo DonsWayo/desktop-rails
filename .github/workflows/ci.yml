@@ -2,9 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # Every branch, not only main. A fork does its work on branches, and a
+    # Rust matrix that never runs on them is a matrix that never runs: all of
+    # the bundled-runtime work was written and tested on macOS alone because
+    # this only watched main.
+    branches-ignore: []
   pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   ruby:
