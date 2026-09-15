@@ -403,7 +403,14 @@ fn watch_connection(app: tauri::AppHandle, url: url::Url, reachable_at_startup: 
         loop {
             tokio::time::sleep(PROBE_INTERVAL).await;
 
-            let probe_url = url.clone();
+            // A bundled server chooses its own port, so what to probe is
+            // whatever it announced. Falling back to the configured URL keeps a
+            // developer's own `rails server` watched exactly as before.
+            let watching = server::ServerAddress::announced(&app)
+                .and_then(|address| address.parse::<url::Url>().ok())
+                .unwrap_or_else(|| url.clone());
+
+            let probe_url = watching.clone();
             let reachable =
                 tokio::task::spawn_blocking(move || connection::server_is_reachable(&probe_url))
                     .await
@@ -411,12 +418,12 @@ fn watch_connection(app: tauri::AppHandle, url: url::Url, reachable_at_startup: 
 
             let payload = match monitor.record(reachable) {
                 Transition::WentOffline(error) => {
-                    log::warn!("Lost the connection to {}", url);
+                    log::warn!("Lost the connection to {}", watching);
                     serde_json::json!({ "online": false, "error": error })
                 }
                 Transition::CameOnline => {
-                    log::info!("Reconnected to {}", url);
-                    return_to_app_if_on_error_page(&app, &url);
+                    log::info!("Reconnected to {}", watching);
+                    return_to_app_if_on_error_page(&app, &watching);
                     serde_json::json!({ "online": true, "error": null })
                 }
                 Transition::Unchanged => continue,

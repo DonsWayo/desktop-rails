@@ -31,6 +31,16 @@ impl ServerAddress {
     pub fn get(&self) -> Option<String> {
         self.0.lock().ok().and_then(|g| g.clone())
     }
+
+    /// What the app's own server announced, if it has said anything yet.
+    ///
+    /// Read wherever the configured `server_url` is used as the app's origin: a
+    /// bundled config can only carry a placeholder port, so the real origin is
+    /// whatever turned up at runtime.
+    pub fn announced<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Option<String> {
+        use tauri::Manager;
+        app.try_state::<ServerAddress>().and_then(|a| a.get())
+    }
 }
 
 /// The one line of handshake a bundled server writes before anything else.
