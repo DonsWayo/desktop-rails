@@ -1,160 +1,134 @@
 # Packaging a Rails app as a desktop application
 
-One command turns a Rails app and a relocatable interpreter into a signed,
-distributable `.app`.
+Turn a Rails app plus a relocatable interpreter into something a person can
+download and open, on macOS, Linux or Windows.
 
 ```bash
-packaging/pack.sh \
-  --app ../my_rails_app \
-  --runtime /path/to/relocatable/ruby \
-  --gems /path/to/gems \
-  --name "Ledger" --bundle-id dev.example.ledger
+packaging/build-runtime.sh --out out/ruby          # or install turbo_desktop-runtime
+packaging/verify-runtime.sh out/ruby
+
+packaging/pack.sh        --app ../my_app --runtime out/ruby --gems out/gems --name "Ledger"
+packaging/pack-linux.sh  --app ../my_app --runtime out/ruby --gems out/gems --name "Ledger"
+packaging\pack-windows.ps1 -App ..\my_app -Runtime out\ruby -Gems out\gems -Name "Ledger"
 ```
 
-Every step exists because something was measured, not assumed.
+| File | What it does |
+|---|---|
+| `build-runtime.sh` | Builds a relocatable Ruby. macOS and Linux; Windows is fetched. |
+| `verify-runtime.sh` | Proves one relocates before you trust it. |
+| `gem.sh` | Wraps a build in a platform gem. |
+| `pack.sh` | macOS `.app`, pruned and signed. |
+| `pack-linux.sh` | Linux directory, tarball and `.desktop` entry. |
+| `pack-windows.ps1` | Windows directory and zip. |
+| `prune.sh` / `prune.ps1` | Removes what a user's machine never reads. |
+| `dmg.sh` | Disk image. No certificate needed. |
+| `notarize.sh` | Signs and notarises. Needs a Developer ID. |
+| `templates/boot.rb` | The boot sequence all three platforms share. |
 
-## The interpreter must be built for this
+Longer notes: [CONTROL_CHANNEL.md](CONTROL_CHANNEL.md) for calling native from
+Ruby, [DISTRIBUTION.md](DISTRIBUTION.md) for what Gatekeeper actually does.
+
+## The four things that decide whether this works
+
+Each was measured, and each cost time to find.
+
+### The interpreter must be built for the job
 
 A package-manager Ruby will not relocate. On macOS `libruby` links gmp,
 `openssl.bundle` links libssl, and stdlib `psych.bundle` links libyaml — all by
-absolute path into `/opt/homebrew`. Rails cannot boot without psych, so the
-copied-interpreter approach fails on any path. Build it with
-`--enable-load-relative` against statically linked dependencies.
+absolute path. **Rails cannot boot without psych**, so copying an existing
+interpreter fails on any path. Build it with `--enable-load-relative` against
+statically linked dependencies.
 
-## Never `rails server`
+Linux has the same problem and one of its own: OpenSSL installs to `lib64` while
+Ruby's configure looks in `lib`, so a build can silently link the *system*
+OpenSSL and then die at runtime on a missing symbol. `--libdir=lib` removes it.
 
-`railties .../commands/server/server_command.rb:70` creates `tmp/cache`,
-`tmp/pids` and `tmp/sockets` under `Rails.root` without consulting
-`config.paths`. In a read-only bundle that is `Errno::EACCES`. The generated
-`boot.rb` starts Puma from `config.ru` instead, which sidesteps it entirely.
+`verify-runtime.sh` catches that by doing real work with OpenSSL and comparing
+`OPENSSL_VERSION` against `OPENSSL_LIBRARY_VERSION`. An earlier version printed
+the constant and reported a broken build as healthy, which is worse than no
+check at all.
 
-## Writable state goes to the OS data directory
+### Never `rails server`
 
-A signed `.app` is read-only. The launcher points `DESKTOP_DATA_DIR` at
-`~/Library/Application Support/<bundle id>` and creates `tmp`, `log` and
-`storage` there. Verified: Rails boots and serves with the whole bundle `a-w`.
+`railties .../server_command.rb:70` creates `tmp/cache`, `tmp/pids` and
+`tmp/sockets` under `Rails.root` without consulting `config.paths`. In a
+read-only bundle that is `Errno::EACCES`. `templates/boot.rb` starts Puma from
+`config.ru` instead.
+
+### Writable state lives outside the application
+
+A signed `.app`, a `/opt` directory and `C:\Program Files` are all read-only,
+while Rails expects `tmp`, `log` and `storage` to be writable. Each launcher
+points `DESKTOP_DATA_DIR` at the right place — Application Support,
+`XDG_DATA_HOME`, or `%LOCALAPPDATA%` — and creates them there. Verified on macOS
+and Linux by setting the whole tree `a-w` and booting anyway.
+
+### The server must exit when stdin closes
+
+The only layer that survives the shell being force-quit, since no shell code
+runs then. Tauri's process kill signals the direct child only: no process group,
+no job object. `boot.rb` watches stdin and exits on EOF, measured at about 0.2s.
 
 ## The handshake
 
-`boot.rb` binds `127.0.0.1:0`, lets the OS choose the port, and writes one line
-to stdout:
+Puma binds `127.0.0.1:0`, the OS picks the port, and one line goes to stdout:
 
 ```json
 {"protocol":"1.0","url":"http://127.0.0.1:58747","pid":95489}
 ```
 
-Binding port zero and reporting back removes the pick-a-port race that comes
-from probing for a free port and then binding it.
+Binding port zero and reporting back removes the race you get from probing for a
+free port and then binding it.
 
-Two details that cost time to find:
-
-- **Puma's banner would pollute the channel.** `quiet` does not stop it, because
-  it comes from the log writer. `boot.rb` keeps a private `dup` of the real
-  stdout and points `$stdout` at stderr, which is independent of Puma's API.
-- **`binder.full_urls` does not exist in Puma 8.** The bound port comes from
-  `binder.connected_ports`. An exception inside the boot hook is swallowed by
-  Puma's event loop, so the hook reports failure explicitly instead of leaving a
-  server running that never announced itself.
-
-## Exit when stdin closes
-
-The one rule that prevents an orphaned server. Tauri's process kill signals only
-the direct child — no process group, no job object — so nothing runs if the
-shell is force-quit. A watchdog thread reading stdin is the only layer that
-survives it. Measured: the server exits about 0.2s after EOF.
+Two details that cost time: Puma's banner would pollute the channel and `quiet`
+does not stop it, so `boot.rb` keeps a private `dup` of the real stdout and
+points `$stdout` at stderr. And `binder.full_urls` does not exist in Puma 8 —
+the port comes from `binder.connected_ports`, and an exception in that hook is
+swallowed by Puma's event loop, so the hook reports failure explicitly.
 
 ## Pruning
 
-A shipped bundle carries a lot only a build machine needs.
+| Removed | macOS | Linux |
+|---|---|---|
+| Static archives, `.gem` cache, debug symbols, docs, headers, gem test suites, stripped binaries | 182 MB → 118 MB (35%) | 357 MB → 145 MB (59%) |
 
-| Removed | Size |
-|---|---|
-| Static archives (`.a`) | 24 MB |
-| `.gem` cache | 19 MB |
-| Debug symbols (`dSYM`) | 6.9 MB |
-| Generated docs (`ri`, `rdoc`) | 5.9 MB |
-| `ruby/include` | 1.9 MB |
-| Gem test suites | small |
-| Stripped symbols from 135 binaries | — |
+The app is booted after pruning, because smaller is worthless if it is also
+broken. That caught a real one: deleting every directory named `test` also
+removes `rack-test`'s `lib/rack/test/`, which is library code. Pruning only
+touches each gem's root.
 
-**182 MB → 118 MB, a 35% saving**, and the app is booted afterwards to prove it
-still works.
-
-One trap: deleting every directory named `test` also deletes `rack-test`'s
-`lib/rack/test/`, which is library code, and the app then fails to boot. Pruning
-only touches `test`, `spec` and `features` at each gem's root.
-
-## Signing
+## Signing, and what it is worth
 
 Inside-out, never `--deep`, which is deprecated and signs in the wrong order.
-All nested `.bundle` and `.dylib` files first, then the interpreter, then the
-bundle.
+**The entitlements go on the interpreter, not the bundle** — the app's main
+executable is a launcher script, and `ruby` is what `dlopen`s the extensions.
 
-**The entitlements go on the interpreter, not the app.** The app's main
-executable is a launcher script, which cannot carry them, and `ruby` is the
-process that `dlopen`s the extensions.
-
-Both are required, and they fail differently: without
+Two are needed under an ad-hoc signature, and they fail differently: without
 `disable-library-validation` the `dlopen` is refused, and without
-`allow-unsigned-executable-memory` the kernel kills the process outright.
+`allow-unsigned-executable-memory` the kernel kills the process.
 
-⚠️ Ad-hoc signing gives every binary a different Team ID, which is exactly what
-library validation rejects. A real Developer ID signs them all under one team,
-so `disable-library-validation` may not be needed with a real certificate.
-Re-check with a real identity before shipping.
+⚠️ **Signing is not the same as being accepted.** Measured on macOS 26.5.1: both
+an ad-hoc signature and a real Apple *Distribution* certificate are rejected by
+Gatekeeper, quarantined or not, even though `codesign --verify --strict` passes.
+Direct download is judged on a **Developer ID Application** certificate.
+See [DISTRIBUTION.md](DISTRIBUTION.md).
 
-## Verified end to end
+## Verified end to end, in CI, on every push
+
+`.github/workflows/package-smoke.yml` builds the interpreter, generates a real
+Rails app with it, packs and prunes and signs, then launches the artifact and
+holds it to its contract: it announces itself, answers `GET /up`, and exits when
+stdin closes. Linux additionally unpacks the tarball elsewhere and runs it with
+the tree read-only.
 
 ```
-182M -> 118M (saved 64M)
-signature verifies
-handshake: http://127.0.0.1:58747  pid=95489
-  GET /up -> 200
-exited cleanly 0.2s after stdin closed
+macOS   175M -> 108M, signature verifies, GET /up 200, exited 0.2s, 63M dmg
+Linux   357M -> 145M, GET /up 200 twice (packed and read-only), 52M tarball
 ```
 
 ## Not yet done
 
-Notarization, which needs a real Developer ID. A DMG. Gatekeeper on a
-quarantined download. Linux and Windows equivalents of this script.
-
-## Getting a runtime without building one
-
-`packaging/build-runtime.sh` builds the interpreter, but a developer packaging an
-app should not have to. `packaging/gem.sh` wraps a build in a **platform gem**,
-one per triple, so RubyGems resolves the right one automatically — the same
-mechanism nokogiri and sqlite3 use:
-
-```ruby
-gem "turbo_desktop-runtime"   # resolves to the build for this machine
-```
-
-```ruby
-require "turbo_desktop/runtime"
-TurboDesktop::Runtime.ruby       # => .../runtime/ruby/bin/ruby
-TurboDesktop::Runtime.version    # => "3.4.8"
-TurboDesktop::Runtime.available? # => false on a platform with no build
-```
-
-This is **not** the Ruby the app is developed with — that comes from the
-developer's own version manager. This is the artifact that goes inside the
-bundle.
-
-Measured on arm64-darwin: a 27 MB gem, installing to a working interpreter with
-psych 5.2.2 against the vendored libyaml, OpenSSL 3.5.4, and no references to a
-package manager anywhere in it.
-
-## Building the runtimes
-
-`.github/workflows/build-runtime.yml` builds one per platform and proves each
-relocates before publishing it.
-
-| Triple | How |
-|---|---|
-| `arm64-darwin` | built, `macos-14` |
-| `x86_64-darwin` | built, `macos-15-intel` |
-| `x86_64-linux` | built, `ubuntu-24.04` |
-| `x64-mingw-ucrt` | fetched — RubyInstaller's portable archive already relocates |
-
-OpenSSL is the ~20 minute leg and changes only when its version does, so it is
-cached on the version rather than rebuilt each run.
+Notarisation and a stapled first launch, both gated on a Developer ID.
+Auto-update. A Windows installer — Tauri's bundler already produces the MSI and
+NSIS packages, so this deliberately stops at a directory and a zip.
