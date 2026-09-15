@@ -146,3 +146,76 @@ jobs:
           name: smoke-linux
           path: dist/*.tar.gz
           retention-days: 7
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      # The interpreter that ships: RubyInstaller's portable archive, which
+      # already relocates (spike 3). Not built here, because building a second
+      # one would be work for its own sake.
+      - name: Fetch the portable interpreter
+        shell: pwsh
+        run: |
+          $v = "3.4.10"
+          curl.exe -fsSL -o ruby.7z `
+            "https://github.com/oneclick/rubyinstaller2/releases/download/RubyInstaller-$v-1/rubyinstaller-$v-1-x64.7z"
+          7z x ruby.7z -oC:\unpacked | Out-Null
+          $src = (Get-ChildItem C:\unpacked | Select-Object -First 1).FullName
+          New-Item -ItemType Directory -Force -Path "$env:GITHUB_WORKSPACE\out" | Out-Null
+          Copy-Item -Recurse $src "$env:GITHUB_WORKSPACE\out\ruby"
+          & "$env:GITHUB_WORKSPACE\out\ruby\bin\ruby.exe" -e 'require "psych"; require "openssl"; puts "OK #{RUBY_VERSION} #{RUBY_PLATFORM}"'
+
+      # A separate Ruby with a devkit, only to compile the gems. Several ship
+      # source-only on Windows (puma, io-console, nio4r), so a compiler is
+      # needed at build time. The end user never installs gems.
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+
+      - name: Generate a Rails app and build its gems
+        shell: pwsh
+        run: |
+          ridk version
+          New-Item -ItemType Directory -Force -Path C:\example | Out-Null
+          gem install railties --no-document
+          rails new C:\example --minimal --skip-git --skip-bundle --skip-action-cable
+          Copy-Item packaging\smoke\Gemfile C:\example\Gemfile -Force
+          $env:BUNDLE_PATH = "$env:GITHUB_WORKSPACE\out\gems"
+          Push-Location C:\example
+          bundle install
+          if ($LASTEXITCODE -ne 0) { throw "bundle install failed" }
+          Pop-Location
+
+      - name: Pack
+        shell: pwsh
+        run: |
+          packaging\pack-windows.ps1 -App C:\example `
+            -Runtime "$env:GITHUB_WORKSPACE\out\ruby" `
+            -Gems "$env:GITHUB_WORKSPACE\out\gems" `
+            -Name "Smoke" -AppId dev.turbodesktop.smoke `
+            -Out "$env:GITHUB_WORKSPACE\dist"
+
+      - name: Launch it with no toolchain present
+        shell: pwsh
+        run: |
+          # The shipping condition: hide every compiler, then run what we built.
+          foreach ($d in @("C:\msys64", "C:\mingw64")) {
+            if (Test-Path $d) { Rename-Item $d "$d-hidden" }
+          }
+          try {
+            python packaging\smoke\launch_check.py "$env:GITHUB_WORKSPACE\dist\smoke\smoke.cmd"
+            if ($LASTEXITCODE -ne 0) { throw "the packaged app did not hold to its contract" }
+          } finally {
+            foreach ($d in @("C:\msys64-hidden", "C:\mingw64-hidden")) {
+              if (Test-Path $d) { Rename-Item $d ($d -replace "-hidden$", "") }
+            }
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smoke-windows
+          path: dist/*.zip
+          retention-days: 7
