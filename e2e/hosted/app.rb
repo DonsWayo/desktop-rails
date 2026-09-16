@@ -123,6 +123,10 @@ class PagesController < ActionController::Base
   # Someone else's page inside the app's page. Tauri gives frames no invoke
   # function and no key, and the parent is a different origin it cannot reach.
   def frame
+    # Rails sends X-Frame-Options: SAMEORIGIN by default, which would keep this
+    # page out of the app's frame before it could try anything, and prove
+    # nothing about the shell.
+    response.headers.delete("X-Frame-Options")
     render html: page("Frame", <<~JS)
       (async () => {
         let parent;
