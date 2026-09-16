@@ -46,7 +46,6 @@ export default [
       "node_modules/**",
       "src-tauri/**",
       "desktop-rails/**",
-      "site/**",
       "debug_project/**",
       "test_raider_project/**",
       "turbo_desktop_example_app/**",
