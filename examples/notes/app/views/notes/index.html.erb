@@ -1,0 +1,19 @@
+<%= desktop_stream_from "notes" %>
+<%= desktop_stream_from "native", id: "native_stream" %>
+
+<main>
+  <h1>Notes</h1>
+
+  <section class="native" data-controller="native" data-native-mode-value="ask"
+           data-native-report-url-value="<%= native_reports_path %>">
+    <p data-native-target="status">Asking the desktop shell about this window…</p>
+    <p id="native_confirmation"></p>
+    <p><%= link_to "Ask the shell from Ruby instead", native_window_path %></p>
+  </section>
+
+  <%= render "form", note: @note %>
+
+  <ul id="notes">
+    <%= render @notes %>
+  </ul>
+</main>

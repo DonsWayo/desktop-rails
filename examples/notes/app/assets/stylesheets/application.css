@@ -1,0 +1,9 @@
+body { font: 16px/1.5 system-ui, sans-serif; margin: 0; background: #fafafa; color: #222; }
+main { max-width: 40rem; margin: 2rem auto; padding: 0 1rem; }
+.native { border: 1px solid #ddd; border-radius: 6px; padding: 0 1rem; background: #fff; }
+form { display: grid; gap: .5rem; margin: 1.5rem 0; }
+input, textarea { font: inherit; padding: .4rem; }
+#notes { list-style: none; padding: 0; }
+#notes li { background: #fff; border: 1px solid #eee; border-radius: 6px; padding: .5rem 1rem; margin-bottom: .5rem; }
+#notes p { margin: .25rem 0 0; }
+.error { color: #b00; }

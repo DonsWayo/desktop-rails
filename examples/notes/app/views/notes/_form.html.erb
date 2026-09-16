@@ -1,0 +1,8 @@
+<%= form_with model: note, id: "note_form" do |form| %>
+  <% if note.errors.any? %>
+    <p class="error"><%= note.errors.full_messages.to_sentence %></p>
+  <% end %>
+  <%= form.text_field :title, placeholder: "Title", required: true %>
+  <%= form.text_area :body, placeholder: "Anything else", rows: 3 %>
+  <%= form.submit "Add note" %>
+<% end %>

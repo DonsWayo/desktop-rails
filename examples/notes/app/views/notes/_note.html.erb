@@ -1,0 +1,4 @@
+<li id="<%= dom_id(note) %>">
+  <strong><%= note.title %></strong>
+  <% if note.body.present? %><p><%= note.body %></p><% end %>
+</li>
