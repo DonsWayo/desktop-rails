@@ -58,7 +58,13 @@ app, _ = Rack::Builder.parse_file(File.join(APP_ROOT, "config.ru"))
 # does not use the gem. See DesktopRails::Database.
 DesktopRails::Database.prepare! if defined?(DesktopRails::Database)
 
-config = Puma::Configuration.new do |c|
+# config_files "-" stops Puma from loading config/puma.rb, which it otherwise
+# does whenever the working directory has one. That file configures the app's
+# own deployment, not this server: Rails 7.1 generates one that writes a
+# pidfile to tmp/pids, which aborts the boot inside a read-only bundle, and any
+# app's may add workers, plugins or a port of its own. Everything this server
+# needs is set here.
+config = Puma::Configuration.new(config_files: [ "-" ]) do |c|
   c.bind "tcp://127.0.0.1:0"     # the OS picks, which removes the pick-a-port race
   c.app app
   c.workers 0                    # one process to supervise, and one to reap

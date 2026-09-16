@@ -12,3 +12,7 @@ gem "rubocop-rails-omakase", require: false
 # DesktopRails::Database is tested against a real SQLite database, since loading
 # a schema and migrating are exactly what a mock would get wrong.
 gem "sqlite3"
+
+# The boot scripts are run against a real Puma, since what they have to get
+# right is how Puma itself finds its configuration.
+gem "puma"
