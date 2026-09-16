@@ -40,6 +40,7 @@ pub fn setup_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), tauri::Er
 
 /// The libraries a Linux tray icon is drawn with, in the order
 /// libappindicator-sys tries them.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub const APPINDICATOR_LIBRARIES: [&str; 4] = [
     "libayatana-appindicator3.so.1",
     "libappindicator3.so.1",
@@ -71,6 +72,7 @@ pub fn tray_library_available() -> bool {
 }
 
 /// Split from the loader so the decision can be tested without the libraries.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub fn any_library_loads(names: &[&str], load: impl Fn(&str) -> bool) -> bool {
     names.iter().any(|name| load(name))
 }
