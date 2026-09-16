@@ -30,7 +30,7 @@ param(
   [string]$Gems = "",
   [string]$Shell = "",
   [string]$Name = "Desktop Rails App",
-  [string]$AppId = "dev.turbodesktop.app",
+  [string]$AppId = "dev.desktop-rails.app",
   [string]$Out = "$PWD\dist"
 )
 

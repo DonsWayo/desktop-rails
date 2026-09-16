@@ -32,7 +32,7 @@ cd "$(dirname "$0")/.."
 HERE="$PWD/packaging"
 
 APP_SRC=""; RUNTIME=""; GEMS=""; SHELL_BIN=""; NAME="Desktop Rails App"
-BUNDLE_ID="dev.turbodesktop.app"; IDENTITY="-"; OUT="$PWD/dist"; KEEP_DEV=0
+BUNDLE_ID="dev.desktop-rails.app"; IDENTITY="-"; OUT="$PWD/dist"; KEEP_DEV=0
 VERSION="1.0"; UPDATE_URL=""; UPDATE_PUBKEY=""; UPDATE_PUBKEY_FILE=""
 
 while [ $# -gt 0 ]; do
@@ -165,7 +165,7 @@ cat > "$APP/Contents/MacOS/launch" <<'LAUNCH'
 # writable, so everything it writes goes to the OS data directory instead.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$here/Info.plist" 2>/dev/null || echo dev.turbodesktop.app)"
+id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$here/Info.plist" 2>/dev/null || echo dev.desktop-rails.app)"
 
 export DESKTOP_DATA_DIR="${DESKTOP_DATA_DIR:-$HOME/Library/Application Support/$id}"
 mkdir -p "$DESKTOP_DATA_DIR"/{tmp,log,storage}

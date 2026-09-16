@@ -141,7 +141,7 @@ class DesktopRailsAppIdentityTest < Minitest::Test
   def test_app_id_is_derived_from_the_rails_application
     # test_helper boots DummyApp, so this exercises the real derivation rather
     # than a stub of it.
-    assert_equal "dev.turbodesktop.dummy-app", DesktopRails.app_id
+    assert_equal "dev.desktop-rails.dummy-app", DesktopRails.app_id
     assert_equal "DummyApp", DesktopRails.app_name
   end
 

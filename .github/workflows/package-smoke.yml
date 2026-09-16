@@ -57,7 +57,7 @@ jobs:
             --app "$PWD/example" \
             --runtime "$PWD/out/ruby" \
             --gems "$PWD/out/gems" \
-            --name "Smoke" --bundle-id dev.turbodesktop.smoke \
+            --name "Smoke" --bundle-id dev.desktop-rails.smoke \
             --out "$PWD/dist"
 
       - name: Launch the bundle and talk to it
@@ -78,7 +78,7 @@ jobs:
           packaging/pack.sh \
             --app "$PWD/example" --runtime "$PWD/out/ruby" --gems "$PWD/out/gems" \
             --shell src-tauri/target/release/desktop-rails \
-            --name "SmokeGui" --bundle-id dev.turbodesktop.smokegui \
+            --name "SmokeGui" --bundle-id dev.desktop-rails.smokegui \
             --out "$PWD/dist-gui"
 
       - name: Drive the whole chain through the shell
@@ -143,7 +143,7 @@ jobs:
             --app "$PWD/example" \
             --runtime "$PWD/out/ruby" \
             --gems "$PWD/out/gems" \
-            --name "Smoke" --app-id dev.turbodesktop.smoke \
+            --name "Smoke" --app-id dev.desktop-rails.smoke \
             --out "$PWD/dist"
 
       - name: Launch it and talk to it
@@ -174,7 +174,7 @@ jobs:
           packaging/pack-linux.sh \
             --app "$PWD/example" --runtime "$PWD/out/ruby" --gems "$PWD/out/gems" \
             --shell src-tauri/target/release/desktop-rails \
-            --name "SmokeGui" --app-id dev.turbodesktop.smokegui \
+            --name "SmokeGui" --app-id dev.desktop-rails.smokegui \
             --out "$PWD/dist-gui"
 
       - name: Drive the whole chain through the shell
@@ -244,7 +244,7 @@ jobs:
           packaging\pack-windows.ps1 -App C:\example `
             -Runtime "$env:GITHUB_WORKSPACE\out\ruby" `
             -Gems "$env:GITHUB_WORKSPACE\out\gems" `
-            -Name "Smoke" -AppId dev.turbodesktop.smoke `
+            -Name "Smoke" -AppId dev.desktop-rails.smoke `
             -Out "$env:GITHUB_WORKSPACE\dist"
 
       - name: Launch it with no toolchain present
@@ -274,7 +274,7 @@ jobs:
             -Runtime "$env:GITHUB_WORKSPACE\out\ruby" `
             -Gems "$env:GITHUB_WORKSPACE\out\gems" `
             -Shell "$env:GITHUB_WORKSPACE\src-tauri\target\release\desktop-rails.exe" `
-            -Name "SmokeGui" -AppId dev.turbodesktop.smokegui `
+            -Name "SmokeGui" -AppId dev.desktop-rails.smokegui `
             -Out "$env:GITHUB_WORKSPACE\dist-gui"
 
       - name: The GUI tree carries what it should

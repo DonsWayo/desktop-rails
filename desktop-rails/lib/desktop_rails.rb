@@ -24,12 +24,12 @@ module DesktopRails
     end
 
     # The bundle identifier, which is also the name of the data directory. The
-    # packers default to dev.turbodesktop.app; deriving it from the application
+    # packers default to dev.desktop-rails.app; deriving it from the application
     # means two apps built by the same developer do not share state.
     def app_id
       Paths.presence(configuration.app_id) ||
         Paths.presence(ENV["DESKTOP_RAILS_APP_ID"]) ||
-        "dev.turbodesktop.#{app_slug}"
+        "dev.desktop-rails.#{app_slug}"
     end
 
     # The display name: the .app's CFBundleName, the window title, the Linux

@@ -243,7 +243,7 @@ DesktopRails.data_dir(create: true).join("ledger.sqlite3")
 after making the same decision in shell, so the shell and the Rails app can never
 disagree about where state lives.
 
-The app id defaults to `dev.turbodesktop.<your-app-name>`; set
+The app id defaults to `dev.desktop-rails.<your-app-name>`; set
 `config.app_id` and `config.app_name` in the initializer to choose your own.
 
 ## Requirements

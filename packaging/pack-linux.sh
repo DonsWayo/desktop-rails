@@ -21,7 +21,7 @@ cd "$(dirname "$0")/.."
 HERE="$PWD/packaging"
 
 APP_SRC=""; RUNTIME=""; GEMS=""; SHELL_BIN=""; NAME="Desktop Rails App"
-APP_ID="dev.turbodesktop.app"; OUT="$PWD/dist"; KEEP_DEV=0; APPIMAGE=0
+APP_ID="dev.desktop-rails.app"; OUT="$PWD/dist"; KEEP_DEV=0; APPIMAGE=0
 
 while [ $# -gt 0 ]; do
   case "$1" in

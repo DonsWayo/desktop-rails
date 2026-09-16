@@ -48,6 +48,7 @@ they always do.
 ```bash
 bundle add desktop-rails --github DonsWayo/desktop-rails
 bin/rails generate desktop_rails:install
+bundle install               # only if the generator says it changed the Gemfile
 bin/rails desktop:runtime    # downloads the Ruby your app will ship with
 bin/rails desktop:package    # downloads the window app and builds the bundle
 ```

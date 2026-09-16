@@ -4,6 +4,11 @@
 
 ### Changed
 
+- The default app id is `dev.desktop-rails.<app>` instead of
+  `dev.turbodesktop.<app>`. The app id names the data directory, so an app
+  that relied on the default and already has users should set `config.app_id`
+  to its old value.
+
 - Renamed from Turbo Desktop to desktop-rails. The gem is `desktop-rails`, the
   module is `DesktopRails`, the generator is `desktop_rails:install`, the CLI is
   `desktop-rails`, and environment variables start with `DESKTOP_RAILS_`. This
@@ -110,6 +115,11 @@ clipboard, launch-at-login). No gem-side API changes.
   - `config.inspector_mount_path` to match a custom engine mount point.
 
 ### Changed
+
+- The default app id is `dev.desktop-rails.<app>` instead of
+  `dev.turbodesktop.<app>`. The app id names the data directory, so an app
+  that relied on the default and already has users should set `config.app_id`
+  to its old value.
 
 - Minimum Ruby version is now 3.3.
 
