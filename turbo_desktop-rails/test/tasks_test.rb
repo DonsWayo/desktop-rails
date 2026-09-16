@@ -62,4 +62,15 @@ class DesktopRakeTasksTest < Minitest::Test
     files = Dir.chdir(File.expand_path("..", __dir__)) { Dir["lib/**/*"] }
     assert_includes files, "lib/turbo_desktop/tasks/desktop.rake"
   end
+
+  def test_package_and_run_precompile_assets_first
+    # Without this every asset 404s in the desktop environment: the page renders,
+    # Turbo and Stimulus never boot, and forms do full page loads.
+    %w[desktop:package desktop:run].each do |name|
+      prerequisites = Rake::Task[name].prerequisites
+      assert_includes prerequisites, "assets",
+                      "#{name} must depend on desktop:assets, or the packaged app ships without CSS or JavaScript"
+    end
+    assert Rake::Task["desktop:assets"].comment, "desktop:assets needs a desc so rake -T lists it"
+  end
 end

@@ -55,8 +55,35 @@ namespace :desktop do
     end
   end
 
+  desc "Precompile assets for the desktop environment, which serves them from public/"
+  task :assets do
+    with_clear_failures.call do
+      root = TurboDesktop::Packaging.app_root!
+
+      # The desktop environment serves precompiled files and never compiles at
+      # request time. Without this, every asset 404s: the page renders, but Turbo
+      # and Stimulus never boot, and a form submit does a full page load. That is
+      # how every app built with this gem shipped until this task existed.
+      unless File.exist?(File.join(root, "config", "importmap.rb")) ||
+             File.exist?(File.join(root, "app", "assets"))
+        puts "No asset pipeline in #{root}; skipping precompile."
+        next
+      end
+
+      puts "Precompiling assets for the desktop environment"
+      # Shelled out rather than invoked in-process: Rake::Task#invoke would
+      # compile for whatever environment this rake process booted in, not
+      # desktop. stdin comes from the null device because a Rails process in the
+      # desktop environment must never wait on a stdin nobody will write to.
+      ok = system({ "RAILS_ENV" => "desktop" },
+                  File.join(root, "bin", "rails"), "assets:precompile",
+                  chdir: root, in: File::NULL)
+      abort "assets:precompile failed in the desktop environment; its output is above." unless ok
+    end
+  end
+
   desc "Package this Rails app for the current platform"
-  task :package do
+  task package: :assets do
     with_clear_failures.call do
       packaging = TurboDesktop::Packaging
       argv = packaging.package_command
@@ -72,7 +99,7 @@ namespace :desktop do
   end
 
   desc "Boot this app the way a packaged bundle does, and print the URL"
-  task :run do
+  task run: :assets do
     with_clear_failures.call do
       packaging = TurboDesktop::Packaging
       root = packaging.app_root!
