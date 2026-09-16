@@ -186,6 +186,40 @@ class PackagingRuntimeTest < Minitest::Test
     end
   end
 
+  def test_a_runtime_is_built_where_desktop_rails_runtime_points
+    # The variable is where a runtime is looked for first. Building somewhere
+    # else meant a cache restored to that path was never filled on a miss, and
+    # every later run built the interpreter again.
+    with_sandbox(runtime: false) do |paths|
+      target = File.join(paths[:root], "shared-runtime")
+      with_env("DESKTOP_RAILS_RUNTIME" => target) do
+        on_platform(:linux) do
+          assert_equal target, flag(DesktopRails::Packaging.runtime_command, "--out")
+        end
+      end
+      with_env("DESKTOP_RAILS_RUNTIME" => nil) do
+        assert_equal File.join(paths[:root], "build", "runtime"),
+                     DesktopRails::Packaging.runtime_build_dir.to_s
+      end
+    end
+  end
+
+  def test_gems_are_installed_by_the_shipped_interpreter_running_bundler
+    # bin/bundle is a script with no extension. Windows cannot execute it, and
+    # on Unix its shebang names the path the interpreter was built at.
+    with_sandbox do |paths|
+      env, *argv = DesktopRails::Packaging.gems_command
+      assert_equal File.join(paths[:runtime], "bin", "ruby"), argv[0]
+      assert_equal File.join(paths[:runtime], "bin", "bundle"), argv[1]
+      assert_equal "install", argv[2]
+      assert_equal "development:test", env["BUNDLE_WITHOUT"]
+
+      File.write(File.join(paths[:runtime], "bin", "ruby.exe"), "")
+      assert_equal File.join(paths[:runtime], "bin", "ruby.exe"),
+                   DesktopRails::Packaging.gems_command[1]
+    end
+  end
+
   def test_the_build_directory_is_not_rails_tmp
     # `rails tmp:clear` would otherwise delete an interpreter that took twenty
     # minutes to compile.
@@ -252,6 +286,16 @@ class PackagingCommandTest < Minitest::Test
         assert_equal paths[:shell], flag(DesktopRails::Packaging.package_command, "-Shell")
       end
     end
+  end
+
+  def test_linux_and_windows_packers_accept_the_shell_flag
+    # The other half of the contract: the flag passed above has to exist in the
+    # real scripts, or the packer rejects it as an unknown option.
+    packaging = File.expand_path("../../packaging", __dir__)
+    skip "no checkout at #{packaging}" unless File.directory?(packaging)
+
+    assert_match(/--shell\)/, File.read(File.join(packaging, "pack-linux.sh")))
+    assert_match(/\[string\]\$Shell/, File.read(File.join(packaging, "pack-windows.ps1")))
   end
 
   def test_windows_calls_the_powershell_packer_through_pwsh

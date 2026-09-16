@@ -53,12 +53,34 @@ if ($Gems -and (Test-Path $Gems)) { Copy-Item -Recurse $Gems "$dir\lib\gems" }
 
 # robocopy rather than Copy-Item: it handles long paths, which a deep
 # vendor/bundle tree reaches quickly on Windows.
-$null = robocopy $App "$dir\lib\app" /E /NFL /NDL /NJH /NJS /NP /XD tmp log .git node_modules
+#
+# Not everything under the app belongs in what ships. .desktop-rails holds the
+# interpreter, the gems and earlier builds, all copied in their own right.
+# storage holds the developer's own databases, and the keys decrypt credentials
+# that must never reach a stranger's machine. See pack.sh.
+$null = robocopy $App "$dir\lib\app" /E /NFL /NDL /NJH /NJS /NP `
+  /XD tmp log .git node_modules .desktop-rails (Join-Path $App "storage") `
+  /XF (Join-Path $App "config\master.key")
 if ($LASTEXITCODE -ge 8) { throw "copying the app failed (robocopy $LASTEXITCODE)" }
 $global:LASTEXITCODE = 0
+Remove-Item -Force -ErrorAction SilentlyContinue "$dir\lib\app\config\credentials\*.key"
 
 Copy-Item "$here\templates\boot.rb" "$dir\lib\app\boot.rb" -Force
 Write-Host "  interpreter, gems and app copied"
+
+# The same two repairs pack.sh makes, which this packer never received: a path
+# gem points outside the tree once the app is copied into it, and gems installed
+# without the development and test groups must not be asked for at boot. See
+# pack.sh for each. The Bundler variables are cleared for the same reason env -u
+# clears them there.
+foreach ($var in @("RUBYOPT", "BUNDLE_GEMFILE", "BUNDLE_BIN_PATH", "BUNDLER_SETUP", "BUNDLER_VERSION")) {
+  Remove-Item "Env:$var" -ErrorAction SilentlyContinue
+}
+& (Join-Path $Runtime "bin\ruby.exe") "$here\vendor-path-gems.rb" $App "$dir\lib\app"
+if ($LASTEXITCODE -ne 0) { throw "vendoring path gems failed" }
+
+New-Item -ItemType Directory -Force -Path "$dir\lib\app\.bundle" | Out-Null
+"---`nBUNDLE_WITHOUT: `"development:test`"`n" | Set-Content -Encoding ASCII -NoNewline "$dir\lib\app\.bundle\config"
 
 # With a shell the tree gains a GUI: the exe at the top is what a person runs,
 # and the .cmd below becomes the process it spawns.

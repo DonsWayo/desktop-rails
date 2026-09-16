@@ -51,10 +51,29 @@ step "Assembling $SLUG"
 rm -rf "$DIR"; mkdir -p "$DIR/lib" "$DIR/bin" "$DIR/share/applications"
 cp -R "$RUNTIME" "$DIR/lib/ruby"
 [ -n "$GEMS" ] && [ -d "$GEMS" ] && cp -R "$GEMS" "$DIR/lib/gems"
+# Not everything under the app belongs in what ships. .desktop-rails/ holds the
+# interpreter, the gems and earlier builds, all of which are copied in their own
+# right. storage/ holds the developer's own databases, and the keys decrypt
+# credentials that must never reach a stranger's machine. See pack.sh.
 rsync -a --exclude 'tmp/' --exclude 'log/' --exclude '.git/' --exclude 'node_modules/' \
+      --exclude '/.desktop-rails/' --exclude '/storage/' \
+      --exclude '/config/master.key' --exclude '/config/credentials/*.key' \
       "$APP_SRC/" "$DIR/lib/app/"
 cp "$HERE/templates/boot.rb" "$DIR/lib/app/boot.rb"
 echo "  interpreter, gems and app copied"
+
+# The same two repairs pack.sh makes, which this packer never received: every
+# Linux bundle of an app with a path gem died on Bundler::PathError, and every
+# app with a development group died on GemNotFound. The smoke app has neither,
+# so only packaging a freshly generated app showed it. See pack.sh for each.
+env -u RUBYOPT -u BUNDLE_GEMFILE -u BUNDLE_BIN_PATH -u BUNDLER_SETUP -u BUNDLER_VERSION \
+  "$RUNTIME/bin/ruby" "$HERE/vendor-path-gems.rb" "$APP_SRC" "$DIR/lib/app"
+
+mkdir -p "$DIR/lib/app/.bundle"
+cat > "$DIR/lib/app/.bundle/config" <<'BUNDLECONFIG'
+---
+BUNDLE_WITHOUT: "development:test"
+BUNDLECONFIG
 
 # With a shell the tree gains a GUI: the binary at the top is what a person
 # runs, and the launcher below becomes the process it spawns. Without one the

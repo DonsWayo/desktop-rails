@@ -80,7 +80,15 @@ step "Assembling $NAME.app"
 rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$RES"
 cp -R "$RUNTIME" "$RES/ruby"
 [ -n "$GEMS" ] && [ -d "$GEMS" ] && cp -R "$GEMS" "$RES/gems"
+# Not everything under the app belongs in what ships. .desktop-rails/ holds the
+# interpreter, the gems and earlier builds, all of which are copied in their own
+# right, so without this each bundle carried them twice and then a copy of the
+# previous bundle. storage/ holds the developer's own databases, and the keys
+# decrypt credentials that must never reach a stranger's machine: the desktop
+# environment generates its own secret instead.
 rsync -a --exclude 'tmp/' --exclude 'log/' --exclude '.git/' --exclude 'node_modules/' \
+      --exclude '/.desktop-rails/' --exclude '/storage/' \
+      --exclude '/config/master.key' --exclude '/config/credentials/*.key' \
       "$APP_SRC/" "$RES/app/"
 echo "  interpreter, gems and app copied"
 

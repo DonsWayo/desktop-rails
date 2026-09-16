@@ -56,7 +56,7 @@ namespace :desktop do
         next
       end
 
-      out = packaging.build_dir.join("runtime")
+      out = packaging.runtime_build_dir
       triple = packaging.release_triple
       version = packaging.release_version
       downloaded = false
@@ -183,9 +183,12 @@ namespace :desktop do
       # compile for whatever environment this rake process booted in, not
       # desktop. stdin comes from the null device because a Rails process in the
       # desktop environment must never wait on a stdin nobody will write to.
+      #
+      # bin/rails is handed to this interpreter rather than executed, because
+      # Windows cannot execute a script with no extension.
       ok = system({ "RAILS_ENV" => "desktop" },
-                  File.join(root, "bin", "rails"), "assets:precompile",
-                  chdir: root, in: File::NULL)
+                  RbConfig.ruby, File.join(root, "bin", "rails"), "assets:precompile",
+                  chdir: root.to_s, in: File::NULL)
       abort "assets:precompile failed in the desktop environment; its output is above." unless ok
     end
   end

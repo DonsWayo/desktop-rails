@@ -160,6 +160,14 @@ module DesktopRails
       runtime_candidates.find { |dir| runtime?(dir) }
     end
 
+    # Where desktop:runtime puts a new interpreter. DESKTOP_RAILS_RUNTIME names
+    # where the runtime is looked for first, so it is also where one is built:
+    # building into .desktop-rails/ while the variable points elsewhere left a
+    # CI cache, or a runtime shared between apps, permanently empty.
+    def runtime_build_dir
+      Pathname.new(Paths.presence(ENV["DESKTOP_RAILS_RUNTIME"]) || build_dir.join("runtime").to_s)
+    end
+
     def runtime?(dir)
       return false unless dir
 
@@ -190,7 +198,7 @@ module DesktopRails
     # publishes a portable archive that relocates and building would be work for
     # its own sake.
     def runtime_command(out: nil)
-      out ||= build_dir.join("runtime")
+      out ||= runtime_build_dir
       if platform == :windows
         [ "pwsh", "-File", script("fetch-windows-runtime.ps1").to_s, "-Out", out.to_s ]
       else
@@ -259,6 +267,11 @@ module DesktopRails
     #
     # GEM_HOME rather than BUNDLE_PATH, because BUNDLE_PATH nests gems under
     # ruby/<abi>/ and the launchers expect them flat.
+    #
+    # Bundler is run as a script by the shipped interpreter rather than executed
+    # directly. bin/bundle is a Ruby script with no extension, which Windows
+    # cannot execute at all, and on Unix its shebang names whatever path the
+    # interpreter was built at rather than where it sits now.
     def gems_command
       runtime = runtime_dir!
       root = app_root!
@@ -270,7 +283,12 @@ module DesktopRails
         "BUNDLE_PATH" => nil,
         "PATH" => [ File.join(runtime.to_s, "bin"), ENV["PATH"] ].join(File::PATH_SEPARATOR)
       }
-      [ env, File.join(runtime.to_s, "bin", "bundle"), "install" ]
+      [ env, ruby_in(runtime), File.join(runtime.to_s, "bin", "bundle"), "install" ]
+    end
+
+    def ruby_in(runtime)
+      exe = File.join(runtime.to_s, "bin", "ruby.exe")
+      File.exist?(exe) ? exe : File.join(runtime.to_s, "bin", "ruby")
     end
 
     # A bundle with no gems cannot boot, and packaging one anyway reports success
