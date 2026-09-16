@@ -102,6 +102,17 @@ class PackersTest < Minitest::Test
     end
   end
 
+  # The Windows launcher named lib\ruby\gems\3.4.0 outright, so the day the
+  # runtime became Ruby 4.0 every default gem would have gone missing from
+  # GEM_PATH. The directory is the interpreter's ABI version, asked at pack time.
+  def test_the_windows_launcher_takes_the_gem_directory_from_the_interpreter
+    source = File.read(File.join(PACKAGING, "pack-windows.ps1"))
+
+    refute_match(/gems\\\d+\.\d+\.\d+/, source, "a hardcoded ABI directory breaks with the next Ruby")
+    assert_includes source, "RbConfig::CONFIG[%q(ruby_version)]"
+    assert_includes source, 'lib\ruby\lib\ruby\gems\$abi"'
+  end
+
   private
 
   def build_app(root, desktop_env: true)

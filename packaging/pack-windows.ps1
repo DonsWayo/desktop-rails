@@ -106,6 +106,12 @@ if ($Shell) {
   } | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 "$dir\desktop-rails.config.json"
 }
 
+# The interpreter's own gem directory is named for its ABI, 3.4.0 or 4.0.0, so
+# it is asked rather than written down. %q() because PowerShell's quoting of a
+# double quote passed to a native program has changed between versions.
+$abi = & (Join-Path $Runtime "bin\ruby.exe") -e 'print RbConfig::CONFIG[%q(ruby_version)]'
+if ($LASTEXITCODE -ne 0 -or -not $abi) { throw "could not ask the interpreter for its ABI version" }
+
 @"
 @echo off
 rem Resolve the interpreter beside this script, wherever the tree was unpacked,
@@ -123,7 +129,7 @@ rem Accept both rather than depending on how they were installed.
 set "GEMS=%HERE%lib\gems"
 if exist "%GEMS%\ruby" for /d %%D in ("%GEMS%\ruby\*") do set "GEMS=%%~fD"
 set "GEM_HOME=%GEMS%"
-set "GEM_PATH=%GEMS%;%HERE%lib\ruby\lib\ruby\gems\3.4.0"
+set "GEM_PATH=%GEMS%;%HERE%lib\ruby\lib\ruby\gems\$abi"
 if "%RAILS_ENV%"=="" set "RAILS_ENV=production"
 set "BUNDLE_GEMFILE=%HERE%lib\app\Gemfile"
 
