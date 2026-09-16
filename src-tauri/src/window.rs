@@ -500,6 +500,35 @@ pub fn save_preferences(dir: &Path, preferences: &Preferences) -> Result<(), Str
 mod tests {
     use super::*;
 
+    fn config_with(value: serde_json::Value) -> DesktopRailsConfig {
+        serde_json::from_value(value).expect("a valid config")
+    }
+
+    #[test]
+    fn path_configuration_comes_from_the_announced_server_not_the_placeholder_port() {
+        let bundled = config_with(serde_json::json!({ "server_url": "http://127.0.0.1:0" }));
+        assert_eq!(
+            path_config_url_for(&bundled, Some("http://127.0.0.1:43943")),
+            "http://127.0.0.1:43943/desktop-rails/path-configuration.json"
+        );
+        assert_eq!(
+            path_config_url(&bundled),
+            "http://127.0.0.1:0/desktop-rails/path-configuration.json"
+        );
+    }
+
+    #[test]
+    fn an_explicit_path_configuration_url_still_wins() {
+        let explicit = config_with(serde_json::json!({
+            "server_url": "http://127.0.0.1:0",
+            "path_configuration_url": "https://rules.example.com/paths.json"
+        }));
+        assert_eq!(
+            path_config_url_for(&explicit, Some("http://127.0.0.1:43943/")),
+            "https://rules.example.com/paths.json"
+        );
+    }
+
     fn resizable() -> WindowConfig {
         WindowConfig {
             width: 1000.0,
@@ -1082,10 +1111,21 @@ mod tests {
 
 /// Get the effective path configuration URL.
 pub fn path_config_url(config: &DesktopRailsConfig) -> String {
-    config
-        .path_configuration_url
-        .clone()
-        .unwrap_or_else(|| format!("{}/desktop-rails/path-configuration.json", config.server_url))
+    path_config_url_for(config, None)
+}
+
+/// The path configuration URL once the app's own server has said where it is.
+///
+/// A bundled app's config carries a placeholder port (`http://127.0.0.1:0`), so
+/// deriving the URL from `server_url` asked port 0 for the rules and every
+/// packaged app ran on whatever was bundled or cached, never the server's copy.
+/// An explicit `path_configuration_url` still wins: it may point elsewhere on
+/// purpose.
+pub fn path_config_url_for(config: &DesktopRailsConfig, announced: Option<&str>) -> String {
+    config.path_configuration_url.clone().unwrap_or_else(|| {
+        let base = announced.unwrap_or(&config.server_url).trim_end_matches('/');
+        format!("{}/desktop-rails/path-configuration.json", base)
+    })
 }
 
 /// Apply the settings every webview in the app should carry.

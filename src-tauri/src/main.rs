@@ -29,6 +29,36 @@ use tauri_plugin_deep_link::DeepLinkExt;
 /// How often to check that the app server is still answering.
 const PROBE_INTERVAL: Duration = Duration::from_secs(5);
 
+/// Ask the server for its path configuration without holding up the window, and
+/// keep what it says for the next launch.
+fn fetch_path_configuration_in_background(
+    store: Arc<PathConfigurationStore>,
+    url: String,
+    user_agent: String,
+    cache_dir: Option<std::path::PathBuf>,
+) {
+    tauri::async_runtime::spawn(async move {
+        match config::fetch_path_configuration(&url, &user_agent).await {
+            Ok(pc) => {
+                log::info!("Path configuration: {} rules from the server", pc.rules.len());
+
+                // Keep it for the next launch before handing it over.
+                if let Some(dir) = &cache_dir {
+                    if let Err(e) = config::save_cache(dir, &pc) {
+                        log::warn!("{}", e);
+                    }
+                }
+
+                store.set(pc);
+            }
+            Err(e) => {
+                log::warn!("Could not fetch path configuration from {}: {}", url, e);
+                log::info!("Keeping the rules already loaded");
+            }
+        }
+    });
+}
+
 fn main() {
     env_logger::init();
 
@@ -145,7 +175,9 @@ fn main() {
             let mut reachable_at_startup = connection::server_is_reachable(&url);
             let config_dir = loaded.source.as_deref().and_then(|p| p.parent());
 
-            match server::decide(&shell_defaults.server, reachable_at_startup) {
+            let decision = server::decide(&shell_defaults.server, reachable_at_startup);
+            let starting_server = decision == server::Decision::Start;
+            match decision {
                 server::Decision::Start => {
                     let handle = app.handle().clone();
                     let server_config = shell_defaults.server.clone();
@@ -193,11 +225,23 @@ fn main() {
             // polls: the server says when it is ready.
             let waiting = app.handle().clone();
             let listening_on = app.handle().clone();
+            let ready_store = config_store_for_fetch.clone();
+            let ready_config = shell_defaults.clone();
+            let ready_user_agent = user_agent.clone();
+            let ready_cache_dir = cache_dir.clone();
             listening_on.listen("desktop-rails://server-ready", move |event| {
                 let payload = event.payload().trim_matches('"').to_string();
                 if payload.is_empty() {
                     return;
                 }
+                // The rules are asked of the server that just announced itself.
+                // Until now the only address known was the config's placeholder.
+                fetch_path_configuration_in_background(
+                    ready_store.clone(),
+                    window::path_config_url_for(&ready_config, Some(&payload)),
+                    ready_user_agent.clone(),
+                    ready_cache_dir.clone(),
+                );
                 if let Ok(target) = payload.parse::<url::Url>() {
                     if let Some(window) = waiting.get_webview_window("main") {
                         log::info!("The app server is up; moving the window to {}", target);
@@ -243,31 +287,18 @@ fn main() {
                 _ => {}
             });
 
-            // Fetch path configuration from the server in the background
-            let pc_url = path_config_url.clone();
-            let pc_user_agent = user_agent.clone();
-            let store = config_store_for_fetch.clone();
-            let pc_cache_dir = cache_dir.clone();
-            tauri::async_runtime::spawn(async move {
-                match config::fetch_path_configuration(&pc_url, &pc_user_agent).await {
-                    Ok(pc) => {
-                        log::info!("Path configuration: {} rules from the server", pc.rules.len());
-
-                        // Keep it for the next launch before handing it over.
-                        if let Some(dir) = &pc_cache_dir {
-                            if let Err(e) = config::save_cache(dir, &pc) {
-                                log::warn!("{}", e);
-                            }
-                        }
-
-                        store.set(pc);
-                    }
-                    Err(e) => {
-                        log::warn!("Could not fetch path configuration: {}", e);
-                        log::info!("Keeping the rules already loaded");
-                    }
-                }
-            });
+            // Fetch path configuration from the server in the background. A
+            // server this app is starting is asked once it announces where it
+            // is (see the server-ready listener above); asking now would go to
+            // the placeholder address and fail every time.
+            if !starting_server {
+                fetch_path_configuration_in_background(
+                    config_store_for_fetch.clone(),
+                    path_config_url.clone(),
+                    user_agent.clone(),
+                    cache_dir.clone(),
+                );
+            }
 
             // Watch the server so a drop is noticed while the app sits idle.
             // The web layer cannot see this on its own: the browser's `offline`
