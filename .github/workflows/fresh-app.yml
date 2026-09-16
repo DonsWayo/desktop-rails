@@ -1,27 +1,29 @@
 name: A fresh Rails app, end to end
 
 # The user journey, followed literally, on a machine that has never seen the
-# app: `rails new`, add the gem, run its generator, build the runtime, package
-# with the GUI shell, launch the result and look at what the window loaded.
+# app: `rails new`, add the gem, run its generator, `bin/rails desktop:runtime`,
+# `bin/rails desktop:package`, launch the result and look at what the window
+# loaded. The runtime and the shell are whatever those tasks download from the
+# release matching the gem's version — nothing is cached, and nothing is
+# compiled here, because that is what a user gets.
 #
 # package-smoke.yml proves the packaging chain with a hand-picked Gemfile. That
 # is exactly what let a generated app break: path gems, development groups, an
 # unconfigured database and a schema nobody loaded were all invisible to it.
-# Nothing here is hand-assembled; every file the app has, `rails new` or the
-# generator wrote.
 #
-# Then the same for examples/notes, which additionally proves the native bridge
-# from inside the running window in both directions — JavaScript to the shell,
-# and Ruby to the shell over the control channel — and Turbo Streams over the
-# framework's SSE path. Each is asserted from outside the app, through files the
-# app writes into DESKTOP_DATA_DIR.
+# Then examples/notes, which additionally proves the native bridge from inside
+# the running window in both directions — JavaScript to the shell, and Ruby to
+# the shell over the control channel — and Turbo Streams over the framework's
+# SSE path. Each is asserted from outside the app, through files the app writes
+# into DESKTOP_DATA_DIR. The example is packaged with the shell built from this
+# commit, so a change to the shell is tested before it is released.
 
 on:
   push:
   workflow_dispatch:
 
 # A newer push makes an older run's answer irrelevant, and each run holds a
-# macOS runner for most of an hour.
+# macOS runner for a long time.
 concurrency:
   group: fresh-app-${{ github.ref }}
   cancel-in-progress: true
@@ -34,58 +36,31 @@ jobs:
   unix:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 150
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { name: macOS, os: macos-14, triple: arm64-darwin, gui: "" }
-          - { name: Linux, os: ubuntu-24.04, triple: x86_64-linux, gui: "xvfb-run -a" }
+          - { name: macOS, os: macos-14, gui: "" }
+          - { name: Linux, os: ubuntu-24.04, gui: "xvfb-run -a" }
     env:
-      # Where desktop:runtime builds the interpreter and where desktop:package
-      # looks for it, so a cache restored here is simply found.
-      DESKTOP_RAILS_RUNTIME: ${{ github.workspace }}/.cache/runtime
       FRESH: ${{ github.workspace }}/../fresh
     steps:
       - uses: actions/checkout@v4
 
-      - name: Linux dependencies
+      # What any Linux desktop has: a display to open a window on, and the
+      # webview the shell links against.
+      - name: Linux desktop libraries
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq build-essential zlib1g-dev rsync xvfb \
-            libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y -qq xvfb libwebkit2gtk-4.1-0 libgtk-3-0 rsync
 
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: ${{ env.RUBY_VERSION }}
 
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
-      # Building the interpreter from source is most of an hour. It changes only
-      # when the build script does, so it is cached on that.
-      - name: Restore the relocatable Ruby
-        id: runtime
-        uses: actions/cache/restore@v4
-        with:
-          path: .cache/runtime
-          key: fresh-app-runtime-${{ matrix.triple }}-${{ hashFiles('packaging/build-runtime.sh') }}
-
-      - name: Restore the vendored OpenSSL and libyaml
-        if: steps.runtime.outputs.cache-hit != 'true'
-        uses: actions/cache@v4
-        with:
-          path: .runtime-build/vendor
-          key: vendor-${{ matrix.triple }}-openssl3.5.4-libdir-yaml0.2.5
-
-      - name: Build the shell
-        working-directory: src-tauri
-        run: cargo build --release
-
-      # ─── A brand new app ────────────────────────────────────────────────────
+      # ─── A brand new app, with downloaded runtime and shell ────────────────
 
       - name: rails new
         run: |
@@ -102,7 +77,7 @@ jobs:
           bundle add desktop-rails --path "$GITHUB_WORKSPACE/desktop-rails"
           bin/rails generate desktop_rails:install
           bundle install
-          git diff --stat
+          git status --short
 
       # The one thing a person adds before there is anything to look at: a new
       # app has no root route, and a production-like environment shows no
@@ -119,16 +94,13 @@ jobs:
         working-directory: ${{ env.FRESH }}
         run: bin/rails desktop:runtime
 
-      - name: Keep the runtime for next time
-        if: steps.runtime.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: .cache/runtime
-          key: ${{ steps.runtime.outputs.cache-primary-key }}
-
       - name: bin/rails desktop:package
         working-directory: ${{ env.FRESH }}
-        run: bin/rails desktop:package
+        run: |
+          set -euo pipefail
+          bin/rails desktop:package
+          # The shell has to be the downloaded one: no checkout shell exists yet.
+          ls .desktop-rails/shell/*/desktop-rails
 
       - name: Launch it and check the window loaded the app
         run: |
@@ -140,6 +112,8 @@ jobs:
             bin="$FRESH/.desktop-rails/dist/fresh/fresh"
             tree="$FRESH/.desktop-rails/dist/fresh/lib/app"
           fi
+          cmp "$bin" "$FRESH"/.desktop-rails/shell/*/desktop-rails
+          echo "the bundle's shell is the downloaded release shell"
           DESKTOP_DATA_DIR="$(mktemp -d)" ${{ matrix.gui }} packaging/smoke/app_check.sh "$bin" \
             "text=Welcome#index" "unchanged=$tree"
 
@@ -147,20 +121,37 @@ jobs:
         if: runner.os == 'macOS'
         run: codesign --verify --strict --deep "$FRESH/.desktop-rails/dist/Fresh.app"
 
-      # ─── examples/notes ─────────────────────────────────────────────────────
+      # ─── examples/notes, with the shell from this commit ───────────────────
       #
       # Run whether or not the fresh app passed, so one failure does not hide
       # another; the job still fails.
 
-      - name: Bundle the example
+      - name: Shell build dependencies
+        if: ${{ !cancelled() && runner.os == 'Linux' }}
+        run: |
+          sudo apt-get install -y -qq build-essential libgtk-3-dev libwebkit2gtk-4.1-dev \
+            libappindicator3-dev librsvg2-dev patchelf
+
+      - uses: dtolnay/rust-toolchain@stable
         if: ${{ !cancelled() }}
-        working-directory: examples/notes
-        run: bundle install
+      - uses: Swatinem/rust-cache@v2
+        if: ${{ !cancelled() }}
+        with:
+          workspaces: src-tauri
+
+      - name: Build the shell
+        if: ${{ !cancelled() }}
+        working-directory: src-tauri
+        run: cargo build --release
 
       - name: Package the example
         if: ${{ !cancelled() }}
         working-directory: examples/notes
-        run: bin/rails desktop:package
+        run: |
+          set -euo pipefail
+          bundle install
+          bin/rails desktop:runtime
+          bin/rails desktop:package
 
       - name: Launch the example and drive both native directions
         if: ${{ !cancelled() }}
@@ -173,6 +164,8 @@ jobs:
             bin="$PWD/examples/notes/.desktop-rails/dist/notes/notes"
             tree="$PWD/examples/notes/.desktop-rails/dist/notes/lib/app"
           fi
+          cmp "$bin" src-tauri/target/release/desktop-rails
+          echo "the bundle's shell is the one built from this commit"
           data="$RUNNER_TEMP/notes-data"
           rm -rf "$data" && mkdir -p "$data"
           # A model-backed page on an empty data directory proves the schema and
@@ -189,12 +182,21 @@ jobs:
         if: ${{ !cancelled() && runner.os == 'macOS' }}
         run: codesign --verify --strict --deep examples/notes/.desktop-rails/dist/Notes.app
 
-      # An update: the same data directory, a newer app with one more migration.
+      # An update: the same data directory, a newer build with one more
+      # migration. The seeded note is deleted first, so a second seeding would
+      # show, and a note written by the first version must survive.
       - name: Update the example with a migration and launch it again
         if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
           data="$RUNNER_TEMP/notes-data"
+          python3 - "$data/app.sqlite3" <<'PY'
+          import sqlite3, sys
+          db = sqlite3.connect(sys.argv[1])
+          db.execute("DELETE FROM notes WHERE title = 'Welcome to Notes'")
+          db.execute("INSERT INTO notes (title, created_at, updated_at) VALUES ('Kept across the update', datetime('now'), datetime('now'))")
+          db.commit()
+          PY
           (cd examples/notes && bin/rails generate migration AddPinnedToNotes pinned:boolean && bin/rails desktop:package)
           if [ "$RUNNER_OS" = macOS ]; then
             bin="$PWD/examples/notes/.desktop-rails/dist/Notes.app/Contents/MacOS/desktop-rails"
@@ -203,15 +205,15 @@ jobs:
           fi
           rm -rf "$data/native-reports" "$data/log"
           DESKTOP_DATA_DIR="$data" ${{ matrix.gui }} packaging/smoke/app_check.sh "$bin" \
-            "text=Welcome to Notes"
+            "text=Kept across the update"
           python3 - "$data/app.sqlite3" <<'PY'
           import sqlite3, sys
           db = sqlite3.connect(sys.argv[1])
           columns = [row[1] for row in db.execute("PRAGMA table_info(notes)")]
           assert "pinned" in columns, f"the pending migration did not run: {columns}"
           seeded = db.execute("SELECT COUNT(*) FROM notes WHERE title = 'Welcome to Notes'").fetchone()[0]
-          assert seeded == 1, f"expected the seeded note once, found {seeded}: seeds ran again, or data was lost"
-          print("OK    migration applied on the second launch; data from the first kept, seeds not rerun")
+          assert seeded == 0, "seeds ran again on an existing database"
+          print("OK    second launch: pending migration applied, data kept, seeds not rerun")
           PY
 
   windows:
@@ -224,20 +226,10 @@ jobs:
       - uses: actions/checkout@v4
 
       # A Ruby with a devkit to generate the app and compile its gems. The
-      # interpreter that ships is RubyInstaller's portable archive, which
-      # desktop:runtime fetches.
+      # interpreter that ships is the one desktop:runtime downloads.
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.4"
-
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
-      - name: Build the shell
-        working-directory: src-tauri
-        run: cargo build --release
 
       - name: rails new, add the gem, run the generator
         shell: pwsh
@@ -256,6 +248,7 @@ jobs:
           bundle install
           if ($LASTEXITCODE -ne 0) { throw "bundle install failed" }
           ruby bin\rails generate controller Welcome index
+          if ($LASTEXITCODE -ne 0) { throw "generating a controller failed" }
           (Get-Content config\routes.rb) -replace '^Rails\.application\.routes\.draw do$', "`$0`n  root `"welcome#index`"" | Set-Content config\routes.rb
           Pop-Location
 
