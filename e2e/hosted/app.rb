@@ -8,6 +8,7 @@
 # e2e/hosted/check.rb reads those reports, so each result is observed by the
 # origin it is about.
 
+require "fileutils"
 require "json"
 require "logger"
 require "bundler/setup"
@@ -25,7 +26,9 @@ module HostedCheck
     config.secret_key_base = "hosted-check-not-a-secret"
     config.hosts.clear
     config.consider_all_requests_local = false
-    config.logger = ActiveSupport::Logger.new(ENV.fetch("HOSTED_LOG", File.expand_path("log/hosted.log", __dir__)))
+    # A file the CI job reads when it is given one; standard output otherwise,
+    # so loading the app for its rake tasks writes nowhere.
+    config.logger = ActiveSupport::Logger.new(ENV["HOSTED_LOG"] || $stdout)
     config.log_level = :info
 
     routes.append do
@@ -148,9 +151,15 @@ class ReportsController < ActionController::API
   def create
     report = JSON.parse(request.raw_post)
     Rails.logger.info("REPORT #{report.to_json}")
-    File.open(ENV.fetch("REPORTS_FILE", File.expand_path("log/reports.jsonl", __dir__)), "a") do |file|
-      file.puts(report.to_json)
-    end
+    File.open(reports_file, "a") { |file| file.puts(report.to_json) }
     head :no_content
+  end
+
+  private
+
+  def reports_file
+    ENV.fetch("REPORTS_FILE") do
+      File.expand_path("log/reports.jsonl", __dir__).tap { |path| FileUtils.mkdir_p(File.dirname(path)) }
+    end
   end
 end
