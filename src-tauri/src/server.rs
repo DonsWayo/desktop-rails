@@ -47,8 +47,8 @@ impl ServerAddress {
 /// two turns up first.
 ///
 /// The server is started before the window is built, and building a window is
-/// not quick everywhere: on a Windows runner WebView2 took 3 to 12 seconds,
-/// while the app's server announced itself in 4. An announcement that arrived
+/// not quick everywhere: on a Windows runner the window took between 3 and 12
+/// seconds, and the app's server was sometimes quicker. An announcement that arrived
 /// while there was no window to move was dropped, and the window sat on the
 /// waiting page until the connection monitor's next probe noticed the server
 /// and sent it on. So an early announcement is kept until the window exists.

@@ -245,9 +245,90 @@ was found here too, but was fixed on the prebuilt-downloads branch first.
   `ruby.json`, written by `GET /native/window`, which calls
   `DesktopRails::Native.call("window", "state")` over the control channel; then
   the update launch above.
-- Windows packages the fresh app with the downloaded runtime and shell, checks
-  the tree, and boots its server on a clean data directory. It does not open a
-  window.
+- Windows asserts the same, from `packaging/smoke/app_check.rb`: see below.
+
+## Windows, with a window
+
+Until this, Windows was the one platform where no window had ever been opened:
+its job checked the bundle's shape and booted the server with no shell. The
+fresh-app workflow now has two Windows jobs on `windows-latest`, one for a
+freshly generated app (Rails 8.1, the 0.3.0.pre2 runtime and shell downloaded
+by `desktop:package`) and one for `examples/notes` (the shell built from the
+commit). Both launch the packaged `.exe`, and the runner's interactive session
+shows a real window: WebView2 is preinstalled, the shell's process has a main
+window handle titled with the app's name, and a screenshot of the desktop is
+kept as a workflow artifact.
+
+It worked better than expected. On the first run both windows loaded `/` from
+their own server, and the example's JavaScript, stream and Ruby reports were
+all ok — the bridge from `http://127.0.0.1`, the control channel and SSE needed
+nothing Windows-specific. What it found:
+
+1. **The interpreter wrote into the app on every launch.** The check that
+   nothing is written inside the bundle failed on
+   `lib\ruby\lib\ruby\gems\3.4.0`, a directory whose time had moved. A snapshot
+   and a file watcher named it: `writable_p`, created and deleted. RubyInstaller's
+   `rubygems/defaults/operating_system.rb` does that whenever RubyGems loads, to
+   choose where `gem install` puts gems. A packaged app never installs a gem,
+   and one under `C:\Program Files` cannot write there, so `pack-windows.ps1`
+   now runs `packaging/windows-runtime-readonly.rb` over the interpreter it
+   ships, replacing the probe with the `EACCES` a read-only install gets. The
+   first version of the fix found nothing, because the packer's backslashed
+   path was used as a glob pattern; that is fixed and tested too.
+   *`test/windows_runtime_readonly_test.rb`.*
+
+2. **The window waited for a probe when its server was quicker than WebView2.**
+   The server is started before the window is built, and on the runner the
+   window took 3 to 12 seconds to build. In the fresh app's first run the
+   server announced itself at 13:37:30 and the window existed at 13:37:33, so
+   the listener had nothing to move and dropped the address; the connection
+   monitor's next probe sent the window to the app at 13:37:38. An early
+   announcement is now kept until the window exists, and delivered exactly
+   once. *`src-tauri/src/server.rs`, the `WindowArrival` tests.* This is a shell
+   change, so the downloaded 0.3.0.pre2 shell does not have it; the fresh app
+   passes without it, only slower.
+
+3. **The launcher named Ruby 3.4's gem directory outright.** `GEM_PATH` held
+   `lib\ruby\lib\ruby\gems\3.4.0`, which a Ruby 4.0 runtime does not have. The
+   packer now asks the interpreter for `RbConfig::CONFIG["ruby_version"]`.
+   *`test/packers_test.rb`.*
+
+Force-quitting the shell does not orphan the server, so nothing was changed
+there. Windows has no signal to reap a child with and the server is not even
+the shell's child — the tree is `notes.exe -> cmd.exe /c notes.cmd -> ruby.exe
+boot.rb`, with a `conhost.exe` beside it — so the harness records that tree
+before the kill, runs `Stop-Process -Force` (TerminateProcess) on the shell
+alone, and waits for each process in it. `cmd.exe`, `conhost.exe` and
+`ruby.exe` were gone within its 15 seconds, and the port stopped answering: the
+shell's end of the stdin pipe closes with its process, `ruby.exe` reads EOF in
+`bin/desktop-boot` and exits, and `cmd.exe` follows it. A Job Object with
+`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` would also cover a server that does not
+watch stdin — a hosted-mode `bin/rails server` through `cmd` — but no bundled
+app needs it, and nothing here proves it is needed, so it was not added.
+
+The harness is Ruby rather than `app_check.sh` under Git Bash for that kill:
+`kill -9` there acts on the MSYS process that started the exe. It runs the
+same checks in the same order, runs the kill even after a check failed (a
+Windows round takes half an hour), and reports each change inside the tree
+with the watcher's record of it.
+
+Recorded, not fixed here:
+
+- RubyInstaller's same file creates `%ProgramData%\gemrc` on first run if there
+  is none, as a guard against another user planting one. A packaged app
+  therefore writes one file outside its data directory on a machine without
+  RubyInstaller. It is a security measure for the interpreter, so it is left
+  alone until someone decides what a desktop app should do instead.
+- ruby-vips, which a new Rails app's Gemfile carries, loads libvips from the
+  runner's `C:\msys64` when the shell inherits that `PATH`, and warns about
+  missing modules. On a user's machine there is no libvips; nothing in these
+  apps processes images, so what happens then is unverified.
+- The shell logs its config and working directory as `\\?\D:\...` verbatim
+  paths, and `cmd.exe` runs the launcher from one. It works, but it is the
+  first thing to suspect if a launcher ever fails to start from a long or
+  unusual path.
+- `prune.ps1` still prunes `ruby\lib\ruby\gems\3.4.0` by name, so with a 4.0
+  runtime it will skip the interpreter's own gems' test suites.
 
 ## Earlier notes, from before 4 and 5 were dealt with
 
