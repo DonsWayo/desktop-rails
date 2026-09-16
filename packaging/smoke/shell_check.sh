@@ -18,9 +18,12 @@ DEADLINE="${SHELL_CHECK_TIMEOUT:-240}"
 # seal — "a sealed resource is missing or invalid" — and macOS then refuses to
 # launch it. A log written next to the binary made the first run pass and every
 # run after it fail silently, which is a test destroying its own subject.
-LOG="$(mktemp -t shell_check)"
+# An explicit template, because `mktemp -t NAME` means different things: on
+# macOS it is a prefix, on GNU it wants XXXXXX and fails without it, leaving
+# $LOG empty and every later line confusing.
+LOG="$(mktemp "${TMPDIR:-/tmp}/shell_check.XXXXXX")"
 
-rm -f "$LOG"
+[ -n "$LOG" ] || { echo "FAIL  could not create a log file"; exit 1; }
 RUST_LOG=info "$SHELL_BIN" > "$LOG" 2>&1 &
 PID=$!
 cleanup() { kill -9 "$PID" 2>/dev/null; }
