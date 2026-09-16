@@ -1,3 +1,4 @@
+require "fileutils"
 # frozen_string_literal: true
 
 # The Rails-native packaging workflow.
@@ -27,7 +28,16 @@ run = lambda do |argv|
   puts "==> #{TurboDesktop::Packaging.to_shell(argv)}"
   # No shell in between: argv reaches execve as it is, so a path with a space in
   # it — "~/Library/Application Support/..." on every Mac — cannot split.
-  abort "\n#{argv.first} failed (exit #{$?&.exitstatus})." unless system(*argv.map(&:to_s))
+  #
+  # And outside this process's bundle. bin/rails runs with Bundler loaded, and
+  # its RUBYOPT=-rbundler/setup and BUNDLE_* variables are inherited by every
+  # script launched from here — including any Ruby those scripts start, which
+  # then tries to set up this app's bundle with the wrong interpreter and fails
+  # with GemNotFound. The packaging scripts are standalone and must see a clean
+  # environment.
+  launch = -> { system(*argv.map(&:to_s)) }
+  ok = defined?(Bundler) ? Bundler.with_unbundled_env(&launch) : launch.call
+  abort "\n#{argv.first} failed (exit #{$?&.exitstatus})." unless ok
 end
 
 namespace :desktop do
@@ -52,6 +62,28 @@ namespace :desktop do
       end
       run.call(packaging.runtime_command(out: out))
       puts "\nRuntime ready: #{out}"
+    end
+  end
+
+  desc "Install this app's gems for the interpreter a packaged app ships"
+  task :gems do
+    with_clear_failures.call do
+      packaging = TurboDesktop::Packaging
+      env, *argv = packaging.gems_command
+      puts "Installing gems for the packaged interpreter"
+      puts "  runtime: #{packaging.runtime_dir!}"
+      puts "  into:    #{packaging.bundled_gems_dir}"
+      FileUtils.mkdir_p(packaging.bundled_gems_dir)
+      # A clean environment, not just an extra one. bin/rails starts with Bundler
+      # loaded, which sets RUBYOPT=-rbundler/setup and BUNDLE_* variables; a
+      # child `bundle install` inherits them and resolves against the parent's
+      # already-installed gems — "Could not find rails-8.1.3.1 in locally
+      # installed gems", reported from the development Ruby's Bundler even
+      # though a different interpreter was asked to run. stdin from the null
+      # device: see desktop:assets.
+      run_clean = -> { system(env, *argv, chdir: packaging.app_root!.to_s, in: File::NULL) }
+      ok = defined?(Bundler) ? Bundler.with_unbundled_env(&run_clean) : run_clean.call
+      abort "bundle install failed for the packaged interpreter; its output is above." unless ok
     end
   end
 
@@ -83,7 +115,7 @@ namespace :desktop do
   end
 
   desc "Package this Rails app for the current platform"
-  task package: :assets do
+  task package: %i[assets gems] do
     with_clear_failures.call do
       packaging = TurboDesktop::Packaging
       argv = packaging.package_command

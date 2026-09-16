@@ -171,6 +171,24 @@ sed -i.bak "s|__EXECUTABLE__|$SHELL_NAME|" "$APP/Contents/Info.plist" && rm -f "
 
 cp "$HERE/templates/boot.rb" "$RES/app/boot.rb"
 
+# Path gems point outside the bundle once the app is moved into it. Rewrite the
+# copy — never the developer's own Gemfile — to vendor them. Run with the
+# interpreter being shipped, since that is the Ruby guaranteed to be present.
+# env -u: a caller running under Bundler leaks RUBYOPT=-rbundler/setup, which
+# would make this Ruby try to set up the app's bundle and fail.
+env -u RUBYOPT -u BUNDLE_GEMFILE -u BUNDLE_BIN_PATH -u BUNDLER_SETUP -u BUNDLER_VERSION \
+  "$RUNTIME/bin/ruby" "$HERE/vendor-path-gems.rb" "$APP_SRC" "$RES/app"
+
+# The gems were installed without the development and test groups, so the app
+# must not ask for them at boot either, or Bundler dies on GemNotFound for
+# rubocop and web-console. .bundle/config travels with the app, which is how a
+# deployed Rails app says the same thing, and does not depend on any launcher.
+mkdir -p "$RES/app/.bundle"
+cat > "$RES/app/.bundle/config" <<'BUNDLECONFIG'
+---
+BUNDLE_WITHOUT: "development:test"
+BUNDLECONFIG
+
 step "Pruning"
 KEEP_DEV=$KEEP_DEV "$HERE/prune.sh" "$RES"
 

@@ -34,7 +34,12 @@ module PackagingSandbox
       end
 
       gems_dir = File.join(tmp, "gems")
-      FileUtils.mkdir_p(gems_dir) if gems
+      if gems
+        # Shaped like a real gem set, not an empty directory: packaging refuses
+        # an empty one, because it ships exactly as broken as a missing one.
+        FileUtils.mkdir_p(File.join(gems_dir, "gems", "rack-3.2.7"))
+        FileUtils.mkdir_p(File.join(gems_dir, "specifications"))
+      end
 
       shell_bin = File.join(tmp, "turbo-desktop")
       if shell
@@ -233,7 +238,7 @@ class PackagingCommandTest < Minitest::Test
   end
 
   def test_windows_calls_the_powershell_packer_through_pwsh
-    with_sandbox do |paths|
+    with_sandbox(gems: true) do |paths|
       TurboDesktop.configure { |c| c.app_name = "Ledger"; c.app_id = "dev.example.ledger" }
       on_platform(:windows) do
         argv = TurboDesktop::Packaging.package_command
@@ -247,21 +252,34 @@ class PackagingCommandTest < Minitest::Test
     end
   end
 
-  def test_optional_inputs_are_omitted_rather_than_passed_as_missing_paths
-    # The packers skip a --gems directory that is not there without saying so,
-    # which would hide the mistake until the bundle failed to boot on somebody
-    # else's machine.
-    with_sandbox(gems: false, shell: false) do
+  def test_a_missing_shell_is_omitted_rather_than_passed_as_a_missing_path
+    # A bundle with no window is a legitimate thing to build — it is how the
+    # packaging itself is tested — so the shell stays optional.
+    with_sandbox(gems: true, shell: false) do
       on_platform(:macos) do
         argv = TurboDesktop::Packaging.package_command
-        refute_includes argv, "--gems"
         refute_includes argv, "--shell"
       end
     end
   end
 
+  def test_packaging_refuses_a_bundle_with_no_gems
+    # Gems are not optional. This used to omit --gems silently, and a real app
+    # packaged that way reported success and "signature verifies" over a bundle
+    # that died on `require "rack"`. Refusing here is the whole fix.
+    with_sandbox(gems: false, shell: false) do
+      on_platform(:macos) do
+        error = assert_raises(TurboDesktop::Packaging::MissingPrerequisite) do
+          TurboDesktop::Packaging.package_command
+        end
+        assert_match(/No gems to package/, error.message)
+        assert_match(/desktop:gems/, error.message)
+      end
+    end
+  end
+
   def test_a_signing_identity_is_passed_only_when_configured
-    with_sandbox do
+    with_sandbox(gems: true) do
       on_platform(:macos) do
         refute_includes TurboDesktop::Packaging.package_command, "--identity"
 
@@ -287,7 +305,7 @@ class PackagingCommandTest < Minitest::Test
   def test_argv_is_a_list_so_a_path_with_a_space_cannot_split
     # "~/Library/Application Support" is on every Mac. Building a string and
     # letting a shell re-split it is how that becomes two arguments.
-    with_sandbox do
+    with_sandbox(gems: true) do
       on_platform(:macos) do
         TurboDesktop.configure { |c| c.app_name = "My Ledger" }
         argv = TurboDesktop::Packaging.package_command

@@ -188,7 +188,7 @@ module TurboDesktop
       app     ||= app_root!.to_s
       runtime ||= runtime_dir!.to_s
       out     ||= dist_dir
-      gems    ||= gems_dir
+      gems    ||= gems_dir!
       shell   ||= shell_binary
 
       case platform
@@ -221,8 +221,51 @@ module TurboDesktop
       [
         Paths.presence(ENV["TURBO_DESKTOP_GEMS"]),
         Paths.presence(TurboDesktop.configuration.gems_dir)&.to_s,
+        bundled_gems_dir.to_s,
         (app_root && File.join(app_root.to_s, "vendor", "bundle"))
-      ].compact.find { |dir| File.directory?(dir) }
+      ].compact.find { |dir| File.directory?(dir) && !Dir.empty?(dir) }
+    end
+
+    # Where desktop:gems installs the app's gems for the interpreter that ships.
+    def bundled_gems_dir
+      build_dir.join("gems")
+    end
+
+    # The gems a packaged app needs, built by the interpreter it will run on.
+    #
+    # Not the development Ruby's gem path: native extensions (sqlite3, puma,
+    # nio4r, bigdecimal) compile against the interpreter that installs them, and
+    # the development Ruby links a package manager's libraries that the bundle
+    # does not carry. So the shipped interpreter installs its own set.
+    #
+    # GEM_HOME rather than BUNDLE_PATH, because BUNDLE_PATH nests gems under
+    # ruby/<abi>/ and the launchers expect them flat.
+    def gems_command
+      runtime = runtime_dir!
+      root = app_root!
+      env = {
+        "GEM_HOME" => bundled_gems_dir.to_s,
+        "GEM_PATH" => bundled_gems_dir.to_s,
+        "BUNDLE_GEMFILE" => File.join(root.to_s, "Gemfile"),
+        "BUNDLE_WITHOUT" => "development:test",
+        "BUNDLE_PATH" => nil,
+        "PATH" => [ File.join(runtime.to_s, "bin"), ENV["PATH"] ].join(File::PATH_SEPARATOR)
+      }
+      [ env, File.join(runtime.to_s, "bin", "bundle"), "install" ]
+    end
+
+    # A bundle with no gems cannot boot, and packaging one anyway reports success
+    # and "signature verifies" over an app that dies on `require "rack"`.
+    def gems_dir!
+      gems_dir || raise(MissingPrerequisite, <<~MSG)
+        No gems to package, so the app could not start.
+
+        Install them for the interpreter that ships:
+
+          bin/rails desktop:gems
+
+        or point at an existing set with TURBO_DESKTOP_GEMS.
+      MSG
     end
 
     # The Tauri shell. Without one the packers still produce a bundle, but it is
