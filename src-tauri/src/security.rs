@@ -10,7 +10,10 @@
 //! filesystem component may touch and which commands the shell and sudo
 //! components may run.
 
-use crate::window::{ClipboardConfig, FilesystemConfig, ShellConfig, SudoConfig};
+use crate::window::{
+    ClipboardConfig, FilesystemConfig, NotificationsConfig, ShellConfig, ShortcutsConfig,
+    SudoConfig,
+};
 use std::ffi::OsString;
 use std::path::{Component, Path, PathBuf};
 use url::Url;
@@ -619,6 +622,38 @@ pub fn authorize_clipboard_read(config: &ClipboardConfig) -> Result<(), String> 
     }
 }
 
+/// Decide whether a page (or the app's Ruby) may raise an OS notification.
+///
+/// On unless the config turns it off: a browser page can already ask for
+/// notifications, the OS names the app as the sender, and the person using it
+/// can silence the app in the system settings.
+pub fn authorize_notifications(config: &NotificationsConfig) -> Result<(), String> {
+    if config.enabled {
+        Ok(())
+    } else {
+        Err("Refused: notifications are off in desktop-rails.config.json \
+             (\"notifications\": { \"enabled\": false })"
+            .to_string())
+    }
+}
+
+/// Decide whether a page (or the app's Ruby) may register a global shortcut.
+///
+/// On unless the config turns it off. What keeps it from being a keylogger is
+/// elsewhere and not configurable: every combination needs a Control,
+/// Alt/Option or Command/Super modifier, and pages hold at most
+/// [`crate::shortcuts::MAX_PAGE_SHORTCUTS`]. The config's own `summon`
+/// shortcut is registered by the shell whatever this says.
+pub fn authorize_shortcut_registration(config: &ShortcutsConfig) -> Result<(), String> {
+    if config.enabled {
+        Ok(())
+    } else {
+        Err("Refused: global shortcuts are off in desktop-rails.config.json \
+             (\"shortcuts\": { \"enabled\": false })"
+            .to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1121,6 +1156,41 @@ mod default_policy_tests {
     }
 
     #[test]
+    fn notifications_and_shortcuts_are_on_for_the_app_origin() {
+        // A documented default: both are things a page can already ask a
+        // browser for, the OS names the sender, and the config can turn
+        // either off.
+        let config = minimal();
+        assert!(authorize_notifications(&config.notifications).is_ok());
+        assert!(authorize_shortcut_registration(&config.shortcuts).is_ok());
+        assert_eq!(config.shortcuts.summon, None, "no summon shortcut unless configured");
+    }
+
+    #[test]
+    fn a_config_can_turn_notifications_and_shortcuts_off() {
+        let config = parse_config(
+            r#"{"server_url":"https://app.example.com","notifications":{"enabled":false},"shortcuts":{"enabled":false}}"#,
+        )
+        .unwrap();
+        assert!(authorize_notifications(&config.notifications)
+            .unwrap_err()
+            .contains("notifications are off"));
+        assert!(authorize_shortcut_registration(&config.shortcuts)
+            .unwrap_err()
+            .contains("shortcuts are off"));
+    }
+
+    #[test]
+    fn a_page_cannot_grab_ordinary_typing_from_other_applications() {
+        for plain in ["A", "Shift+A", "Enter", "Shift+Space"] {
+            assert!(
+                crate::shortcuts::parse_accelerator(plain).is_err(),
+                "{plain} would capture typing everywhere"
+            );
+        }
+    }
+
+    #[test]
     fn only_the_configured_origin_is_admitted() {
         assert_eq!(
             origin_pattern(&minimal().server_url).as_deref(),
@@ -1267,10 +1337,15 @@ mod origin_tests {
 
     /// Call the bridge the way a frame at `frame_url` would.
     fn call_from(shell: &Shell, frame_url: &str) -> Result<String, String> {
+        invoke_from(shell, frame_url, "handle_bridge_message")
+    }
+
+    /// Invoke any command the way a frame at `frame_url` would.
+    fn invoke_from(shell: &Shell, frame_url: &str, cmd: &str) -> Result<String, String> {
         tauri::test::get_ipc_response(
             &shell.window,
             tauri::webview::InvokeRequest {
-                cmd: "handle_bridge_message".into(),
+                cmd: cmd.into(),
                 callback: tauri::ipc::CallbackFn(0),
                 error: tauri::ipc::CallbackFn(1),
                 url: frame_url.parse().unwrap(),
@@ -1410,6 +1485,40 @@ mod origin_tests {
             origin_pattern("http://127.0.0.1:3000").as_deref(),
             Some("http://127.0.0.1:3000/*")
         );
+    }
+
+    /// Notifications and global shortcuts are reached through the bridge, under
+    /// the config's policy. The plugins behind them expose their own commands
+    /// too, and those must stay out of reach of every remote page, the app's
+    /// included: `plugin:global-shortcut|register` takes a JavaScript callback
+    /// and applies neither the modifier rule nor the limit.
+    #[test]
+    fn the_app_origin_cannot_call_the_shortcut_or_notification_plugins_directly() {
+        let shell = shell(APP, "https://app.example.com/assistant");
+        for command in [
+            "plugin:global-shortcut|register",
+            "plugin:global-shortcut|unregister_all",
+            "plugin:notification|notify",
+            "plugin:notification|request_permission",
+        ] {
+            let refusal = invoke_from(&shell, "https://app.example.com/assistant", command)
+                .expect_err(command);
+            assert!(refusal.contains("not allowed"), "{command}: {refusal}");
+        }
+        // The same page still reaches the bridge, which is where they live.
+        assert!(call_from(&shell, "https://app.example.com/assistant").is_ok());
+    }
+
+    #[test]
+    fn the_runtime_grant_names_app_commands_only() {
+        // A plugin permission here would hand every command of that plugin to
+        // the app origin, around the bridge's policy.
+        for permission in APP_ORIGIN_PERMISSIONS {
+            assert!(
+                permission.starts_with("allow-") && !permission.contains(':'),
+                "{permission} is not an app command permission"
+            );
+        }
     }
 
     #[test]

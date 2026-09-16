@@ -26,7 +26,13 @@ module DesktopRails
     # misspelt "shel" would ship a config that quietly means something else.
     KNOWN_KEYS = %w[
       server_url path_configuration_url app_name user_agent window filesystem
-      sudo shell clipboard navigation server updater
+      sudo shell clipboard navigation server updater notifications shortcuts
+    ].freeze
+
+    # Modifier names the shell's accelerator parser accepts (global-hotkey).
+    MODIFIERS = %w[
+      alt option control ctrl command cmd super shift
+      commandorcontrol commandorctrl cmdorctrl cmdorcontrol
     ].freeze
 
     DEFAULT_VERSION = "1.0"
@@ -75,7 +81,27 @@ module DesktopRails
       end
 
       check_updater!(config["updater"]) if config.key?("updater")
+      check_summon!(config.dig("shortcuts", "summon")) if config["shortcuts"].is_a?(Hash)
       config
+    end
+
+    # The shell logs a summon shortcut it cannot parse and starts without it,
+    # which in a shipped app nobody reads. So the same rules are checked here:
+    # modifiers first, one key last, and a modifier that is not Shift, since a
+    # global shortcut without one takes ordinary typing from every application.
+    def self.check_summon!(summon)
+      return if summon.nil?
+
+      tokens = summon.is_a?(String) ? summon.split("+", -1).map { |token| token.strip.downcase } : []
+      *modifiers, key = tokens
+      valid = tokens.size >= 2 && tokens.none?(&:empty?) && !MODIFIERS.include?(key) &&
+              modifiers.all? { |modifier| MODIFIERS.include?(modifier) } &&
+              modifiers.any? { |modifier| modifier != "shift" }
+      return if valid
+
+      raise InvalidConfig, "shortcuts.summon #{summon.inspect} is not a global shortcut the shell accepts. " \
+                           "Name one or more modifiers, at least one of them not Shift, then one key, " \
+                           "as in \"CmdOrCtrl+Shift+Space\"."
     end
 
     def self.check_server_url!(value)
@@ -141,8 +167,16 @@ module DesktopRails
         "filesystem  #{roots.empty? ? "only files and folders the user picks or drops" : "those, and under #{roots.join(", ")}"}",
         "clipboard   #{config.dig("clipboard", "read") ? "read and write" : "write only"}",
         "links       #{internal.empty? ? "other sites open in the browser" : "#{internal.join(", ")} may also load in the window, without the bridge"}",
-        "updates     #{endpoints.empty? ? "off" : "signed, from #{endpoints.join(", ")}"}"
+        "updates     #{endpoints.empty? ? "off" : "signed, from #{endpoints.join(", ")}"}",
+        "notify      #{config.dig("notifications", "enabled") == false ? "off" : "pages and Ruby may raise OS notifications"}",
+        "shortcuts   #{shortcut_summary(config["shortcuts"] || {})}"
       ]
+    end
+
+    def self.shortcut_summary(shortcuts)
+      pages = "pages may register global shortcuts that use a modifier"
+      pages = "pages may not register global shortcuts" if shortcuts["enabled"] == false
+      shortcuts["summon"] ? "#{pages}; #{shortcuts["summon"]} summons the window" : pages
     end
 
     def self.allowlist_summary(block)

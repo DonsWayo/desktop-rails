@@ -185,6 +185,7 @@ function cmdInit(args) {
   // otherwise the scaffolded project will not compile.
   const rustFiles = [
     "main.rs",
+    "badge.rs",
     "bridge.rs",
     "config.rs",
     "connection.rs",
@@ -193,10 +194,12 @@ function cmdInit(args) {
     "fs_bridge.rs",
     "menu.rs",
     "navigation.rs",
+    "notifications.rs",
     "process_manager.rs",
     "security.rs",
     "server.rs",
     "shell_bridge.rs",
+    "shortcuts.rs",
     "sudo_bridge.rs",
     "tray.rs",
     "updater_bridge.rs",

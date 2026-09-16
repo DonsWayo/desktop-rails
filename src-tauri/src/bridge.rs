@@ -68,11 +68,11 @@ pub async fn dispatch(
     );
 
     match message.component.as_str() {
-        "notification" => handle_notification(&app, &message).await,
-        "menu-item" => handle_menu_item(&app, &message).await,
+        "notification" => crate::notifications::handle_notification(&app, &message).await,
+        "menu-item" => crate::menu::handle_menu_item(&app, &message).await,
         "file-picker" => handle_file_picker(&app, &message).await,
-        "badge" => handle_badge(&app, &message).await,
-        "shortcut" => handle_shortcut(&app, &message).await,
+        "badge" => crate::badge::handle_badge(&app, &message).await,
+        "shortcut" => crate::shortcuts::handle_shortcut(&app, &message).await,
         "shell" => crate::shell_bridge::handle_shell(&app, &message).await,
         "filesystem" => crate::fs_bridge::handle_filesystem(&app, &message).await,
         "sudo" => crate::sudo_bridge::handle_sudo(&app, &message).await,
@@ -117,7 +117,7 @@ pub async fn send_bridge_response(
 /// URL, which is what an app page always is, so `listen` never fires there.
 /// Responses travel over the same eval channel as everything else the shell
 /// tells the page.
-pub fn broadcast_response(app: &tauri::AppHandle, response: &BridgeResponse) {
+pub fn broadcast_response<R: tauri::Runtime>(app: &tauri::AppHandle<R>, response: &BridgeResponse) {
     match serde_json::to_value(response) {
         Ok(payload) => crate::window::deliver_to_all(app, "bridge-response", &payload),
         Err(e) => log::warn!("Bridge: could not serialize a response: {}", e),
@@ -125,48 +125,6 @@ pub fn broadcast_response(app: &tauri::AppHandle, response: &BridgeResponse) {
 }
 
 // ─── Built-in Bridge Component Handlers ─────────────────────────────────────
-
-async fn handle_notification(
-    app: &tauri::AppHandle,
-    message: &BridgeMessage,
-) -> Result<serde_json::Value, String> {
-    let title = message.data["title"].as_str().unwrap_or("Notification");
-    let body = message.data["body"].as_str().unwrap_or("");
-
-    // Use tauri-plugin-notification
-    app.emit(
-        "show-notification",
-        serde_json::json!({ "title": title, "body": body }),
-    )
-    .map_err(|e| format!("{}", e))?;
-
-    Ok(serde_json::json!({ "status": "shown" }))
-}
-
-async fn handle_menu_item(
-    app: &tauri::AppHandle,
-    message: &BridgeMessage,
-) -> Result<serde_json::Value, String> {
-    match message.event.as_str() {
-        "connect" => {
-            let title = message.data["title"].as_str().unwrap_or("Menu Item");
-
-            log::info!("Bridge: registering menu item '{}'", title);
-
-            // Emit event so the menu system can pick it up
-            app.emit("bridge-menu-item-register", &message.data)
-                .map_err(|e| format!("{}", e))?;
-
-            Ok(serde_json::json!({ "status": "registered" }))
-        }
-        "disconnect" => {
-            app.emit("bridge-menu-item-unregister", &message.data)
-                .map_err(|e| format!("{}", e))?;
-            Ok(serde_json::json!({ "status": "unregistered" }))
-        }
-        _ => Ok(serde_json::json!({ "status": "unknown_event" })),
-    }
-}
 
 async fn handle_file_picker(
     app: &tauri::AppHandle,
@@ -253,45 +211,6 @@ async fn handle_file_picker(
                 Ok(None) => Ok(serde_json::json!({ "status": "cancelled", "path": null })),
                 Err(e) => Err(format!("Dialog error: {}", e)),
             }
-        }
-        _ => Ok(serde_json::json!({ "status": "unknown_event" })),
-    }
-}
-
-async fn handle_badge(
-    app: &tauri::AppHandle,
-    message: &BridgeMessage,
-) -> Result<serde_json::Value, String> {
-    let count = message.data["count"].as_u64().unwrap_or(0);
-    log::info!("Bridge: setting dock badge to {}", count);
-
-    #[cfg(target_os = "macos")]
-    {
-        // macOS dock badge via Cocoa API
-        app.emit("bridge-badge-update", count)
-            .map_err(|e| format!("{}", e))?;
-    }
-
-    Ok(serde_json::json!({ "status": "updated", "count": count }))
-}
-
-async fn handle_shortcut(
-    app: &tauri::AppHandle,
-    message: &BridgeMessage,
-) -> Result<serde_json::Value, String> {
-    match message.event.as_str() {
-        "register" => {
-            let accelerator = message.data["accelerator"]
-                .as_str()
-                .unwrap_or("");
-            let id = message.data["id"].as_str().unwrap_or("");
-
-            log::info!("Bridge: registering shortcut '{}' -> '{}'", accelerator, id);
-
-            app.emit("bridge-shortcut-register", &message.data)
-                .map_err(|e| format!("{}", e))?;
-
-            Ok(serde_json::json!({ "status": "registered" }))
         }
         _ => Ok(serde_json::json!({ "status": "unknown_event" })),
     }

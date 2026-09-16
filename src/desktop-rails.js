@@ -27,6 +27,15 @@
     bridgeResponseHandlers.add(handler);
     return () => bridgeResponseHandlers.delete(handler);
   }
+  /** Call back with the data of one component's event. */
+  function listenFor(component, eventName, callback) {
+    return onBridgeResponse((event) => {
+      const payload = event.payload;
+      if (payload && payload.component === component && payload.event === eventName) {
+        callback(payload.data || {});
+      }
+    });
+  }
   function dispatchBridgeResponse(payload) {
     bridgeResponseHandlers.forEach((handler) => {
       try {
@@ -90,6 +99,26 @@
       } catch (e) {
         console.error("[desktop-rails] Bridge message failed:", e);
         return null;
+      }
+    },
+
+    /**
+     * Send a bridge message and reject when the shell refuses it.
+     *
+     * sendBridgeMessage() turns every failure into null, which is how a stub
+     * used to read as success. The notification, badge, shortcut and menu APIs
+     * use this instead, so "another application already uses Ctrl+Alt+K"
+     * reaches the caller as an Error with that message. Outside the shell it
+     * resolves to null, the same no-op as everything else.
+     */
+    async invokeBridge(component, event, data = {}) {
+      if (!INVOKE) return null;
+      try {
+        return await INVOKE("handle_bridge_message", {
+          message: { component, event, data },
+        });
+      } catch (e) {
+        throw new Error(typeof e === "string" ? e : (e && e.message) || String(e), { cause: e });
       }
     },
 
@@ -447,6 +476,145 @@
       },
     },
 
+    // ─── Notifications API ───────────────────────────────────────────────────
+    //
+    // OS notifications, delivered by the platform's own service. show()
+    // resolves with { status: "shown", id, clickable } once the service has
+    // accepted it, and rejects when there is none or the config turned
+    // notifications off. A click brings the window forward and fires
+    // desktop-rails:notification-click with { id } (Linux and Windows; on
+    // macOS the OS activates the app and reports nothing).
+    //
+    //   await DesktopRails.notifications.show({ title: "Export finished", body: "invoice.pdf", id: "export" })
+    //   DesktopRails.notifications.onClick(({ id }) => Turbo.visit(`/exports/${id}`))
+
+    notifications: {
+      async show({ title, body = null, id = null } = {}) {
+        return DesktopRails.invokeBridge("notification", "show", { title, body, id });
+      },
+
+      /** "granted", "denied" (turned off in the config), "unavailable" (no
+       *  notification service) or "unknown" (the platform cannot say without
+       *  prompting). Desktop platforms never prompt, so asking is looking. */
+      async permission() {
+        const result = await DesktopRails.invokeBridge("notification", "permission", {});
+        return result ? result.permission : "unavailable";
+      },
+
+      async requestPermission() {
+        return DesktopRails.notifications.permission();
+      },
+
+      onClick(callback) {
+        return listenFor("notification", "click", callback);
+      },
+    },
+
+    /** Shorthand for notifications.show(). */
+    async notify(title, body = null, options = {}) {
+      return DesktopRails.notifications.show({ ...options, title, body });
+    },
+
+    // ─── Badge API ───────────────────────────────────────────────────────────
+    //
+    // The Dock (macOS) or launcher (Linux docks that speak the Unity launcher
+    // protocol) badge. Resolves with { supported }: false on Windows, which has
+    // no badge for desktop apps, and for labels anywhere but macOS.
+
+    badge: {
+      async set(count) {
+        return DesktopRails.invokeBridge("badge", "set", { count });
+      },
+
+      /** macOS only; elsewhere resolves with supported: false. */
+      async setLabel(label) {
+        return DesktopRails.invokeBridge("badge", "set", { label });
+      },
+
+      async clear() {
+        return DesktopRails.invokeBridge("badge", "clear", {});
+      },
+    },
+
+    // ─── Global Shortcuts API ────────────────────────────────────────────────
+    //
+    // Combinations that reach the app while another application has focus.
+    // They need a Control, Alt/Option or Command/Super modifier. Registering
+    // the same id and combination again (after a reload, say) resolves with
+    // alreadyRegistered: true rather than grabbing it twice; a combination
+    // another application holds rejects.
+    //
+    //   await DesktopRails.shortcuts.register("palette", "CmdOrCtrl+Shift+K", { focus: true })
+    //   DesktopRails.shortcuts.on("palette", () => openPalette())
+    //
+    // Also dispatched as desktop-rails:shortcut with { id, accelerator }, and
+    // the config's summon shortcut as desktop-rails:summon.
+
+    shortcuts: {
+      async register(id, accelerator, options = {}) {
+        return DesktopRails.invokeBridge("shortcut", "register", {
+          id,
+          accelerator,
+          focus: Boolean(options.focus),
+        });
+      },
+
+      async unregister(id) {
+        return DesktopRails.invokeBridge("shortcut", "unregister", { id });
+      },
+
+      /** Releases every shortcut pages registered; the summon shortcut stays. */
+      async unregisterAll() {
+        return DesktopRails.invokeBridge("shortcut", "unregister-all", {});
+      },
+
+      async list() {
+        return DesktopRails.invokeBridge("shortcut", "list", {});
+      },
+
+      /** Call back when `id` fires. Returns a function that stops listening. */
+      on(id, callback) {
+        return listenFor("shortcut", "triggered", (data) => {
+          if (data && data.id === id) callback(data);
+        });
+      },
+
+      onSummon(callback) {
+        return listenFor("shortcut", "summon", callback);
+      },
+    },
+
+    // ─── Menu API ────────────────────────────────────────────────────────────
+    //
+    // Items in the app's menu bar that trigger page actions. `menu` names a
+    // top-level menu: an existing one ("File", "View") or a new one, created
+    // before "Window". Defaults to "File".
+    //
+    //   await DesktopRails.menu.add({ id: "export", title: "Export PDF", accelerator: "CmdOrCtrl+Shift+E" })
+    //   DesktopRails.menu.onClick("export", () => this.export())
+    //
+    // Also dispatched as desktop-rails:menu-item with { id }.
+
+    menu: {
+      async add({ id, title, accelerator = null, menu = null } = {}) {
+        return DesktopRails.invokeBridge("menu-item", "register", { id, title, accelerator, menu });
+      },
+
+      async remove(id) {
+        return DesktopRails.invokeBridge("menu-item", "unregister", { id });
+      },
+
+      async list() {
+        return DesktopRails.invokeBridge("menu-item", "list", {});
+      },
+
+      onClick(id, callback) {
+        return listenFor("menu-item", "click", (data) => {
+          if (data && data.id === id) callback(data);
+        });
+      },
+    },
+
     // ─── Autostart API ───────────────────────────────────────────────────────
     //
     // Launch-at-login, meant to be driven by a toggle in the app's own
@@ -472,18 +640,25 @@
     },
   };
 
-  // Surface drag-drop as DOM events so a Stimulus controller can subscribe
-  // with a plain action instead of the DesktopRails API.
+  // Surface what the shell reports as DOM events, so a Stimulus controller can
+  // subscribe with a plain action instead of the DesktopRails API:
+  //   data-action="desktop-rails:shortcut@document->palette#open"
   {
     const domEventNames = {
-      enter: "desktop-rails:drag-enter",
-      drop: "desktop-rails:drop",
-      leave: "desktop-rails:drag-leave",
+      "drag-drop": {
+        enter: "desktop-rails:drag-enter",
+        drop: "desktop-rails:drop",
+        leave: "desktop-rails:drag-leave",
+      },
+      notification: { click: "desktop-rails:notification-click" },
+      shortcut: { triggered: "desktop-rails:shortcut", summon: "desktop-rails:summon" },
+      "menu-item": { click: "desktop-rails:menu-item" },
     };
     onBridgeResponse((event) => {
       const payload = event.payload;
-      const name = payload && payload.component === "drag-drop"
-        ? domEventNames[payload.event]
+      const names = payload && domEventNames[payload.component];
+      const name = names && Object.prototype.hasOwnProperty.call(names, payload.event)
+        ? names[payload.event]
         : null;
       if (name) {
         document.dispatchEvent(new CustomEvent(name, { detail: payload.data }));
