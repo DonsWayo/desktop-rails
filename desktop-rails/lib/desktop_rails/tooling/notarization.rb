@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "tmpdir"
-require "desktop_rails/tooling"
+require "desktop_rails/tooling/command"
 
 module DesktopRails
   module Tooling

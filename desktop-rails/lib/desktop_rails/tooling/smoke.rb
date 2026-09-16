@@ -6,7 +6,7 @@ require "open3"
 require "tempfile"
 require "tmpdir"
 require "uri"
-require "desktop_rails/tooling"
+require "desktop_rails/tooling/command"
 
 module DesktopRails
   module Tooling

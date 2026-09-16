@@ -2,6 +2,7 @@
 
 require "open3"
 require "shellwords"
+require "desktop_rails/tooling"
 
 module DesktopRails
   module Tooling
@@ -80,6 +81,18 @@ module DesktopRails
                                 argv: argv, status: status, output: tail.join)
       end
 
+      # The runner contract DesktopRails::Packager's layouts take — argv in,
+      # whether it succeeded out — so packaging and the build-machine tooling
+      # start programs one way. Output passes through, and a program that could
+      # not be started is a false with its reason printed, as `system` would
+      # answer nil.
+      def call(argv)
+        stream(argv, env: {}, chdir: nil, clean_ruby: true) { |line| out.print(line) }.success?
+      rescue CommandFailed => e
+        out.puts(e.message)
+        false
+      end
+
       # Runs argv and returns its combined output and status whatever happened,
       # for the commands whose failure is an answer rather than an error:
       # `strip` on a file it cannot strip, `ldd` on something that is not
@@ -110,17 +123,23 @@ module DesktopRails
 
       private
 
-      def stream(argv, env:, chdir:, clean_ruby:)
+      def stream(argv, env:, chdir:, clean_ruby:, &block)
         argv = argv.map(&:to_s)
         options = {}
         options[:chdir] = chdir.to_s if chdir
-        Open3.popen2e(self.class.environment(env, clean_ruby: clean_ruby), *argv, options) do |stdin, output, wait|
-          stdin.close
-          # Compiler output is not always valid UTF-8, and an invalid byte must
-          # not turn a build failure into an encoding error.
-          output.each_line { |line| yield line.dup.force_encoding(Encoding::UTF_8).scrub }
-          wait.value
+        environment = self.class.environment(env, clean_ruby: clean_ruby)
+        spawn = lambda do
+          Open3.popen2e(environment, *argv, options) do |stdin, output, wait|
+            stdin.close
+            # Compiler output is not always valid UTF-8, and an invalid byte
+            # must not turn a build failure into an encoding error.
+            output.each_line { |line| block.call(line.dup.force_encoding(Encoding::UTF_8).scrub) }
+            wait.value
+          end
         end
+        # Under `bundle exec` or bin/rails, Bundler also rewrites variables the
+        # list above does not name; its own unbundled environment undoes them.
+        clean_ruby && defined?(Bundler) ? Bundler.with_unbundled_env(&spawn) : spawn.call
       rescue SystemCallError => e
         # ENOENT, EACCES: the program never started, which deserves its own
         # sentence rather than a Ruby backtrace from inside Open3.

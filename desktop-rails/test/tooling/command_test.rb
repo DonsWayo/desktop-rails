@@ -92,6 +92,20 @@ class ToolingCommandTest < Minitest::Test
     end
   end
 
+  def test_it_is_the_runner_package_layouts_call
+    # One way to start a program: the layouts' runner contract is argv in,
+    # success out, and a failure either of them raises is one class.
+    require "desktop_rails/packager"
+    assert_instance_of Command, DesktopRails::Packager.system_runner
+    assert_same DesktopRails::Tooling::CommandFailed, DesktopRails::Packager::CommandFailed
+
+    assert_equal true, @command.call([ RbConfig.ruby, "-e", "puts 'signed'" ])
+    assert_includes @out.string, "signed"
+    assert_equal false, @command.call([ RbConfig.ruby, "-e", "exit 1" ])
+    assert_equal false, @command.call([ "desktop-rails-no-such-program" ])
+    assert_match(/Could not run desktop-rails-no-such-program/, @out.string)
+  end
+
   def test_invalid_utf8_output_is_not_an_encoding_error
     error = assert_raises(DesktopRails::Tooling::CommandFailed) do
       @command.run([ RbConfig.ruby, "-e", "$stdout.write(\"\\xff\\xfe bad bytes\\n\"); exit 1" ], quiet: true)

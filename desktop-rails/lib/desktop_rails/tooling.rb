@@ -22,6 +22,12 @@ module DesktopRails
   # Each class separates what it decides — argv, which files, what an output
   # means — from what it does, and takes the process runner as an argument, so
   # the decisions are tested without a compiler, a certificate or a GUI.
+  #
+  # What a package looks like is DesktopRails::Packager's, not this module's:
+  # its layouts assemble the .app and the trees, and run programs through the
+  # same Command. The bundled packers still under packaging/ are meant to move
+  # onto those layouts, calling Prune, RuntimeVerification and the Notarization
+  # and DiskImage steps here.
   module Tooling
     class Error < StandardError; end
 
@@ -107,5 +113,3 @@ module DesktopRails
     end
   end
 end
-
-require "desktop_rails/tooling/command"

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "desktop_rails/tooling/command"
 require "desktop_rails/packager/archive"
 require "desktop_rails/packager/layout"
 require "desktop_rails/packager/mac_app"
@@ -28,7 +29,9 @@ module DesktopRails
     CONFIG_FILENAME = "desktop-rails.config.json"
 
     # Another program the package needed, such as codesign, did not succeed.
-    class CommandFailed < StandardError; end
+    # The same class the build-machine tooling raises, so that one rescue
+    # covers a package and the runtime it carries.
+    CommandFailed = Tooling::CommandFailed
 
     # Something handed to a layout it cannot use, such as an icon format the
     # platform has no place for.
@@ -58,12 +61,10 @@ module DesktopRails
     # Runs argv with no shell in between and outside this process's bundle,
     # for the same reasons desktop.rake's own runner does: a path with a space
     # cannot split, and a Bundler-loaded parent's RUBYOPT must not leak into
-    # tools that have no use for it.
+    # tools that have no use for it. It is the build-machine tooling's runner,
+    # so packaging and the tooling start programs one way.
     def system_runner
-      lambda do |argv|
-        launch = -> { system(*argv.map(&:to_s)) }
-        defined?(Bundler) ? Bundler.with_unbundled_env(&launch) : launch.call
-      end
+      Tooling::Command.new
     end
   end
 end

@@ -1,5 +1,5 @@
 require_relative "../test_helper"
-require "desktop_rails/tooling"
+require "desktop_rails/tooling/command"
 require "fileutils"
 require "stringio"
 require "tmpdir"

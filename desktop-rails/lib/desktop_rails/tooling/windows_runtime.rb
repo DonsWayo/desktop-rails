@@ -2,7 +2,7 @@
 
 require "fileutils"
 require "tmpdir"
-require "desktop_rails/tooling"
+require "desktop_rails/tooling/command"
 require "desktop_rails/tooling/runtime_verification"
 
 module DesktopRails
