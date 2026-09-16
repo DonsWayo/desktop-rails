@@ -31,13 +31,13 @@ jobs:
       # The Ruby that runs the tooling, not the one being built.
       - uses: ruby/setup-ruby@v1
         with:
-          ruby-version: "3.4"
+          ruby-version: "4.0.7"
 
       - name: Cache the vendored dependencies
         uses: actions/cache@v4
         with:
           path: .runtime-build/vendor
-          key: vendor-arm64-darwin-openssl3.5.4-libdir-yaml0.2.5
+          key: vendor-arm64-darwin-openssl4.0.2-libdir-yaml0.2.5
 
       - name: Build the interpreter
         run: ruby desktop-rails/exe/desktop-rails-tool runtime build --out "$PWD/out/ruby"
@@ -126,13 +126,13 @@ jobs:
 
       - uses: ruby/setup-ruby@v1
         with:
-          ruby-version: "3.4"
+          ruby-version: "4.0.7"
 
       - name: Cache the vendored dependencies
         uses: actions/cache@v4
         with:
           path: .runtime-build/vendor
-          key: vendor-x86_64-linux-openssl3.5.4-libdir-yaml0.2.5
+          key: vendor-x86_64-linux-openssl4.0.2-libdir-yaml0.2.5
 
       - name: Build the interpreter
         run: ruby desktop-rails/exe/desktop-rails-tool runtime build --out "$PWD/out/ruby"
@@ -213,27 +213,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # A separate Ruby with a devkit, to run the tooling and to compile the
+      # gems. Several ship source-only on Windows (puma, io-console, nio4r), so a
+      # compiler is needed at build time. The end user never installs gems. It
+      # has to be the version the shipped interpreter is, or the compiled
+      # extensions would not load in it.
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0.7"
+
       # The interpreter that ships: RubyInstaller's portable archive, which
       # already relocates (spike 3). Not built here, because building a second
       # one would be work for its own sake.
       - name: Fetch the portable interpreter
         shell: pwsh
         run: |
-          $v = "3.4.10"
-          curl.exe -fsSL -o ruby.7z `
-            "https://github.com/oneclick/rubyinstaller2/releases/download/RubyInstaller-$v-1/rubyinstaller-$v-1-x64.7z"
-          7z x ruby.7z -oC:\unpacked | Out-Null
-          $src = (Get-ChildItem C:\unpacked | Select-Object -First 1).FullName
-          New-Item -ItemType Directory -Force -Path "$env:GITHUB_WORKSPACE\out" | Out-Null
-          Copy-Item -Recurse $src "$env:GITHUB_WORKSPACE\out\ruby"
-          & "$env:GITHUB_WORKSPACE\out\ruby\bin\ruby.exe" -e 'require "psych"; require "openssl"; puts "OK #{RUBY_VERSION} #{RUBY_PLATFORM}"'
-
-      # A separate Ruby with a devkit, only to compile the gems. Several ship
-      # source-only on Windows (puma, io-console, nio4r), so a compiler is
-      # needed at build time. The end user never installs gems.
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "3.4"
+          ruby desktop-rails\exe\desktop-rails-tool runtime fetch-windows --version 4.0.7 --out "$env:GITHUB_WORKSPACE\out\ruby"
+          if ($LASTEXITCODE -ne 0) { throw "the portable interpreter did not check out" }
 
       - name: Generate a Rails app and build its gems
         shell: pwsh

@@ -114,7 +114,7 @@ class ToolingRuntimeBuildTest < Minitest::Test
       fetched = []
       fetcher = ->(url, path) { fetched << url; write(path, "archive") }
 
-      b = build(work: dir, out: prefix, ruby_version: "3.4.8", runner: runner, fetcher: fetcher)
+      b = build(work: dir, out: prefix, ruby_version: "3.4.8", openssl_version: "3.5.4", runner: runner, fetcher: fetcher)
       assert_equal prefix, b.build!
 
       assert_equal [ b.yaml_url, b.openssl_url, b.ruby_url ], fetched

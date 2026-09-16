@@ -30,7 +30,7 @@ on:
       - ".github/workflows/build-runtime.yml"
 
 env:
-  RUBY_VERSION: "3.4.8"
+  RUBY_VERSION: "4.0.7"
 
 jobs:
   unix:
@@ -55,7 +55,7 @@ jobs:
       # The Ruby that runs the tooling, not the one being built.
       - uses: ruby/setup-ruby@v1
         with:
-          ruby-version: "3.4"
+          ruby-version: "4.0.7"
 
       # OpenSSL is ~20 minutes and changes only when its version does, so it is
       # cached on the versions rather than rebuilt every run.
@@ -64,7 +64,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .runtime-build/vendor
-          key: vendor-${{ matrix.triple }}-openssl3.5.4-libdir-yaml0.2.5
+          key: vendor-${{ matrix.triple }}-openssl4.0.2-libdir-yaml0.2.5
 
       - name: Build
         run: ruby desktop-rails/exe/desktop-rails-tool runtime build --ruby "$RUBY_VERSION" --out "$PWD/out/ruby"
@@ -102,19 +102,19 @@ jobs:
 
       - uses: ruby/setup-ruby@v1
         with:
-          ruby-version: "3.4"
+          ruby-version: "4.0.7"
 
       # The same step release-prebuilt.yml publishes from.
       - name: Fetch the portable archive and check it relocates
         shell: pwsh
         run: |
-          ruby desktop-rails\exe\desktop-rails-tool runtime fetch-windows --out "$env:GITHUB_WORKSPACE\out\ruby"
+          ruby desktop-rails\exe\desktop-rails-tool runtime fetch-windows --version $env:RUBY_VERSION --out "$env:GITHUB_WORKSPACE\out\ruby"
           if ($LASTEXITCODE -ne 0) { throw "the portable interpreter did not check out" }
 
       - name: Package
         shell: pwsh
         run: |
-          & "$env:SystemRoot\System32\tar.exe" -a -c -f ruby-3.4.10-x64-mingw-ucrt.zip -C out ruby
+          & "$env:SystemRoot\System32\tar.exe" -a -c -f ruby-$env:RUBY_VERSION-x64-mingw-ucrt.zip -C out ruby
           if ($LASTEXITCODE -ne 0) { throw "could not archive the interpreter" }
 
       # Unpacked the way the gem unpacks it, and checked by that interpreter
@@ -123,7 +123,7 @@ jobs:
         shell: pwsh
         run: |
           $landed = "$env:RUNNER_TEMP\landed here"
-          Expand-Archive -LiteralPath ruby-3.4.10-x64-mingw-ucrt.zip -DestinationPath $landed -Force
+          Expand-Archive -LiteralPath ruby-$env:RUBY_VERSION-x64-mingw-ucrt.zip -DestinationPath $landed -Force
           & "$landed\ruby\bin\ruby.exe" desktop-rails\exe\desktop-rails-tool runtime verify "$landed\ruby"
           if ($LASTEXITCODE -ne 0) { throw "the unpacked interpreter failed its check" }
 

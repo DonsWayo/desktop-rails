@@ -7,7 +7,7 @@ class ToolingWindowsRuntimeTest < Minitest::Test
   WindowsRuntime = DesktopRails::Tooling::WindowsRuntime
 
   def test_the_portable_archive_url
-    assert_equal "https://github.com/oneclick/rubyinstaller2/releases/download/RubyInstaller-3.4.10-1/rubyinstaller-3.4.10-1-x64.7z",
+    assert_equal "https://github.com/oneclick/rubyinstaller2/releases/download/RubyInstaller-4.0.7-1/rubyinstaller-4.0.7-1-x64.7z",
                  WindowsRuntime.new(out: "C:/out").url
     assert_match(/RubyInstaller-3\.3\.9-1/, WindowsRuntime.new(out: "C:/out", version: "3.3.9").url)
   end
@@ -26,7 +26,7 @@ class ToolingWindowsRuntimeTest < Minitest::Test
       runner = RecordingRunner.new
       runner.on(->(argv) { argv.first == "7z" }) do |argv|
         into = argv[3].delete_prefix("-o")
-        executable(File.join(into, "rubyinstaller-3.4.10-1-x64", "bin", "ruby.exe"))
+        executable(File.join(into, "rubyinstaller-4.0.7-1-x64", "bin", "ruby.exe"))
       end
       fetched = nil
       fetcher = ->(url, path) { fetched = path; write(path, "7z") }

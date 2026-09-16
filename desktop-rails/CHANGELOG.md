@@ -55,6 +55,11 @@ this release; the prebuilt shell of 0.3.0.pre2 still has the old defaults.
   repository, and Windows downloads get the same relocation check as macOS and
   Linux. `gem.sh` and the unpublished `desktop-rails-runtime` gem are gone.
   `notarize` now also re-signs everything in `Contents/MacOS`.
+- The runtime a release ships is Ruby 4.0.7: built against OpenSSL 4.0.2 and
+  libyaml 0.2.5 on macOS and Linux, and RubyInstaller 4.0.7-1 on Windows. The
+  build confines pkg-config to the vendored libraries with
+  `PKG_CONFIG_LIBDIR`; clearing `PKG_CONFIG_PATH` alone let psych link
+  Homebrew's libyaml.
 
 - The default app id is `dev.desktop-rails.<app>` instead of
   `dev.turbodesktop.<app>`. The app id names the data directory, so an app

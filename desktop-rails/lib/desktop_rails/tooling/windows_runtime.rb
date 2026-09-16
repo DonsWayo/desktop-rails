@@ -20,7 +20,8 @@ module DesktopRails
     # and desktop:runtime on a Windows machine the release does not serve or
     # that asked for DESKTOP_RAILS_RUNTIME_FROM_SOURCE.
     class WindowsRuntime
-      DEFAULT_VERSION = "3.4.10"
+      # The same Ruby the macOS and Linux runtimes are built from.
+      DEFAULT_VERSION = "4.0.7"
 
       attr_reader :version, :out
 

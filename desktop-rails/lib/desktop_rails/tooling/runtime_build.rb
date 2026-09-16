@@ -26,8 +26,10 @@ module DesktopRails
     # make; the interpreter it produces is compiled from source and shares nothing
     # with the one running this code.
     class RuntimeBuild
-      DEFAULT_RUBY_VERSION = "3.4.8"
-      DEFAULT_OPENSSL_VERSION = "3.5.4"
+      # The versions a release ships. Bumping one means a new vendor cache key in
+      # the workflows that build runtimes, which name the OpenSSL version in it.
+      DEFAULT_RUBY_VERSION = "4.0.7"
+      DEFAULT_OPENSSL_VERSION = "4.0.2"
       DEFAULT_YAML_VERSION = "0.2.5"
 
       # The directory layout CI caches: `vendor` is keyed on the dependency
