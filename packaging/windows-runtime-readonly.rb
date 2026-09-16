@@ -59,9 +59,12 @@ module WindowsRuntimeReadonly
   end
 
   def files(runtime)
-    # site_ruby is where RubyInstaller puts it; the version directory is where
-    # RubyGems itself would look too.
-    Dir.glob(File.join(runtime, "lib", "ruby", "{site_ruby/*,*}", "rubygems", "defaults", "operating_system.rb")).uniq
+    # RubyInstaller installs it under lib/ruby/<ABI>; site_ruby is where
+    # RubyGems would also find one. expand_path because the packer passes a
+    # Windows path, and in a glob pattern its backslashes are escapes: the
+    # first run of this found nothing and said so.
+    root = File.expand_path(runtime)
+    Dir.glob(File.join(root, "lib", "ruby", "{site_ruby/*,*}", "rubygems", "defaults", "operating_system.rb")).uniq
   end
 
   def apply(runtime)

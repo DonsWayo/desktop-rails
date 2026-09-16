@@ -79,7 +79,7 @@ class WindowsRuntimeReadonlyTest < Minitest::Test
 
   def test_it_rewrites_the_copy_where_rubyinstaller_puts_it
     Dir.mktmpdir do |runtime|
-      file = File.join(runtime, "lib", "ruby", "site_ruby", "3.4.0", "rubygems", "defaults", "operating_system.rb")
+      file = File.join(runtime, "lib", "ruby", "3.4.0", "rubygems", "defaults", "operating_system.rb")
       FileUtils.mkdir_p(File.dirname(file))
       File.write(file, RUBYINSTALLER)
 
