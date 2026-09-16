@@ -136,6 +136,116 @@ that found them.
 - **Not tested here: the native call.** In a browser the bridge is absent by
   design, so "Notify from native" has only been proven to degrade correctly.
 
+## A freshly generated app, in CI, with desktop-rails
+
+The second field test, after the rename, uses the new names. Nothing in it was
+done by hand on a developer machine: `.github/workflows/fresh-app.yml` runs
+`rails new` (Rails 8.1.3.1) on clean macOS, Linux and Windows runners, adds the
+gem by path, runs `desktop_rails:install`, `bin/rails desktop:runtime` and
+`bin/rails desktop:package` — downloading the 0.3.0.pre1 runtime and shell —
+launches the window and reads the Rails log to see what the window loaded. Then
+it does the same with `examples/notes`, a generated notes app, and asserts both
+native directions from inside the running window. Each finding below was a bug
+in the framework, is fixed, and has a test named beside it.
+
+1. **The generator still left every environment-keyed file to the user.**
+   Finding 2 above, still open. It now writes the `desktop:` sections of
+   `database.yml` (SQLite files under `DesktopRails.data_dir`, mirroring the
+   Rails 8 primary/cache/queue/cable layout), `cable.yml` (async) and
+   `storage.yml` (Disk in the data directory), adds `/.desktop-rails/` to
+   `.gitignore`, notes rather than guesses for a non-SQLite adapter or a
+   missing file, and is idempotent. *`test/generators/install_generator_test.rb`.*
+
+2. **A packaged app on a fresh machine opened onto an empty database.** Nothing
+   created, loaded or migrated the schema; the first field test only worked
+   because its data directory had been migrated by hand. The boot scripts now
+   call `DesktopRails::Database.prepare!` before Puma binds: `db:prepare` for
+   every database, under a lock, never dumping the schema into the bundle, with
+   output kept off the handshake stdout. Writing its test found that Rails looks
+   for the primary database's migrations relative to the working directory
+   unless `db:load_config` ran, so that is set up too. In CI the example serves
+   its seeded note from an empty data directory, and a second build with one
+   more migration, launched on the same data, applies it, keeps the data and
+   does not reseed. *`test/database_test.rb`.*
+
+3. **Finding 5, json 3 against Active Support 8.1.3.1, is still true and still
+   not ours.** json 3.0.2 removed the positional options hash
+   `ActiveSupport::JSON.decode` passes, so every signed cookie, and every form
+   POST, raises `ArgumentError`. The generator pins `json < 3` only when calling
+   `ActiveSupport::JSON.decode` in the app actually fails.
+   *`install_generator_test.rb`, "pins json only while…".*
+
+4. **Linux and Windows packages of any path-gem app could not boot.**
+   Findings 7 and 8 were fixed in `pack.sh` only: `pack-linux.sh` and
+   `pack-windows.ps1` never vendored path gems or wrote `BUNDLE_WITHOUT`.
+   *`test/packers_test.rb`, which runs the real `pack-linux.sh`.*
+
+5. **Every packer copied what must not ship.** `.desktop-rails/` — the runtime,
+   the gems and the previous build — went into the app a second time, with the
+   developer's own `storage/` databases and `config/master.key`.
+   *`packers_test.rb`.*
+
+6. **bootsnap wrote into the bundle.** Every new app requires bootsnap, which
+   caches under `tmp/cache` beside `config/`. The packers exclude `tmp/`, so the
+   first launch created `tmp/cache/bootsnap` inside the `.app` (breaking the
+   seal) and the Linux tree. CI caught it by checking nothing under the bundle
+   changed while it ran. Both boot scripts now point `BOOTSNAP_CACHE_DIR` at the
+   data directory. *`install_generator_test.rb`, the drift and order tests;
+   `app_check.sh unchanged=`.*
+
+7. **The bridge refused every call from every packaged app.** The window loads
+   `http://127.0.0.1:<port>`, and the capability's remote URLs admitted only
+   `localhost` and `https`. `__TAURI_INTERNALS__.invoke` existed and
+   `DesktopRails.window.state()` returned null, before the shell's own origin
+   check ever ran — the e2e suite serves its fixture on `localhost`, so it never
+   saw this. *`test/acl.test.js`, "the capability admits the origin every
+   packager configures".*
+
+8. **The downloaded Linux shell crashed without a tray library.**
+   libappindicator-sys panics when neither ayatana nor legacy appindicator is
+   installed, so on a runner with only WebKitGTK — all the README asks for — the
+   0.3.0.pre1 shell died right after its server announced itself. The tray is
+   now skipped with a warning; the example runs with the library removed.
+   *`src-tauri/src/tray.rs` tests.*
+
+9. **Every bundled app asked port 0 for its path configuration.** The URL was
+   derived from the config's placeholder `http://127.0.0.1:0`; it is now asked of
+   the address the server announced. *`window.rs`,
+   `path_configuration_comes_from_the_announced_server…`.*
+
+10. **"Turbo Streams over SSE" was advertised and did not exist.** Added
+    `DesktopRails::Streams`, the engine's `/desktop-rails/stream` endpoint and
+    `desktop_stream_from`. In CI the example's reply to its JavaScript report
+    arrives over the stream and is reported back. *`test/streams_test.rb`.*
+
+11. **Windows could not run the gem's own tasks.** `bin/bundle` and
+    `bin/rails` were executed directly, which Windows cannot do for a script
+    with no extension; `fetch-windows-runtime.ps1` only accepted a destination
+    containing "out" and left `ruby.7z` in the app. `desktop:runtime` also
+    ignored `DESKTOP_RAILS_RUNTIME` as a destination. *`packaging_test.rb`.*
+
+Not ours, recorded so nobody chases them: `bundle add --path` on Windows writes
+the path into a double-quoted string, so backslashes become escapes (give it
+forward slashes); and `desktop:package` passing no shell on Linux and Windows
+was found here too, but was fixed on the prebuilt-downloads branch first.
+
+### What CI asserts, from outside the app
+
+- The fresh app's window requested `/` and got 200 (the Rails log, read before
+  anything else touches the server), the page is the app's, nothing was
+  written inside the bundle, the macOS signature still verifies, and killing
+  the shell takes the server with it. The embedded shell is the downloaded one.
+- The example, packaged with the shell built from the commit: its model-backed
+  page on an empty data directory; `native-reports/javascript.json`, written
+  when the Stimulus controller's `DesktopRails.window.state()` call returns;
+  `stream.json`, written when the server's reply reaches the window over SSE;
+  `ruby.json`, written by `GET /native/window`, which calls
+  `DesktopRails::Native.call("window", "state")` over the control channel; then
+  the update launch above.
+- Windows packages the fresh app with the downloaded runtime and shell, checks
+  the tree, and boots its server on a clean data directory. It does not open a
+  window.
+
 ## Earlier notes, from before 4 and 5 were dealt with
 
 
