@@ -53,11 +53,15 @@ cp -R "$RUNTIME" "$DIR/lib/ruby"
 [ -n "$GEMS" ] && [ -d "$GEMS" ] && cp -R "$GEMS" "$DIR/lib/gems"
 # Not everything under the app belongs in what ships. .desktop-rails/ holds the
 # interpreter, the gems and earlier builds, all of which are copied in their own
-# right. storage/ holds the developer's own databases, and the keys decrypt
-# credentials that must never reach a stranger's machine. See pack.sh.
+# right. storage/ holds the developer's own databases. The credentials keys stay
+# behind when the app has a desktop environment, which needs none. See pack.sh.
+KEY_EXCLUDES=()
+if [ -f "$APP_SRC/config/environments/desktop.rb" ]; then
+  KEY_EXCLUDES=(--exclude '/config/master.key' --exclude '/config/credentials/*.key')
+fi
 rsync -a --exclude 'tmp/' --exclude 'log/' --exclude '.git/' --exclude 'node_modules/' \
       --exclude '/.desktop-rails/' --exclude '/storage/' \
-      --exclude '/config/master.key' --exclude '/config/credentials/*.key' \
+      ${KEY_EXCLUDES[@]+"${KEY_EXCLUDES[@]}"} \
       "$APP_SRC/" "$DIR/lib/app/"
 cp "$HERE/templates/boot.rb" "$DIR/lib/app/boot.rb"
 echo "  interpreter, gems and app copied"

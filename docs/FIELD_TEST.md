@@ -182,8 +182,11 @@ in the framework, is fixed, and has a test named beside it.
 
 5. **Every packer copied what must not ship.** `.desktop-rails/` — the runtime,
    the gems and the previous build — went into the app a second time, with the
-   developer's own `storage/` databases and `config/master.key`.
-   *`packers_test.rb`.*
+   developer's own `storage/` databases and `config/master.key`. The keys are
+   now left out only when the app has a desktop environment, which generates
+   its own secret: excluding them unconditionally broke package-smoke's
+   production-environment app at boot, and for such an app the key is still
+   shipped. *`packers_test.rb`.*
 
 6. **bootsnap wrote into the bundle.** Every new app requires bootsnap, which
    caches under `tmp/cache` beside `config/`. The packers exclude `tmp/`, so the

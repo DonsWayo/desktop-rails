@@ -56,14 +56,16 @@ if ($Gems -and (Test-Path $Gems)) { Copy-Item -Recurse $Gems "$dir\lib\gems" }
 #
 # Not everything under the app belongs in what ships. .desktop-rails holds the
 # interpreter, the gems and earlier builds, all copied in their own right.
-# storage holds the developer's own databases, and the keys decrypt credentials
-# that must never reach a stranger's machine. See pack.sh.
+# storage holds the developer's own databases. The credentials keys stay behind
+# when the app has a desktop environment, which needs none. See pack.sh.
 $null = robocopy $App "$dir\lib\app" /E /NFL /NDL /NJH /NJS /NP `
-  /XD tmp log .git node_modules .desktop-rails (Join-Path $App "storage") `
-  /XF (Join-Path $App "config\master.key")
+  /XD tmp log .git node_modules .desktop-rails (Join-Path $App "storage")
 if ($LASTEXITCODE -ge 8) { throw "copying the app failed (robocopy $LASTEXITCODE)" }
 $global:LASTEXITCODE = 0
-Remove-Item -Force -ErrorAction SilentlyContinue "$dir\lib\app\config\credentials\*.key"
+if (Test-Path (Join-Path $App "config\environments\desktop.rb")) {
+  Remove-Item -Force -ErrorAction SilentlyContinue "$dir\lib\app\config\master.key"
+  Remove-Item -Force -ErrorAction SilentlyContinue "$dir\lib\app\config\credentials\*.key"
+}
 
 Copy-Item "$here\templates\boot.rb" "$dir\lib\app\boot.rb" -Force
 Write-Host "  interpreter, gems and app copied"

@@ -83,12 +83,21 @@ cp -R "$RUNTIME" "$RES/ruby"
 # Not everything under the app belongs in what ships. .desktop-rails/ holds the
 # interpreter, the gems and earlier builds, all of which are copied in their own
 # right, so without this each bundle carried them twice and then a copy of the
-# previous bundle. storage/ holds the developer's own databases, and the keys
-# decrypt credentials that must never reach a stranger's machine: the desktop
-# environment generates its own secret instead.
+# previous bundle. storage/ holds the developer's own databases.
+#
+# The credentials keys stay behind when the app has a desktop environment, which
+# generates its own secret_key_base, so nothing in it needs them. An app packaged
+# in production has no other source for that secret, so its keys still ship; a
+# bundle a stranger downloads can then decrypt the app's credentials, which is a
+# reason to generate the desktop environment.
+KEY_EXCLUDES=()
+if [ -f "$APP_SRC/config/environments/desktop.rb" ]; then
+  KEY_EXCLUDES=(--exclude '/config/master.key' --exclude '/config/credentials/*.key')
+fi
+# The ${a[@]+...} form, because bash 3.2 (macOS) calls an empty array unbound.
 rsync -a --exclude 'tmp/' --exclude 'log/' --exclude '.git/' --exclude 'node_modules/' \
       --exclude '/.desktop-rails/' --exclude '/storage/' \
-      --exclude '/config/master.key' --exclude '/config/credentials/*.key' \
+      ${KEY_EXCLUDES[@]+"${KEY_EXCLUDES[@]}"} \
       "$APP_SRC/" "$RES/app/"
 echo "  interpreter, gems and app copied"
 

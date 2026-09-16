@@ -43,7 +43,8 @@ class PackersTest < Minitest::Test
       # Build products are copied in their own right, not inside the app.
       refute File.exist?(File.join(packed, ".desktop-rails")),
              ".desktop-rails/ was copied into the app: the runtime, gems and last build, twice"
-      # The developer's databases and credential keys stay on their machine.
+      # The developer's databases stay on their machine, and so do the
+      # credential keys of an app whose desktop environment needs none.
       refute File.exist?(File.join(packed, "storage", "development.sqlite3")),
              "the developer's own database shipped"
       refute File.exist?(File.join(packed, "config", "master.key")), "master.key shipped"
@@ -64,11 +65,29 @@ class PackersTest < Minitest::Test
     end
   end
 
+  def test_an_app_without_a_desktop_environment_keeps_its_credentials_key
+    # Packaged in production, the key is the app's only source of a
+    # secret_key_base; excluding it there broke the smoke app at boot.
+    Dir.mktmpdir do |tmp|
+      app = build_app(File.join(tmp, "app"), desktop_env: false)
+      runtime = build_runtime(File.join(tmp, "runtime"))
+
+      output, status = Open3.capture2e(
+        { "RUBYOPT" => nil, "BUNDLE_GEMFILE" => nil },
+        "bash", File.join(PACKAGING, "pack-linux.sh"),
+        "--app", app, "--runtime", runtime, "--name", "Sandbox", "--out", File.join(tmp, "dist")
+      )
+      assert status.success?, "pack-linux.sh failed:\n#{output}"
+      assert File.exist?(File.join(tmp, "dist", "sandbox", "lib", "app", "config", "master.key"))
+      refute File.exist?(File.join(tmp, "dist", "sandbox", "lib", "app", ".desktop-rails"))
+    end
+  end
+
   def test_every_packer_excludes_the_same_things
     {
-      "pack.sh" => [ "/.desktop-rails/", "/storage/", "/config/master.key", "/config/credentials/*.key" ],
-      "pack-linux.sh" => [ "/.desktop-rails/", "/storage/", "/config/master.key", "/config/credentials/*.key" ],
-      "pack-windows.ps1" => [ ".desktop-rails", '"storage"', 'config\master.key', 'config\credentials\*.key' ]
+      "pack.sh" => [ "/.desktop-rails/", "/storage/", "/config/master.key", "/config/credentials/*.key", "environments/desktop.rb" ],
+      "pack-linux.sh" => [ "/.desktop-rails/", "/storage/", "/config/master.key", "/config/credentials/*.key", "environments/desktop.rb" ],
+      "pack-windows.ps1" => [ ".desktop-rails", '"storage"', 'config\master.key', 'config\credentials\*.key', 'environments\desktop.rb' ]
     }.each do |script, patterns|
       source = File.read(File.join(PACKAGING, script))
       patterns.each { |pattern| assert_includes source, pattern, "#{script} does not exclude #{pattern}" }
@@ -85,8 +104,12 @@ class PackersTest < Minitest::Test
 
   private
 
-  def build_app(root)
+  def build_app(root, desktop_env: true)
     FileUtils.mkdir_p(File.join(root, "config", "credentials"))
+    if desktop_env
+      FileUtils.mkdir_p(File.join(root, "config", "environments"))
+      File.write(File.join(root, "config", "environments", "desktop.rb"), "")
+    end
     File.write(File.join(root, "config.ru"), "run ->(_) { [200, {}, []] }\n")
     File.write(File.join(root, "config", "master.key"), "0" * 32)
     File.write(File.join(root, "config", "credentials.yml.enc"), "encrypted")
