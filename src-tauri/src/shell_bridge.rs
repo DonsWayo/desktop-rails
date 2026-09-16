@@ -102,6 +102,9 @@ async fn handle_spawn(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .envs(&env);
+    // Through cmd.exe on Windows, which would otherwise open a console window
+    // over the app for every command. See process_manager.
+    crate::process_manager::without_console_window(&mut cmd);
 
     if let Some(ref dir) = cwd {
         cmd.current_dir(dir);

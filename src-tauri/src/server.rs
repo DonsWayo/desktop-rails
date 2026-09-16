@@ -199,6 +199,45 @@ pub fn server_invocation(
     crate::shell_bridge::shell_invocation(trimmed)
 }
 
+/// The process that runs the app server, ready to spawn.
+///
+/// Separate from [`start`] so what the server is started with can be tested
+/// without an app handle.
+pub fn server_command(
+    program: &str,
+    args: &[String],
+    directory: Option<&Path>,
+) -> tokio::process::Command {
+    use std::process::Stdio;
+
+    let mut spawner = tokio::process::Command::new(program);
+    spawner
+        // Tells the child a handshake is coming on stdin. Without this the
+        // child cannot tell a shell that will write from any other process
+        // holding a silent pipe, and waiting for a line that never arrives
+        // hangs it forever.
+        .env("DESKTOP_RAILS_HANDSHAKE", "stdin")
+        .args(args)
+        .stdin(Stdio::piped()) // the handshake goes in here, and EOF reaps the child
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        // A backstop for the orphan rule: if the task that owns the child ever
+        // goes away without stopping it, kill it rather than leave a server
+        // running with nothing attached to it.
+        .kill_on_drop(true);
+
+    // A bundled Windows app's server is a .cmd launcher, which runs in cmd.exe,
+    // a console program. The shell has no console of its own, so Windows gave
+    // the server a new one, and every launch put a black cmd.exe window on top
+    // of the app's own: the Windows GUI job's screenshot shows it.
+    crate::process_manager::without_console_window(&mut spawner);
+
+    if let Some(dir) = directory {
+        spawner.current_dir(dir);
+    }
+    spawner
+}
+
 /// Start the configured server and hand it to ProcessManager.
 ///
 /// The command runs the way the platform runs commands — through a login shell
@@ -210,7 +249,6 @@ pub async fn start(
     config_dir: Option<&Path>,
     control: Option<&crate::control::ControlChannel>,
 ) -> Result<(), String> {
-    use std::process::Stdio;
     use tauri::Manager;
     use tokio::io::{AsyncBufReadExt, BufReader};
 
@@ -220,25 +258,7 @@ pub async fn start(
     let directory = working_directory(config, config_dir);
 
     let (program, args) = server_invocation(command, directory.as_deref());
-    let mut spawner = tokio::process::Command::new(&program);
-    spawner
-        // Tells the child a handshake is coming on stdin. Without this the
-        // child cannot tell a shell that will write from any other process
-        // holding a silent pipe, and waiting for a line that never arrives
-        // hangs it forever.
-        .env("DESKTOP_RAILS_HANDSHAKE", "stdin")
-        .args(&args)
-        .stdin(Stdio::piped()) // the handshake goes in here, and EOF reaps the child
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        // A backstop for the orphan rule: if the task that owns the child ever
-        // goes away without stopping it, kill it rather than leave a server
-        // running with nothing attached to it.
-        .kill_on_drop(true);
-
-    if let Some(dir) = &directory {
-        spawner.current_dir(dir);
-    }
+    let mut spawner = server_command(&program, &args, directory.as_deref());
 
     log::info!(
         "Starting the app server: {} (in {})",
