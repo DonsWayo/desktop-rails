@@ -29,7 +29,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  RUBY_VERSION: "3.4.8"
+  # Tooling only: the package ships no Ruby. The same version the bundled
+  # runtime is moving to, so one Ruby serves every job.
+  RUBY_VERSION: "4.0.7"
 
 jobs:
   hosted:

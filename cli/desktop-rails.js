@@ -461,9 +461,12 @@ function cmdHelp() {
   console.log(`
 desktop-rails — a native window for a Rails server you run yourself
 
-This CLI scaffolds and builds the desktop shell for hosted mode. Shipping a Rails
-app with its own Ruby does not need it: add the gem, then run
-bin/rails desktop:package (https://github.com/DonsWayo/desktop-rails#quick-start).
+This CLI scaffolds the desktop shell and builds it from source, which needs Rust.
+Packaging an app needs neither; add the gem, then from the Rails app run
+  bin/rails desktop:package          your app with its own Ruby inside
+                                     (https://github.com/DonsWayo/desktop-rails#quick-start)
+  bin/rails desktop:package:hosted   the prebuilt shell, opening a server you run
+                                     (https://github.com/DonsWayo/desktop-rails#wrapping-a-server-you-run-yourself)
 
 It is not published to npm. Run it from GitHub or from a checkout:
   npx github:DonsWayo/desktop-rails <command>
@@ -487,11 +490,6 @@ Examples:
   desktop-rails dev                            # Start dev mode
   desktop-rails build                          # Build for this machine
   desktop-rails build --target universal-apple-darwin  # Universal binary
-
-These commands build the shell from source, which needs Rust. To package an
-app without Rust, from the Rails app itself:
-  bin/rails desktop:package          # bundled: your app and its own Ruby inside
-  bin/rails desktop:package:hosted   # hosted: a window onto a server you run
 `);
 }
 

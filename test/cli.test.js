@@ -221,7 +221,12 @@ test("help describes what the CLI is for now, not upstream's tagline", () => {
 
   assert.equal(result.status, 0);
   assert.doesNotMatch(result.stdout, /Turbo Native/);
-  assert.match(result.stdout, /bin\/rails desktop:package/, "should point bundled apps at the gem");
+  assert.match(result.stdout, /bin\/rails desktop:package /, "should point bundled apps at the gem");
+  assert.match(
+    result.stdout,
+    /bin\/rails desktop:package:hosted/,
+    "should point hosted apps at the gem too, rather than at a Rust build"
+  );
   assert.match(result.stdout, /not published to npm/);
 });
 
