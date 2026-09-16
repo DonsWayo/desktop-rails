@@ -34,17 +34,27 @@ env:
 
 jobs:
   unix:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.platform.name }}, Rails ${{ matrix.rails.version }}
+    runs-on: ${{ matrix.platform.os }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        include:
+        platform:
           - { name: macOS, os: macos-14, gui: "" }
           - { name: Linux, os: ubuntu-24.04, gui: "xvfb-run -a" }
+        # The fresh app once for every Rails the README says is tested, each at
+        # the latest patch of its series, so that claim is this job's to make.
+        # The first is RAILS_VERSION above, which the Windows job uses.
+        #
+        # examples/notes locks its own Rails, so running it for every entry would
+        # test the same app twice. It runs with the newest only.
+        rails:
+          - { version: "8.1.3.1", example: true }
+          - { version: "7.2.3.2", example: false }
     env:
       FRESH: ${{ github.workspace }}/../fresh
+      RAILS_VERSION: ${{ matrix.rails.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -115,7 +125,7 @@ jobs:
             bin="$FRESH/.desktop-rails/dist/fresh/fresh"
             tree="$FRESH/.desktop-rails/dist/fresh/lib/app"
           fi
-          DESKTOP_DATA_DIR="$(mktemp -d)" ${{ matrix.gui }} packaging/smoke/app_check.sh "$bin" \
+          DESKTOP_DATA_DIR="$(mktemp -d)" ${{ matrix.platform.gui }} packaging/smoke/app_check.sh "$bin" \
             "text=Welcome#index" "unchanged=$tree"
 
       - name: The signature still verifies after running
@@ -128,7 +138,7 @@ jobs:
       # another; the job still fails.
 
       - name: Shell build dependencies
-        if: ${{ !cancelled() && runner.os == 'Linux' }}
+        if: ${{ !cancelled() && matrix.rails.example && runner.os == 'Linux' }}
         run: |
           sudo apt-get install -y -qq build-essential libgtk-3-dev libwebkit2gtk-4.1-dev \
             librsvg2-dev patchelf
@@ -138,19 +148,19 @@ jobs:
           ! ldconfig -p | grep -q appindicator3
 
       - uses: dtolnay/rust-toolchain@stable
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && matrix.rails.example }}
       - uses: Swatinem/rust-cache@v2
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && matrix.rails.example }}
         with:
           workspaces: src-tauri
 
       - name: Build the shell
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && matrix.rails.example }}
         working-directory: src-tauri
         run: cargo build --release
 
       - name: Package the example
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && matrix.rails.example }}
         working-directory: examples/notes
         run: |
           set -euo pipefail
@@ -160,7 +170,7 @@ jobs:
           grep -E '^  shell: +.*/src-tauri/target/release/desktop-rails$' "$RUNNER_TEMP/notes-package.log"
 
       - name: Launch the example and drive both native directions
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && matrix.rails.example }}
         run: |
           set -euo pipefail
           if [ "$RUNNER_OS" = macOS ]; then
@@ -174,7 +184,7 @@ jobs:
           rm -rf "$data" && mkdir -p "$data"
           # A model-backed page on an empty data directory proves the schema and
           # seeds were loaded; the reports prove the bridge worked in the window.
-          DESKTOP_DATA_DIR="$data" ${{ matrix.gui }} packaging/smoke/app_check.sh "$bin" \
+          DESKTOP_DATA_DIR="$data" ${{ matrix.platform.gui }} packaging/smoke/app_check.sh "$bin" \
             "text=Welcome to Notes" \
             "marker=javascript" \
             "marker=stream" \
@@ -183,14 +193,14 @@ jobs:
             "unchanged=$tree"
 
       - name: The example's signature still verifies after running
-        if: ${{ !cancelled() && runner.os == 'macOS' }}
+        if: ${{ !cancelled() && matrix.rails.example && runner.os == 'macOS' }}
         run: codesign --verify --strict --deep examples/notes/.desktop-rails/dist/Notes.app
 
       # An update: the same data directory, a newer build with one more
       # migration. The seeded note is deleted first, so a second seeding would
       # show, and a note written by the first version must survive.
       - name: Update the example with a migration and launch it again
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && matrix.rails.example }}
         run: |
           set -euo pipefail
           data="$RUNNER_TEMP/notes-data"
@@ -208,7 +218,7 @@ jobs:
             bin="$PWD/examples/notes/.desktop-rails/dist/notes/notes"
           fi
           rm -rf "$data/native-reports" "$data/log"
-          DESKTOP_DATA_DIR="$data" ${{ matrix.gui }} packaging/smoke/app_check.sh "$bin" \
+          DESKTOP_DATA_DIR="$data" ${{ matrix.platform.gui }} packaging/smoke/app_check.sh "$bin" \
             "text=Kept across the update"
           python3 - "$data/app.sqlite3" <<'PY'
           import sqlite3, sys
