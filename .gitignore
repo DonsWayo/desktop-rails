@@ -6,9 +6,9 @@ src-tauri/target/
 
 # Rails logs / tmp
 *.log
-turbo_desktop-rails/log/*
-!turbo_desktop-rails/log/.keep
-turbo_desktop-rails/tmp/
+desktop-rails/log/*
+!desktop-rails/log/.keep
+desktop-rails/tmp/
 
 # Editor / LSP caches
 .ruby-lsp/
@@ -27,16 +27,16 @@ test_raider_project/
 turbo_desktop_example_app/
 
 # Built gem artifacts — ship via RubyGems / GitHub Releases, not git
-turbo_desktop-rails/*.gem
+desktop-rails/*.gem
 
 # Gem test scratch output
-turbo_desktop-rails/test/tmp/
+desktop-rails/test/tmp/
 
 # Local desktop run config (per-app / per-user; not part of the shell source)
-/turbo-desktop.config.json
+/desktop-rails.config.json
 
 # Browser session scratch from local gem test runs
-turbo_desktop-rails/.browser-sessions/
+desktop-rails/.browser-sessions/
 
 # Generated code graph (rebuild with `graphify update .`)
 graphify-out/

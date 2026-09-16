@@ -51,7 +51,7 @@ pub fn resolve(server_url: &str, link: &url::Url) -> Result<url::Url, String> {
 
 /// Handle deep links as they arrive.
 pub fn handle(app: &tauri::AppHandle, urls: Vec<url::Url>) {
-    let config = app.state::<crate::window::TurboDesktopConfig>();
+    let config = app.state::<crate::window::DesktopRailsConfig>();
 
     for link in urls {
         log::info!("Deep link: {}", link);
@@ -159,7 +159,7 @@ mod tests {
 
     #[test]
     fn only_existing_non_flag_arguments_are_opened_files() {
-        let file = std::env::temp_dir().join("turbo-desktop-assoc.txt");
+        let file = std::env::temp_dir().join("desktop-rails-assoc.txt");
         std::fs::write(&file, "x").unwrap();
 
         let args = vec![

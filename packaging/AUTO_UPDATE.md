@@ -22,14 +22,14 @@ packaging/sign-update.sh --artifact dist/Ledger.app.tar.gz \
 `packaging/generate-key.sh` writes a minisign keypair to `.signing/`, which
 `.gitignore` already covers. The secret half is mode 0600 and never leaves that
 directory; the public half is a string you paste into
-`turbo-desktop.config.json`.
+`desktop-rails.config.json`.
 
 ```
 .signing/updater.key    private. never commit. back this up.
 .signing/updater.pub    public. safe to publish.
 ```
 
-A password is read from `TURBO_DESKTOP_SIGNING_PASSWORD`, never from an
+A password is read from `DESKTOP_RAILS_SIGNING_PASSWORD`, never from an
 argument, because arguments are visible to every process on the machine. An
 empty password is allowed and matches what `tauri signer generate --password ""`
 produces.
@@ -93,7 +93,7 @@ fails to install.
 
 Not in `tauri.conf.json`. That file is compiled into the shell binary, and this
 fork ships **one** shell binary for every app built with it — the whole point of
-`turbo-desktop.config.json`. An update endpoint and a signing key belong to the
+`desktop-rails.config.json`. An update endpoint and a signing key belong to the
 app, so they go there:
 
 ```json
@@ -127,12 +127,12 @@ and should not be contacting an update server at all. The web layer sees that as
 ## From the web layer
 
 ```js
-const result = await TurboDesktop.updater.check();
+const result = await DesktopRails.updater.check();
 // { status: "available", version, body, date, current_version }
 // { status: "up_to_date" } | { status: "not_configured" } | { status: "error", error }
 
 if (result.status === "available") {
-  await TurboDesktop.updater.downloadAndInstall();
+  await DesktopRails.updater.downloadAndInstall();
 }
 ```
 
@@ -147,8 +147,8 @@ it removes on exit:
 
 ```yaml
 env:
-  TURBO_DESKTOP_SIGNING_KEY: ${{ secrets.UPDATER_SIGNING_KEY }}
-  TURBO_DESKTOP_SIGNING_PASSWORD: ${{ secrets.UPDATER_SIGNING_PASSWORD }}
+  DESKTOP_RAILS_SIGNING_KEY: ${{ secrets.UPDATER_SIGNING_KEY }}
+  DESKTOP_RAILS_SIGNING_PASSWORD: ${{ secrets.UPDATER_SIGNING_PASSWORD }}
 ```
 
 It also verifies each signature against the public key before writing the

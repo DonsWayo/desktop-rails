@@ -10,7 +10,7 @@ use tauri::Emitter;
 /// The flow:
 /// 1. A Stimulus controller on the web page extends BridgeComponent
 /// 2. It calls `this.send("connect", { title: "Export" })`
-/// 3. turbo-desktop.js forwards this to Rust via Tauri's invoke
+/// 3. desktop-rails.js forwards this to Rust via Tauri's invoke
 /// 4. Rust handles it (e.g., adds a native menu item)
 /// 5. When the native side triggers (e.g., menu clicked), it sends a message back
 /// 6. The web component receives it via `onReceive(message)`
@@ -182,7 +182,7 @@ async fn handle_file_picker(
     // real dialog would have recorded. A packaged (release) app ignores the
     // variable entirely.
     #[cfg(debug_assertions)]
-    if let Ok(path) = std::env::var("TURBO_DESKTOP_E2E_PICKER") {
+    if let Ok(path) = std::env::var("DESKTOP_RAILS_E2E_PICKER") {
         let grants = app.state::<crate::security::UserGrants>();
         match message.event.as_str() {
             "open-folder" | "open_folder" => grants.grant_folder(&path),

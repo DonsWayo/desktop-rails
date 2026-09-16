@@ -1,0 +1,76 @@
+# The environment a packaged desktop app runs in.
+#
+# Not production, and not development. A desktop app is a single-user server on
+# loopback inside a read-only, code-signed bundle, and each setting below exists
+# because one of those facts breaks an assumption Rails makes about being
+# deployed to a machine somebody administers.
+require "desktop_rails"
+
+Rails.application.configure do
+  # Nothing reloads and everything loads up front. The bundle cannot be edited
+  # while it runs, so watching for changes is cost with no benefit — and eager
+  # loading moves an autoload error to boot, where it is still visible, instead
+  # of to a page the user has already opened.
+  if config.respond_to?(:enable_reloading=)
+    config.enable_reloading = false
+  else
+    config.cache_classes = true # Rails < 7.1
+  end
+  config.eager_load = true
+
+  # The bundle is read-only and signed, so Rails.root is not writable. Whatever
+  # would have been written under it goes to the OS data directory instead — the
+  # same directory the generated launcher exports as DESKTOP_DATA_DIR, so the
+  # shell and the Rails app cannot disagree about where state lives.
+  data_dir = DesktopRails.data_dir(create: true)
+  %w[tmp log storage].each { |dir| FileUtils.mkdir_p(data_dir.join(dir)) }
+  config.paths["tmp"] = data_dir.join("tmp").to_s
+  config.paths["log"] = data_dir.join("log", "desktop.log").to_s
+
+  # There is no operator to hand this app a secret, and no credentials key in a
+  # bundle a stranger downloads. One is generated on first run and kept in the
+  # data directory at mode 0600. See DesktopRails::Paths#secret_key_base.
+  config.secret_key_base = DesktopRails.secret_key_base
+
+  # The server binds 127.0.0.1 on a port the OS picks and the webview asks for
+  # that exact origin, so host authorization has to allow it — and only it.
+  # Clearing config.hosts instead would also accept a request that arrived
+  # carrying somebody else's Host header.
+  config.hosts = [ "127.0.0.1", "localhost", "[::1]" ]
+  config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
+
+  # :async, and deliberately.
+  #
+  # A forking job supervisor is the most effective way there is to leave a Ruby
+  # process running after the window is gone: the shell closes the child's
+  # stdin, the child exits on EOF, and the workers it forked inherit neither
+  # that pipe nor the habit of watching it. They keep the port and never notice.
+  # In-process jobs share the fate of the process that owns the window, which is
+  # the only fate a desktop app can reason about.
+  #
+  # The cost is real and worth stating: jobs die with the app and are not
+  # retried. Durable background work needs a database-backed queue with its own
+  # lifecycle, not a forking supervisor inside the bundle.
+  config.active_job.queue_adapter = :async
+
+  # One user, one machine, no reverse proxy in front.
+  config.cache_store = :memory_store
+  config.action_controller.perform_caching = true
+  config.consider_all_requests_local = false
+  config.public_file_server.enabled = true
+  config.force_ssl = false
+
+  # Assets are precompiled into the bundle. Compiling at request time would mean
+  # writing inside a read-only, signed application.
+  config.assets.compile = false if config.respond_to?(:assets)
+
+  # Logs go to the data directory. stdout is reserved: boot writes exactly one
+  # line of handshake there and nothing else may ever touch it.
+  config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info").to_sym
+  config.logger = ActiveSupport::TaggedLogging.new(
+    ActiveSupport::Logger.new(data_dir.join("log", "desktop.log").to_s, 3, 1_048_576)
+  )
+  config.active_support.report_deprecations = false
+
+  config.i18n.fallbacks = true
+end

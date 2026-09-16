@@ -79,12 +79,12 @@ jobs:
           # Publishing a gem nobody has installed is how a broken release
           # happens. Install it into a throwaway prefix and use it.
           export GEM_HOME="$RUNNER_TEMP/gemcheck"
-          gem install "dist/turbo_desktop-runtime-${{ steps.version.outputs.value }}-${{ matrix.triple }}.gem" \
+          gem install "dist/desktop-rails-runtime-${{ steps.version.outputs.value }}-${{ matrix.triple }}.gem" \
             --no-document --ignore-dependencies
           GEM_PATH="$GEM_HOME" ruby -e '
-            require "turbo_desktop/runtime"
-            abort "the gem carries no interpreter" unless TurboDesktop::Runtime.available?
-            puts "gem ships ruby #{TurboDesktop::Runtime.version} at #{TurboDesktop::Runtime.path}"
+            require "desktop_rails/runtime"
+            abort "the gem carries no interpreter" unless DesktopRails::Runtime.available?
+            puts "gem ships ruby #{DesktopRails::Runtime.version} at #{DesktopRails::Runtime.path}"
           '
           # Resolve the glob before running it, rather than using it as a
           # command name, which shellcheck rightly objects to.

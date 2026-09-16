@@ -2,14 +2,14 @@ use std::path::Path;
 
 /// Default configuration written when a build finds none.
 ///
-/// The bundle lists turbo-desktop.config.json as a resource, and the packaged app
+/// The bundle lists desktop-rails.config.json as a resource, and the packaged app
 /// refuses to start without it. The file is per-project and git-ignored, so a
 /// fresh clone or a CI checkout would otherwise fail to build. Writing a default
 /// keeps those builds working and gives the resulting app sensible settings:
 /// localhost, and both the filesystem and sudo bridges closed.
 const DEFAULT_CONFIG: &str = r#"{
   "server_url": "http://localhost:3000",
-  "app_name": "Turbo Desktop",
+  "app_name": "Desktop Rails",
   "window": {
     "width": 1200,
     "height": 800,
@@ -75,13 +75,13 @@ fn write_if_absent(path: &Path, contents: &str, what: &str) {
 
 fn main() {
     // Relative to src-tauri/, matching the resource paths in tauri.conf.json.
-    let config = Path::new("../turbo-desktop.config.json");
+    let config = Path::new("../desktop-rails.config.json");
     let path_config = Path::new("../path-configuration.json");
 
-    write_if_absent(config, DEFAULT_CONFIG, "turbo-desktop.config.json");
+    write_if_absent(config, DEFAULT_CONFIG, "desktop-rails.config.json");
     write_if_absent(path_config, DEFAULT_PATH_CONFIG, "path-configuration.json");
 
-    println!("cargo:rerun-if-changed=../turbo-desktop.config.json");
+    println!("cargo:rerun-if-changed=../desktop-rails.config.json");
     println!("cargo:rerun-if-changed=../path-configuration.json");
 
     tauri_build::try_build(

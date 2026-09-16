@@ -1,21 +1,21 @@
-# turbo-desktop-bridge
+# desktop-rails-bridge
 
-Typed ESM imports for the [Turbo Desktop](https://github.com/aguspe/turbo_desktop) JavaScript bridge API.
+Typed ESM imports for the [Desktop Rails](https://github.com/DonsWayo/desktop-rails) JavaScript bridge API.
 
 ## Installation
 
 ```bash
-npm install turbo-desktop-bridge
+npm install desktop-rails-bridge
 ```
 
 ## Usage
 
 ```javascript
-import { TurboDesktop, BridgeComponent, stimulusBridge, isTurboDesktop } from "turbo-desktop-bridge"
+import { DesktopRails, BridgeComponent, stimulusBridge, isDesktopRails } from "desktop-rails-bridge"
 
-// Check if running inside a Turbo Desktop shell
-if (isTurboDesktop()) {
-  const info = await TurboDesktop.getWindowInfo()
+// Check if running inside a Desktop Rails shell
+if (isDesktopRails()) {
+  const info = await DesktopRails.getWindowInfo()
   console.log(`Running on ${info.platform}`)
 }
 ```
@@ -24,7 +24,7 @@ if (isTurboDesktop()) {
 
 ```javascript
 import { Controller } from "@hotwired/stimulus"
-import { stimulusBridge } from "turbo-desktop-bridge"
+import { stimulusBridge } from "desktop-rails-bridge"
 
 export default class extends stimulusBridge(Controller, "notification") {
   connect() {
@@ -40,7 +40,7 @@ export default class extends stimulusBridge(Controller, "notification") {
 
 ## How it works
 
-The `turbo-desktop.js` IIFE is automatically injected by the Tauri shell into every page. This package provides typed ESM exports that reference the same `window.TurboDesktop` globals — no bundling or duplication required.
+The `desktop-rails.js` IIFE is automatically injected by the Tauri shell into every page. This package provides typed ESM exports that reference the same `window.DesktopRails` globals — no bundling or duplication required.
 
 ## License
 

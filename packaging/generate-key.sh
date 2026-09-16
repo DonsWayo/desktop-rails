@@ -5,7 +5,7 @@
 # public key before it will install it, so an app without a keypair has no
 # update path. This needs no Apple certificate and no account anywhere: the
 # private half is a file on your disk, and the public half is a string in
-# turbo-desktop.config.json.
+# desktop-rails.config.json.
 #
 # The private key never goes in git. It is written to .signing/, which
 # .gitignore already covers, with mode 0600. Back it up somewhere you would
@@ -15,7 +15,7 @@
 # Usage:
 #   packaging/generate-key.sh                    # .signing/updater.{key,pub}
 #   packaging/generate-key.sh --name ledger      # .signing/ledger.{key,pub}
-#   TURBO_DESKTOP_SIGNING_PASSWORD=... packaging/generate-key.sh
+#   DESKTOP_RAILS_SIGNING_PASSWORD=... packaging/generate-key.sh
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -52,11 +52,11 @@ chmod 700 "$DIR"
 # The password is read from the environment, never an argument: arguments are
 # visible to every process on the machine through ps. An empty one is allowed
 # and matches what `tauri signer generate --password ""` produces.
-PASSWORD="${TURBO_DESKTOP_SIGNING_PASSWORD:-}"
+PASSWORD="${DESKTOP_RAILS_SIGNING_PASSWORD:-}"
 
 OUTPUT="$(node "$HERE/lib/updater-cli.mjs" generate \
   --secret "$SECRET" --public "$PUBLIC" \
-  --password "$PASSWORD" --comment "turbo-desktop $NAME secret key")"
+  --password "$PASSWORD" --comment "desktop-rails $NAME secret key")"
 
 KEY_ID="$(printf '%s\n' "$OUTPUT" | sed -n '1p')"
 PUBKEY="$(printf '%s\n' "$OUTPUT" | sed -n '2p')"
@@ -67,7 +67,7 @@ cat <<SUMMARY
   secret key  $SECRET   (mode 0600, never commit this)
   public key  $PUBLIC
 
-Put this in turbo-desktop.config.json — one generic shell binary reads its
+Put this in desktop-rails.config.json — one generic shell binary reads its
 updater settings from there, so this is per app, not per build:
 
   "updater": {
@@ -77,7 +77,7 @@ updater settings from there, so this is per app, not per build:
 
 For CI, hand the signing job the secret key and its password as secrets:
 
-  TURBO_DESKTOP_SIGNING_KEY       the contents of $NAME.key
-  TURBO_DESKTOP_SIGNING_PASSWORD  the password you just used
+  DESKTOP_RAILS_SIGNING_KEY       the contents of $NAME.key
+  DESKTOP_RAILS_SIGNING_PASSWORD  the password you just used
 
 SUMMARY

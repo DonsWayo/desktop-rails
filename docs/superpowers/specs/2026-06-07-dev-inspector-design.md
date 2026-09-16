@@ -6,7 +6,7 @@
 
 ## Problem
 
-Turbo Desktop already ships substantial native capability: path-config presentations
+Desktop Rails already ships substantial native capability: path-config presentations
 (`modal`, `new_window`, `native`, `replace`, `none`), five documented bridge components
 (notification, menu-item, file-picker, badge, shortcut), and additional Rust modules that
 are present but under-documented (`tray`, `fs_bridge`, `sudo_bridge`, `shell_bridge`,
@@ -21,7 +21,7 @@ secondary payoff for debugging confidence).
 
 ## Solution Overview
 
-A dev-only, in-app **Dev Inspector** overlay injected by `turbo-desktop.js` and driven by a
+A dev-only, in-app **Dev Inspector** overlay injected by `desktop-rails.js` and driven by a
 self-contained `inspector.js` module. It taps the single existing chokepoints for bridge
 traffic, requires no behavioral change to the host Rails app, and ships zero code to
 production end users.
@@ -33,7 +33,7 @@ Toggle hotkey: `Cmd/Ctrl+Shift+D`. Off by default; only loads when explicitly en
 All bridge traffic already funnels through two existing chokepoints, so the inspector can
 observe everything from JavaScript alone with minimal/no Rust changes for v1:
 
-- **Outbound:** `TurboDesktop.sendBridgeMessage(component, event, data)`
+- **Outbound:** `DesktopRails.sendBridgeMessage(component, event, data)`
 - **Inbound:** the Tauri `"bridge-response"` event (payload carries `.component`)
 - **Navigation:** `proposeVisit` → `handle_visit_proposal`, whose response carries the
   resolved `presentation`.
@@ -57,7 +57,7 @@ Three internal units, each independently testable:
 **Boundary rule:** `BridgeTap` and `InspectorPanel` meet only through `InspectorState`'s
 event emitter. The tap is testable headless; the UI is swappable.
 
-**Dependency direction:** `turbo-desktop.js` lazily loads `inspector.js` only when enabled,
+**Dependency direction:** `desktop-rails.js` lazily loads `inspector.js` only when enabled,
 then wires `BridgeTap` into the existing chokepoints. The inspector is a leaf module; core
 never imports it.
 
@@ -90,7 +90,7 @@ return-value addition — flagged as an enhancement, not blocking for v1.
 
 ### 4. Shell info
 
-Static facts: `turbo_desktop_platform`, `arch`, app version, updater status, server URL.
+Static facts: `desktop_rails_platform`, `arch`, app version, updater status, server URL.
 Sourced from `getWindowInfo` + config.
 
 ### Data flow
@@ -116,12 +116,12 @@ truth. The README component table can later be generated from it to eliminate do
 
 Off by default, zero production cost.
 
-- **Gate:** `inspector.js` loads only when enabled. Enabled if **any** of: `turbo-desktop.toml`
+- **Gate:** `inspector.js` loads only when enabled. Enabled if **any** of: `desktop-rails.toml`
   `[inspector] enabled = true`; a dev build (`tauri dev`); or
   `localStorage["td:inspector"] = "1"` (flip on against any build without a rebuild).
 - **Lazy load:** core performs a dynamic `import("./inspector.js")` only when the gate
   passes, so the production bundle is unaffected and no overlay code ships to end users.
-- **Rails side:** the gem exposes `turbo_desktop_inspector?` and auto-injects the enable flag
+- **Rails side:** the gem exposes `desktop_rails_inspector?` and auto-injects the enable flag
   in the `development` environment only — a Rails developer gets it locally for free and
   never in production.
 

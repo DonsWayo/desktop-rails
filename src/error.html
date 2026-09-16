@@ -17,7 +17,7 @@
            window has no way back once the server returns.
 
       The shell hands it two things:
-        window.__TURBO_DESKTOP_SERVER_URL__  where to return to
+        window.__DESKTOP_RAILS_SERVER_URL__  where to return to
         ?error=<slug>                        why it is being shown
                                              (network_failure, timeout_failure,
                                               http_failure, page_load_failure)
@@ -89,7 +89,7 @@
 
     <script>
       (function () {
-        const SERVER_URL = window.__TURBO_DESKTOP_SERVER_URL__ || "http://localhost:3000";
+        const SERVER_URL = window.__DESKTOP_RAILS_SERVER_URL__ || "http://localhost:3000";
         const RETRY_INTERVAL = 3000;
 
         const params = new URLSearchParams(window.location.search);
@@ -134,7 +134,7 @@
           try {
             return await invoke("retry_connection", {});
           } catch (e) {
-            console.warn("[turbo-desktop] Retry failed:", e);
+            console.warn("[desktop-rails] Retry failed:", e);
             return false;
           }
         }

@@ -22,12 +22,12 @@ labels: [bug]
 ## Environment
 
 - **OS + version:** <!-- e.g. macOS 15.1 (arm64), Windows 11, Ubuntu 24.04 -->
-- **Turbo Desktop version / commit:**
-- **`turbo_desktop-rails` gem version:**
+- **Desktop Rails version / commit:**
+- **`desktop-rails` gem version:**
 - **Ruby + Rails version:**
 - **Tauri version:** <!-- from src-tauri/Cargo.toml, or `cargo tauri --version` -->
 
-## `turbo-desktop.config.json`
+## `desktop-rails.config.json`
 
 <!-- Paste your config (redact anything private). -->
 

@@ -20,7 +20,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 HERE="$PWD/packaging"
 
-APP_SRC=""; RUNTIME=""; GEMS=""; SHELL_BIN=""; NAME="Turbo Desktop App"
+APP_SRC=""; RUNTIME=""; GEMS=""; SHELL_BIN=""; NAME="Desktop Rails App"
 APP_ID="dev.turbodesktop.app"; OUT="$PWD/dist"; KEEP_DEV=0; APPIMAGE=0
 
 while [ $# -gt 0 ]; do
@@ -70,7 +70,7 @@ if [ -n "$SHELL_BIN" ]; then
   # points at /usr/lib/<ProductName> whether or not anything was installed
   # there — so the shell looks next to its own executable as well. The command
   # is relative to this file's directory.
-  cat > "$DIR/turbo-desktop.config.json" <<CONFIG
+  cat > "$DIR/desktop-rails.config.json" <<CONFIG
 {
   "app_name": "$NAME",
   "server_url": "http://127.0.0.1:0",

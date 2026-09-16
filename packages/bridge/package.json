@@ -1,7 +1,7 @@
 {
-  "name": "turbo-desktop-bridge",
+  "name": "desktop-rails-bridge",
   "version": "0.1.1",
-  "description": "JavaScript bridge for Turbo Desktop — typed imports for the turbo-desktop.js API",
+  "description": "JavaScript bridge for Desktop Rails — typed imports for the desktop-rails.js API",
   "type": "module",
   "main": "index.js",
   "types": "index.d.ts",
@@ -18,10 +18,10 @@
   ],
   "keywords": ["turbo", "hotwire", "rails", "tauri", "desktop", "bridge", "stimulus"],
   "license": "MIT",
-  "homepage": "https://github.com/aguspe/turbo_desktop",
+  "homepage": "https://github.com/DonsWayo/desktop-rails",
   "repository": {
     "type": "git",
-    "url": "https://github.com/aguspe/turbo_desktop.git",
+    "url": "https://github.com/DonsWayo/desktop-rails.git",
     "directory": "packages/bridge"
   }
 }

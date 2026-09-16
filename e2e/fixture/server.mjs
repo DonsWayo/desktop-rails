@@ -6,7 +6,7 @@ const PAGE = `<!doctype html>
 <html>
   <head><title>E2E Fixture</title></head>
   <body>
-    <h1 id="heading">Turbo Desktop E2E fixture</h1>
+    <h1 id="heading">Desktop Rails E2E fixture</h1>
   </body>
 </html>`;
 

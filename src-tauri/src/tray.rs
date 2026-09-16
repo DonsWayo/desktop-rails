@@ -21,7 +21,7 @@ pub fn setup_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), tauri::Er
         .build()?;
 
     let _tray = TrayIconBuilder::new()
-        .tooltip("Turbo Desktop")
+        .tooltip("Desktop Rails")
         .menu(&menu)
         .on_menu_event(move |app, event: tauri::menu::MenuEvent| {
             handle_tray_menu_event(app, event.id().as_ref());

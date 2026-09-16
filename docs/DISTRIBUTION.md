@@ -1,6 +1,6 @@
-# Distributing a Turbo Desktop app
+# Distributing a Desktop Rails app
 
-Turbo Desktop apps are [Tauri](https://tauri.app) apps, so distribution means producing native
+Desktop Rails apps are [Tauri](https://tauri.app) apps, so distribution means producing native
 installers per OS. This guide covers the easy path (a release workflow), local builds, and the
 optional-but-recommended signing/update setup.
 
@@ -26,8 +26,8 @@ You can also run it manually from the **Actions → Release → Run workflow** b
 
 ## What ships inside the app
 
-Turbo Desktop follows the Hotwire Native model: the shell loads `server_url` from
-`turbo-desktop.config.json`, baked in at build time. So a distributed app is a **thin native shell
+Desktop Rails follows the Hotwire Native model: the shell loads `server_url` from
+`desktop-rails.config.json`, baked in at build time. So a distributed app is a **thin native shell
 pointing at your hosted Rails app** — you ship the binary, your Rails app is the product. Set
 `server_url` to your production URL before building for release.
 
@@ -41,7 +41,7 @@ Output: `src-tauri/target/release/bundle/`.
 
 ## Using this in your own app
 
-`npx turbo-desktop new myapp` scaffolds a `desktop/` project. To get the same one-tag releases,
+`npx desktop-rails new myapp` scaffolds a `desktop/` project. To get the same one-tag releases,
 copy `release.yml` into your app's `.github/workflows/` and adjust `projectPath` if your Tauri
 project isn't at the repo root. Everything else (matrix, deps, draft release) works as-is.
 
@@ -82,4 +82,4 @@ Details: [Tauri updater](https://tauri.app/plugin/updater/).
 
 ---
 
-More at the official site: **[turbo-desktop.dev](https://turbo-desktop.dev/)**.
+More at the official site: **[desktop-rails.dev](https://desktop-rails.dev/)**.

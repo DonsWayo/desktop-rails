@@ -1,19 +1,19 @@
 <p align="center">
-  <img src="turbo-desktop-icon.png" alt="Turbo Desktop" width="180" />
+  <img src="desktop-rails-icon.png" alt="Desktop Rails" width="180" />
 </p>
 
-<h1 align="center">Turbo Desktop</h1>
+<h1 align="center">Desktop Rails</h1>
 
 <p align="center">
   <strong>Turbo Native for Desktop</strong> — wrap your Rails app in a native macOS / Windows / Linux shell
 </p>
 
 <p align="center">
-  <strong>🌐 Official site: <a href="https://turbo-desktop.dev/">turbo-desktop.dev</a></strong>
+  <strong>🌐 Official site: <a href="https://desktop-rails.dev/">desktop-rails.dev</a></strong>
 </p>
 
 <p align="center">
-  <a href="https://turbo-desktop.dev/">Website</a> •
+  <a href="https://desktop-rails.dev/">Website</a> •
   <a href="#features">Features</a> •
   <a href="#architecture">Architecture</a> •
   <a href="#quick-start">Quick Start</a> •
@@ -21,7 +21,7 @@
   <a href="#bridge-components">Bridge</a> •
   <a href="#rails-gem">Rails Gem</a> •
   <a href="#comparison">Comparison</a> •
-  <a href="https://aguspe.github.io/turbo_desktop/">Docs</a>
+  <a href="https://github.com/DonsWayo/desktop-rails#readme">Docs</a>
 </p>
 
 <p align="center">
@@ -38,11 +38,11 @@
 
 Rails developers already have **Hotwire Native** (`turbo-ios` and `turbo-android`) to wrap their web apps in native mobile shells. But there has been *nothing* for desktop.
 
-**Turbo Desktop** fills this gap. It gives you a thin, native desktop shell powered by [Tauri 2](https://tauri.app) that treats your Rails app as the single source of truth — the same pattern you already know from Hotwire Native, but for the desktop.
+**Desktop Rails** fills this gap. It gives you a thin, native desktop shell powered by [Tauri 2](https://tauri.app) that treats your Rails app as the single source of truth — the same pattern you already know from Hotwire Native, but for the desktop.
 
 ## Example App
 
-Here's what a Rails app looks like running inside Turbo Desktop (from the [example Task Manager app](https://github.com/aguspe/turbo_desktop_example_app)):
+Here's what a Rails app looks like running inside Desktop Rails (from the [example Task Manager app](https://github.com/aguspe/turbo_desktop_example_app)):
 
 <p align="center">
   <img src="docs/screenshots/dashboard.png" alt="Dashboard — desktop features banner, stats, recent tasks" width="700" />
@@ -55,8 +55,8 @@ Here's what a Rails app looks like running inside Turbo Desktop (from the [examp
 - **Tiny binary** — Tauri uses the OS WebView, no bundled Chromium. Ship a ~5-10 MB app
 - **Path configuration** — JSON-based routing rules (same concept as turbo-ios / turbo-android)
 - **Bridge components** — web-to-native communication via Stimulus controllers
-- **Rails gem** — `turbo_desktop-rails` gives your Rails app desktop shell awareness
-- **CLI scaffolding** — `npx turbo-desktop new myapp` to get started fast
+- **Rails gem** — `desktop-rails` gives your Rails app desktop shell awareness
+- **CLI scaffolding** — `npx desktop-rails new myapp` to get started fast
 
 ## Architecture
 
@@ -71,7 +71,7 @@ Here's what a Rails app looks like running inside Turbo Desktop (from the [examp
 Three layers that mirror the Hotwire Native pattern:
 
 1. **Rails Server** — your existing app serves HTML with Turbo Drive
-2. **WebView** — `turbo-desktop.js` intercepts Turbo visits and bridges to native
+2. **WebView** — `desktop-rails.js` intercepts Turbo visits and bridges to native
 3. **Tauri Shell** — Rust handles window management, path config routing, and OS APIs
 
 ## Quick Start
@@ -79,26 +79,26 @@ Three layers that mirror the Hotwire Native pattern:
 ### 1. Clone and install dependencies
 
 ```bash
-git clone https://github.com/aguspe/turbo_desktop.git
-cd turbo_desktop
+git clone https://github.com/DonsWayo/desktop-rails.git
+cd desktop_rails
 cargo install tauri-cli
 npm install
 ```
 
 ### 2. Configure your Rails server URL
 
-Edit `turbo-desktop.config.json`:
+Edit `desktop-rails.config.json`:
 
 ```json
 {
   "server_url": "http://localhost:3000",
   "app_name": "My App",
-  "path_configuration_url": "http://localhost:3000/turbo-desktop/path-configuration.json"
+  "path_configuration_url": "http://localhost:3000/desktop-rails/path-configuration.json"
 }
 ```
 
 > `path_configuration_url` is optional — it defaults to
-> `{server_url}/turbo-desktop/path-configuration.json`.
+> `{server_url}/desktop-rails/path-configuration.json`.
 
 #### Where the rules come from
 
@@ -125,20 +125,20 @@ native access. See [Bridge security](#bridge-security).
 
 The window is created from this file at startup, so `app_name`, `user_agent` and
 the `window` block all take effect. `user_agent` **replaces** the webview's own
-string rather than extending it, so keep the `Turbo Desktop` token — the Rails
-gem's `turbo_desktop_app?` and the `turbo_desktop_only` helper match on it.
+string rather than extending it, so keep the `Desktop Rails` token — the Rails
+gem's `desktop_rails_app?` and the `desktop_rails_only` helper match on it.
 
 #### Where the config is read from
 
 This file carries the app's trust boundary, so where it is read from matters:
 
 - **In development**, it is read from the project you run in — the working
-  directory or one level up, so both `turbo-desktop dev` and `cargo tauri dev`
+  directory or one level up, so both `desktop-rails dev` and `cargo tauri dev`
   find it. If there is none, the app starts on defaults.
 - **In a packaged app**, it is read only from inside the bundle
   (`Contents/Resources` on macOS), never from the working directory, and the app
   **refuses to start** if it is missing. It ships there via `bundle.resources` in
-  `tauri.conf.json`, and `turbo-desktop build` includes it automatically.
+  `tauri.conf.json`, and `desktop-rails build` includes it automatically.
 
 A config that exists but does not parse is always fatal, in both cases.
 
@@ -228,7 +228,7 @@ binary serves every app built with this fork:
   than to your app.
 
 Omit the block, or either required field, and the app does not check for updates
-at all — `TurboDesktop.updater.check()` answers `{ status: "not_configured" }`.
+at all — `DesktopRails.updater.check()` answers `{ status: "not_configured" }`.
 
 Making the key and signing a release: [packaging/AUTO_UPDATE.md](packaging/AUTO_UPDATE.md).
 
@@ -236,19 +236,19 @@ Making the key and signing a release: [packaging/AUTO_UPDATE.md](packaging/AUTO_
 
 ```ruby
 # Gemfile
-gem "turbo_desktop-rails"
+gem "desktop-rails"
 ```
 
 ```bash
 bundle install
-rails generate turbo_desktop:install
+rails generate desktop_rails:install
 ```
 
 ### 4. Serve path configuration from Rails
 
 ```ruby
 # config/routes.rb
-get "/turbo-desktop/path-configuration", to: "turbo_desktop#path_configuration"
+get "/desktop-rails/path-configuration", to: "desktop_rails#path_configuration"
 ```
 
 ### 5. Run the desktop app
@@ -324,10 +324,10 @@ going to the browser, and a working bridge.
 A page in one of these windows knows where it is and can dismiss itself:
 
 ```js
-if (TurboDesktop.isModal) {
-  TurboDesktop.closeModal()      // no argument: closes the window it is in
+if (DesktopRails.isModal) {
+  DesktopRails.closeModal()      // no argument: closes the window it is in
 }
-TurboDesktop.windowLabel         // e.g. "modal-9b8b948"
+DesktopRails.windowLabel         // e.g. "modal-9b8b948"
 ```
 
 #### Dismissing a modal
@@ -336,9 +336,9 @@ Closing a modal usually means something for the screen underneath. The three
 outcomes are named after Hotwire Native's, and mean the same things:
 
 ```js
-TurboDesktop.recede()    // close, and go back underneath
-TurboDesktop.refresh()   // close, and reload underneath — after a form submits
-TurboDesktop.resume()    // close, and leave underneath alone
+DesktopRails.recede()    // close, and go back underneath
+DesktopRails.refresh()   // close, and reload underneath — after a form submits
+DesktopRails.resume()    // close, and leave underneath alone
 ```
 
 `refresh()` goes through Turbo when it is present, so scroll position and
@@ -362,9 +362,9 @@ task-manager://orders/123?ref=email
 becomes a Turbo visit to `{server_url}/orders/123?ref=email`, so your path
 configuration still decides how it is presented.
 
-**The scheme is per app.** `turbo-desktop new` derives it from the app name and
+**The scheme is per app.** `desktop-rails new` derives it from the app name and
 writes it into `tauri.conf.json`, along with a matching bundle identifier. It
-belongs there rather than in `turbo-desktop.config.json` because the operating
+belongs there rather than in `desktop-rails.config.json` because the operating
 system needs it at build time: macOS reads it from the app's `Info.plist`,
 Windows from a registry key written at install.
 
@@ -411,7 +411,7 @@ Every return is announced whether or not a refresh is proposed, so an app can
 revalidate its own way, or veto a refresh it knows is unsafe:
 
 ```js
-document.addEventListener("turbo-desktop:focus", (event) => {
+document.addEventListener("desktop-rails:focus", (event) => {
   const { awaySeconds, refreshing } = event.detail
   if (refreshing && hasUnsavedChanges()) event.preventDefault()
 })
@@ -465,13 +465,13 @@ server goes down. The second is the case that actually happens.
 **Customising the error page.** `desktop/src/error.html` is yours. It is
 bundled with your app, so it must work with no network: inline everything, no
 CDN fonts or remote stylesheets. It receives the server URL as
-`window.__TURBO_DESKTOP_SERVER_URL__` and the reason as an `?error=` parameter.
+`window.__DESKTOP_RAILS_SERVER_URL__` and the reason as an `?error=` parameter.
 
-**Handling failures in your app instead.** Listen for `turbo-desktop:visit-error`
+**Handling failures in your app instead.** Listen for `desktop-rails:visit-error`
 and call `preventDefault()` to suppress the shell's banner for that failure:
 
 ```js
-document.addEventListener("turbo-desktop:visit-error", (event) => {
+document.addEventListener("desktop-rails:visit-error", (event) => {
   const { error, status, retry } = event.detail
   event.preventDefault()
   showMyOwnBanner(error, status, retry)   // retry() attempts the visit again
@@ -482,10 +482,10 @@ document.addEventListener("turbo-desktop:visit-error", (event) => {
 a failed visitable. To take over presentation entirely rather than case by case:
 
 ```html
-<meta name="turbo-desktop-error-handling" content="manual">
+<meta name="desktop-rails-error-handling" content="manual">
 ```
 
-There is also `turbo-desktop:connection` with `{ online, error }` for reacting to
+There is also `desktop-rails:connection` with `{ online, error }` for reacting to
 the connection dropping and returning without tying it to a specific visit.
 
 Server errors your app can render itself are left alone — a 404 or a 422 is your
@@ -555,15 +555,15 @@ contents) become readable through the filesystem bridge for the session.
 Subscribe from a Stimulus controller with plain DOM events:
 
 ```js
-// data-action="turbo-desktop:drop@document->importer#filesDropped"
+// data-action="desktop-rails:drop@document->importer#filesDropped"
 filesDropped(event) {
   const { paths, position } = event.detail;
-  paths.forEach((path) => TurboDesktop.fs.read(path));
+  paths.forEach((path) => DesktopRails.fs.read(path));
 }
 ```
 
-`turbo-desktop:drag-enter` and `turbo-desktop:drag-leave` fire around it for
-hover styling, or use the callback API: `TurboDesktop.dragDrop.onDrop(cb)`,
+`desktop-rails:drag-enter` and `desktop-rails:drag-leave` fire around it for
+hover styling, or use the callback API: `DesktopRails.dragDrop.onDrop(cb)`,
 `.onEnter(cb)`, `.onLeave(cb)`.
 
 ### Window
@@ -572,11 +572,11 @@ Layout, zoom and scrolling belong in CSS. The window around them does not, so
 the shell exposes it:
 
 ```js
-await TurboDesktop.window.resize(1200, 900);
-await TurboDesktop.window.fullscreen(true);
-await TurboDesktop.window.center();
-await TurboDesktop.window.alwaysOnTop(true);
-const { width, height, isMaximized } = await TurboDesktop.window.state();
+await DesktopRails.window.resize(1200, 900);
+await DesktopRails.window.fullscreen(true);
+await DesktopRails.window.center();
+await DesktopRails.window.alwaysOnTop(true);
+const { width, height, isMaximized } = await DesktopRails.window.state();
 ```
 
 Also `minimize()`, `unminimize()`, `maximize()`, `unmaximize()`,
@@ -591,23 +591,23 @@ The same component is reachable from Ruby, over the control channel, so a
 background job can move the window with no page involved:
 
 ```ruby
-TurboDesktop::Native.call("window", "resize", width: 1200, height: 900)
-TurboDesktop::Native.call("window", "fullscreen", enabled: true)
+DesktopRails::Native.call("window", "resize", width: 1200, height: 900)
+DesktopRails::Native.call("window", "fullscreen", enabled: true)
 ```
 
 The config's rules apply there too, and a refusal raises
-`TurboDesktop::Native::CallFailed`. See `packaging/CONTROL_CHANNEL.md`.
+`DesktopRails::Native::CallFailed`. See `packaging/CONTROL_CHANNEL.md`.
 
 ### Clipboard
 
 The browser clipboard API needs a user gesture and a focused document; the
-native clipboard does not. `TurboDesktop.clipboard.readText()` returns what any
+native clipboard does not. `DesktopRails.clipboard.readText()` returns what any
 application put there (`null` when it holds no text), and `.writeText(text)`
 sets it — from a Turbo Stream callback, a timer, wherever:
 
 ```js
-const text = await TurboDesktop.clipboard.readText();
-await TurboDesktop.clipboard.writeText("INV-2024-001");
+const text = await DesktopRails.clipboard.readText();
+await DesktopRails.clipboard.writeText("INV-2024-001");
 ```
 
 Ordinary copy and paste inside the page keeps working through the webview as
@@ -622,12 +622,12 @@ autostart entry on Linux:
 ```js
 // A Stimulus controller behind a checkbox
 async toggle(event) {
-  if (event.target.checked) await TurboDesktop.autostart.enable();
-  else await TurboDesktop.autostart.disable();
+  if (event.target.checked) await DesktopRails.autostart.enable();
+  else await DesktopRails.autostart.disable();
 }
 
 async connect() {
-  this.checkboxTarget.checked = await TurboDesktop.autostart.isEnabled();
+  this.checkboxTarget.checked = await DesktopRails.autostart.isEnabled();
 }
 ```
 
@@ -649,16 +649,16 @@ your app for them — double-click, "Open With…", drop on the dock icon:
 }
 ```
 
-Opened files arrive as a `turbo-desktop:file-open` DOM event with
+Opened files arrive as a `desktop-rails:file-open` DOM event with
 `event.detail.paths`, whether the app was already running or was launched by
 the double-click — a launch queues the paths until your page is up. Like a
 dialog pick, being asked to open a file grants it for reading through the
 filesystem bridge.
 
 ```js
-// data-action="turbo-desktop:file-open@document->importer#fileOpened"
+// data-action="desktop-rails:file-open@document->importer#fileOpened"
 async fileOpened(event) {
-  const { content } = await TurboDesktop.fs.read(event.detail.paths[0]);
+  const { content } = await DesktopRails.fs.read(event.detail.paths[0]);
 }
 ```
 
@@ -676,13 +676,13 @@ overlay that shows:
 Enable it from the Rails gem (added by the installer in development):
 
 ```ruby
-# config/initializers/turbo_desktop.rb
+# config/initializers/desktop_rails.rb
 config.inspector_enabled = Rails.env.development?
 ```
 
 ```erb
 <%# app/views/layouts/application.html.erb, in <head> %>
-<%= turbo_desktop_inspector_meta_tag %>
+<%= desktop_rails_inspector_meta_tag %>
 ```
 
 Or flip it on against any build without a rebuild:
@@ -693,7 +693,7 @@ Or flip it on against any build without a rebuild:
 ```javascript
 import { Controller } from "@hotwired/stimulus"
 
-export default class extends TurboDesktop.stimulusBridge(Controller, "notification") {
+export default class extends DesktopRails.stimulusBridge(Controller, "notification") {
   connect() {
     super.connect()
     this.sendBridge("connect", { title: "My App" })
@@ -731,7 +731,7 @@ Rename it with `config.variant`, or set it to `nil` to leave variants alone.
 ```erb
 <%# Attach bridge data attributes to any element %>
 <%= tag.button "Export PDF",
-    **turbo_desktop_bridge("menu-item",
+    **desktop_rails_bridge("menu-item",
       title: "Export PDF",
       shortcut: "Cmd+E"
     ) %>
@@ -739,32 +739,32 @@ Rename it with `config.variant`, or set it to `nil` to leave variants alone.
 
 ## Rails Gem
 
-The `turbo_desktop-rails` gem gives your Rails app awareness of the desktop shell.
+The `desktop-rails` gem gives your Rails app awareness of the desktop shell.
 
 | Helper | Description |
 |---|---|
-| `turbo_desktop_app?` | Returns `true` if request comes from Turbo Desktop |
-| `turbo_desktop_platform` | Returns `"macos"`, `"windows"`, `"linux"`, or `nil` |
-| `turbo_desktop_arch` | Returns `"aarch64"`, `"x86_64"`, or `nil` |
-| `turbo_desktop_only { }` | Renders block only inside the desktop app |
+| `desktop_rails_app?` | Returns `true` if request comes from Desktop Rails |
+| `desktop_rails_platform` | Returns `"macos"`, `"windows"`, `"linux"`, or `nil` |
+| `desktop_rails_arch` | Returns `"aarch64"`, `"x86_64"`, or `nil` |
+| `desktop_rails_only { }` | Renders block only inside the desktop app |
 | `turbo_web_only { }` | Renders block only for web (non-desktop) users |
-| `turbo_desktop_bridge(component, **opts)` | Outputs bridge data attributes |
+| `desktop_rails_bridge(component, **opts)` | Outputs bridge data attributes |
 
 ## Comparison
 
-| Concept | turbo-ios | turbo-android | Turbo Desktop |
+| Concept | turbo-ios | turbo-android | Desktop Rails |
 |---|---|---|---|
 | Shell runtime | WKWebView (Swift) | WebView (Kotlin) | Tauri WebView (Rust) |
 | Path configuration | JSON, last-match-wins | JSON, last-match-wins | JSON, last-match-wins |
 | Bridge / native comms | Strada | Strada | BridgeComponent |
 | JS injection | WKUserScript | evaluateJavascript | on_page_load + eval |
-| Rails gem | turbo-rails | turbo-rails | turbo_desktop-rails |
+| Rails gem | turbo-rails | turbo-rails | desktop-rails |
 | Binary size | System WebKit | ~20 MB | ~5-10 MB |
 | Platforms | iOS, iPadOS | Android | macOS, Windows, Linux |
 
 ## Custom App Icon
 
-Your app ships with the default Turbo Desktop icon (in `src-tauri/icons/`). To use your own, run
+Your app ships with the default Desktop Rails icon (in `src-tauri/icons/`). To use your own, run
 Tauri's icon generator on a single source image — it produces every size and format
 (`.png`, macOS `.icns`, Windows `.ico`, and mobile sets):
 
@@ -782,7 +782,7 @@ Prefer to do it by hand? Replace the files in `src-tauri/icons/` listed under `b
 **Starting a new app?** Brand it from the start — the CLI generates your icon during scaffolding:
 
 ```bash
-npx turbo-desktop new myapp --icon ./logo.png
+npx desktop-rails new myapp --icon ./logo.png
 ```
 
 ## Distribution
@@ -801,8 +801,8 @@ and the optional signing / auto-update setup.
 ## Project Structure
 
 ```
-turbo_desktop/
-├── src/                    # JavaScript (turbo-desktop.js)
+desktop_rails/
+├── src/                    # JavaScript (desktop-rails.js)
 ├── src-tauri/              # Rust / Tauri shell
 │   └── src/
 │       ├── main.rs         # App entry point
@@ -814,7 +814,7 @@ turbo_desktop/
 │       ├── sudo_bridge.rs  # Privileged commands
 │       ├── config.rs       # Path configuration
 │       └── window.rs       # Window management & app config
-├── turbo_desktop-rails/    # Rails gem
+├── desktop-rails/    # Rails gem
 ├── cli/                    # CLI scaffolding tool
 ├── templates/              # Project templates
 ├── test/                   # Tests

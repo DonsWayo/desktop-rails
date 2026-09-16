@@ -13,8 +13,8 @@ require "puma/launcher"
 # a bundle that has no desktop environment. When one has been generated — it
 # eager loads, allows the loopback host and nothing else, and keeps jobs in
 # process so a forking supervisor cannot outlive the window — that is the
-# environment to boot. TURBO_DESKTOP_ENV overrides both.
-if (desktop_env = ENV["TURBO_DESKTOP_ENV"])
+# environment to boot. DESKTOP_RAILS_ENV overrides both.
+if (desktop_env = ENV["DESKTOP_RAILS_ENV"])
   ENV["RAILS_ENV"] = desktop_env
 elsif File.exist?(File.expand_path("config/environments/desktop.rb", __dir__))
   ENV["RAILS_ENV"] = "desktop"

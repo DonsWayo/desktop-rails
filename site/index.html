@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Turbo Desktop — Turbo Native for Desktop</title>
+<title>Desktop Rails — Turbo Native for Desktop</title>
 <meta name="description" content="Wrap your Rails app in a native macOS, Windows, or Linux desktop shell. Powered by Tauri 2, Hotwire, and Ruby on Rails.">
 <meta name="theme-color" content="#0d1117">
-<link rel="icon" type="image/png" href="turbo-desktop-icon.png">
+<link rel="icon" type="image/png" href="desktop-rails-icon.png">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -726,8 +726,8 @@
 <nav id="main-nav">
   <div class="container">
     <a href="#" class="logo">
-      <img src="turbo-desktop-icon.png" alt="" width="24" height="24">
-      <span class="gradient-text">Turbo Desktop</span>
+      <img src="desktop-rails-icon.png" alt="" width="24" height="24">
+      <span class="gradient-text">Desktop Rails</span>
     </a>
     <a href="#features">Features</a>
     <a href="#architecture">Architecture</a>
@@ -739,15 +739,15 @@
     <a href="#vs-electron">vs Electron</a>
     <a href="#comparison">Hotwire Native</a>
     <a href="#quickstart">Quick Start</a>
-    <a href="https://github.com/aguspe/turbo_desktop" target="_blank" rel="noopener">GitHub &nearr;</a>
+    <a href="https://github.com/DonsWayo/desktop-rails" target="_blank" rel="noopener">GitHub &nearr;</a>
   </div>
 </nav>
 
 <!-- Hero -->
 <section class="hero">
   <div class="container">
-    <img src="turbo-desktop-icon.png" alt="Turbo Desktop" class="hero-icon">
-    <h1><span class="gradient-text">Turbo Desktop</span></h1>
+    <img src="desktop-rails-icon.png" alt="Desktop Rails" class="hero-icon">
+    <h1><span class="gradient-text">Desktop Rails</span></h1>
     <p class="tagline">Turbo Native for Desktop &mdash; wrap your Rails app in a native macOS / Windows / Linux shell powered by Tauri 2</p>
     <div class="badges">
       <span class="badge accent">v0.2.1</span>
@@ -760,9 +760,9 @@
     </div>
     <div class="cta-buttons">
       <a href="#quickstart" class="btn btn-primary">Get Started</a>
-      <a href="https://github.com/aguspe/turbo_desktop/releases/latest" class="btn btn-secondary" target="_blank" rel="noopener">Download</a>
-      <a href="https://github.com/aguspe/turbo_desktop" class="btn btn-secondary" target="_blank" rel="noopener">View on GitHub</a>
-      <a href="https://rubygems.org/gems/turbo_desktop-rails" class="btn btn-secondary" target="_blank" rel="noopener">RubyGems</a>
+      <a href="https://github.com/DonsWayo/desktop-rails/releases/latest" class="btn btn-secondary" target="_blank" rel="noopener">Download</a>
+      <a href="https://github.com/DonsWayo/desktop-rails" class="btn btn-secondary" target="_blank" rel="noopener">View on GitHub</a>
+      <a href="https://rubygems.org/gems/desktop-rails" class="btn btn-secondary" target="_blank" rel="noopener">RubyGems</a>
     </div>
   </div>
 </section>
@@ -833,17 +833,17 @@
       <div class="card">
         <span class="card-icon">&#x1f48e;</span>
         <h4>Rails Gem</h4>
-        <p><code>turbo_desktop-rails</code> on RubyGems. UA detection, platform/arch helpers, conditional rendering, bridge data attributes, and path config endpoint.</p>
+        <p><code>desktop-rails</code> on RubyGems. UA detection, platform/arch helpers, conditional rendering, bridge data attributes, and path config endpoint.</p>
       </div>
       <div class="card">
         <span class="card-icon">&#x1f6e0;</span>
         <h4>CLI Scaffolding</h4>
-        <p><code>npx turbo-desktop init</code> generates the full Tauri shell. <code>dev</code> and <code>build</code> commands with target architecture support.</p>
+        <p><code>npx desktop-rails init</code> generates the full Tauri shell. <code>dev</code> and <code>build</code> commands with target architecture support.</p>
       </div>
       <div class="card">
         <span class="card-icon">&#x1f9ea;</span>
         <h4>Stimulus Bridge Helper</h4>
-        <p><code>TurboDesktop.stimulusBridge(Controller, name)</code> mixin. Adds <code>sendBridge()</code> and <code>receiveBridge()</code> to any Stimulus controller.</p>
+        <p><code>DesktopRails.stimulusBridge(Controller, name)</code> mixin. Adds <code>sendBridge()</code> and <code>receiveBridge()</code> to any Stimulus controller.</p>
       </div>
       <div class="card">
         <span class="card-icon">&#x1f50d;</span>
@@ -853,24 +853,24 @@
     </div>
 
     <h3>JavaScript API</h3>
-    <p>The injected <code>window.TurboDesktop</code> object exposes the full native bridge:</p>
-    <pre><code>TurboDesktop.version          <span class="cm">// "0.2.1"</span>
-TurboDesktop.isNative          <span class="cm">// true</span>
-TurboDesktop.<span class="fn">proposeVisit</span>(url, action)          <span class="cm">// Send visit to Rust shell</span>
-TurboDesktop.<span class="fn">setTitle</span>(title)                     <span class="cm">// Update window title bar</span>
-TurboDesktop.<span class="fn">sendBridgeMessage</span>(component, event, data) <span class="cm">// Bridge message</span>
-TurboDesktop.<span class="fn">getWindowInfo</span>()                     <span class="cm">// Window state (size, pos, scale)</span>
-TurboDesktop.<span class="fn">closeModal</span>(label)                   <span class="cm">// Close modal by label</span>
+    <p>The injected <code>window.DesktopRails</code> object exposes the full native bridge:</p>
+    <pre><code>DesktopRails.version          <span class="cm">// "0.2.1"</span>
+DesktopRails.isNative          <span class="cm">// true</span>
+DesktopRails.<span class="fn">proposeVisit</span>(url, action)          <span class="cm">// Send visit to Rust shell</span>
+DesktopRails.<span class="fn">setTitle</span>(title)                     <span class="cm">// Update window title bar</span>
+DesktopRails.<span class="fn">sendBridgeMessage</span>(component, event, data) <span class="cm">// Bridge message</span>
+DesktopRails.<span class="fn">getWindowInfo</span>()                     <span class="cm">// Window state (size, pos, scale)</span>
+DesktopRails.<span class="fn">closeModal</span>(label)                   <span class="cm">// Close modal by label</span>
 
-TurboDesktop.fs.<span class="fn">read</span>(path) / .<span class="fn">write</span>(path, content) <span class="cm">// Scoped filesystem</span>
-TurboDesktop.shell.<span class="fn">spawn</span>(id, cmd, args)           <span class="cm">// Child processes, streamed</span>
-TurboDesktop.sudo.<span class="fn">execute</span>(cmd)                    <span class="cm">// Allowlisted elevation</span>
-TurboDesktop.clipboard.<span class="fn">readText</span>() / .<span class="fn">writeText</span>(t) <span class="cm">// System clipboard</span>
-TurboDesktop.autostart.<span class="fn">enable</span>() / .<span class="fn">isEnabled</span>()    <span class="cm">// Launch at login</span>
-TurboDesktop.dragDrop.<span class="fn">onDrop</span>(cb)                  <span class="cm">// Files from the desktop</span></code></pre>
+DesktopRails.fs.<span class="fn">read</span>(path) / .<span class="fn">write</span>(path, content) <span class="cm">// Scoped filesystem</span>
+DesktopRails.shell.<span class="fn">spawn</span>(id, cmd, args)           <span class="cm">// Child processes, streamed</span>
+DesktopRails.sudo.<span class="fn">execute</span>(cmd)                    <span class="cm">// Allowlisted elevation</span>
+DesktopRails.clipboard.<span class="fn">readText</span>() / .<span class="fn">writeText</span>(t) <span class="cm">// System clipboard</span>
+DesktopRails.autostart.<span class="fn">enable</span>() / .<span class="fn">isEnabled</span>()    <span class="cm">// Launch at login</span>
+DesktopRails.dragDrop.<span class="fn">onDrop</span>(cb)                  <span class="cm">// Files from the desktop</span></code></pre>
     <p>
       Dropped files and OS-opened files also arrive as plain DOM events —
-      <code>turbo-desktop:drop</code> and <code>turbo-desktop:file-open</code> —
+      <code>desktop-rails:drop</code> and <code>desktop-rails:file-open</code> —
       so a Stimulus <code>data-action</code> is all a page needs.
     </p>
   </div>
@@ -896,7 +896,7 @@ TurboDesktop.dragDrop.<span class="fn">onDrop</span>(cb)                  <span 
         <div class="diagram-box webview">
           <div class="label">Rendering</div>
           <div class="name">OS WebView</div>
-          <div class="detail">turbo-desktop.js</div>
+          <div class="detail">desktop-rails.js</div>
         </div>
         <div class="diagram-arrow">&rarr;</div>
         <div class="diagram-box native">
@@ -937,7 +937,7 @@ TurboDesktop.dragDrop.<span class="fn">onDrop</span>(cb)                  <span 
           </div>
           <div class="diagram-arrow" style="display:flex;flex-direction:column;font-size:1rem;line-height:1.3">&darr; send() &nbsp; &uarr; onReceive()</div>
           <div class="diagram-box webview" style="width:100%">
-            <div class="name">turbo-desktop.js</div>
+            <div class="name">desktop-rails.js</div>
             <div class="detail">Tauri invoke / event listen</div>
           </div>
           <div class="diagram-arrow" style="display:flex;flex-direction:column;font-size:1rem;line-height:1.3">&darr; invoke &nbsp; &uarr; emit</div>
@@ -963,9 +963,9 @@ TurboDesktop.dragDrop.<span class="fn">onDrop</span>(cb)                  <span 
       <div class="step-content">
         <h3>The Tauri shell loads your Rails URL</h3>
         <p>
-          On launch, Rust reads <code>turbo-desktop.config.json</code> for your <code>server_url</code>
+          On launch, Rust reads <code>desktop-rails.config.json</code> for your <code>server_url</code>
           (falls back to <code>localhost:3000</code>), sets a custom User-Agent
-          (<code>Turbo Desktop/0.2.1 (macOS; aarch64)</code>), and navigates the 1200&times;800 main window to your app.
+          (<code>Desktop Rails/0.2.1 (macOS; aarch64)</code>), and navigates the 1200&times;800 main window to your app.
         </p>
         <pre><code><span class="cm">// main.rs &mdash; startup</span>
 <span class="kw">let</span> app_config = window::<span class="fn">load_config</span>(<span class="ty">None</span>);
@@ -977,16 +977,16 @@ main_window.<span class="fn">eval</span>(&amp;<span class="fn">format!</span>(<s
     <div class="step">
       <div class="step-number">2</div>
       <div class="step-content">
-        <h3>turbo-desktop.js is injected on every page load</h3>
+        <h3>desktop-rails.js is injected on every page load</h3>
         <p>
           The <code>on_page_load</code> callback fires after each navigation completes,
-          injecting the bridge script that creates <code>window.TurboDesktop</code> with the full native API.
+          injecting the bridge script that creates <code>window.DesktopRails</code> with the full native API.
           Double-injection is prevented automatically.
         </p>
         <pre><code><span class="cm">// main.rs &mdash; injection</span>
 .<span class="fn">on_page_load</span>(|webview, payload| {
     <span class="kw">if let</span> PageLoadEvent::Finished = payload.<span class="fn">event</span>() {
-        <span class="kw">let</span> js = <span class="fn">include_str!</span>(<span class="st">"../../src/turbo-desktop.js"</span>);
+        <span class="kw">let</span> js = <span class="fn">include_str!</span>(<span class="st">"../../src/desktop-rails.js"</span>);
         <span class="kw">let</span> _ = webview.<span class="fn">eval</span>(js);
     }
 })</code></pre>
@@ -1003,10 +1003,10 @@ main_window.<span class="fn">eval</span>(&amp;<span class="fn">format!</span>(<s
           via Tauri's <code>invoke</code> IPC. It also tracks <code>turbo:load</code>, <code>turbo:frame-load</code>,
           and <code>turbo:submit-start</code> for full lifecycle awareness.
         </p>
-        <pre><code><span class="cm">// turbo-desktop.js</span>
+        <pre><code><span class="cm">// desktop-rails.js</span>
 document.<span class="fn">addEventListener</span>(<span class="st">"turbo:before-visit"</span>, <span class="kw">async</span> (event) =&gt; {
   <span class="kw">const</span> url = event.detail.url;
-  <span class="kw">const</span> response = <span class="kw">await</span> TurboDesktop.<span class="fn">proposeVisit</span>(url, <span class="st">"advance"</span>);
+  <span class="kw">const</span> response = <span class="kw">await</span> DesktopRails.<span class="fn">proposeVisit</span>(url, <span class="st">"advance"</span>);
 
   <span class="cm">// If the native shell handled it, cancel the Turbo visit</span>
   <span class="kw">if</span> (response.action === <span class="st">"none"</span>) {
@@ -1135,7 +1135,7 @@ document.<span class="fn">addEventListener</span>(<span class="st">"turbo:before
     <ol>
       <li>A <a href="https://stimulus.hotwired.dev">Stimulus</a> controller extends <code>BridgeComponent</code> (or uses the <code>stimulusBridge</code> mixin)</li>
       <li>It calls <code>this.sendBridge("connect", { title: "Export" })</code></li>
-      <li><code>turbo-desktop.js</code> forwards this to Rust via Tauri's <code>invoke("handle_bridge_message", ...)</code></li>
+      <li><code>desktop-rails.js</code> forwards this to Rust via Tauri's <code>invoke("handle_bridge_message", ...)</code></li>
       <li>Rust routes the message by component name to the built-in handler (or forwards it as a generic event)</li>
       <li>When the native side triggers (e.g., menu clicked), it emits back via <code>send_bridge_response</code></li>
       <li>The web component receives it via <code>receiveBridge(message)</code></li>
@@ -1196,7 +1196,7 @@ document.<span class="fn">addEventListener</span>(<span class="st">"turbo:before
     <div class="file-label">app/javascript/controllers/notification_bridge_controller.js</div>
     <pre><code><span class="kw">import</span> { Controller } <span class="kw">from</span> <span class="st">"@hotwired/stimulus"</span>
 
-<span class="kw">export default class extends</span> TurboDesktop.<span class="fn">stimulusBridge</span>(Controller, <span class="st">"notification"</span>) {
+<span class="kw">export default class extends</span> DesktopRails.<span class="fn">stimulusBridge</span>(Controller, <span class="st">"notification"</span>) {
   <span class="fn">connect</span>() {
     <span class="kw">super</span>.<span class="fn">connect</span>()
     <span class="kw">this</span>.<span class="fn">sendBridge</span>(<span class="st">"connect"</span>, { title: <span class="st">"My App"</span> })
@@ -1239,7 +1239,7 @@ document.<span class="fn">addEventListener</span>(<span class="st">"turbo:before
     <div class="file-label">app/views/posts/show.html.erb</div>
     <pre><code><span class="cm">&lt;%# Attach bridge data attributes to any element %&gt;</span>
 <span class="ht">&lt;%=</span> tag.button <span class="st">"Export PDF"</span>,
-    **<span class="fn">turbo_desktop_bridge</span>(<span class="st">"menu-item"</span>,
+    **<span class="fn">desktop_rails_bridge</span>(<span class="st">"menu-item"</span>,
       title: <span class="st">"Export PDF"</span>,
       shortcut: <span class="st">"Cmd+E"</span>
     ) <span class="ht">%&gt;</span></code></pre>
@@ -1253,20 +1253,20 @@ document.<span class="fn">addEventListener</span>(<span class="st">"turbo:before
   <div class="container">
     <h2><span class="gradient-text">Rails Gem</span></h2>
     <p class="lead">
-      <a href="https://rubygems.org/gems/turbo_desktop-rails"><code>turbo_desktop-rails</code></a> (on RubyGems) gives your Rails app awareness of the desktop shell,
+      <a href="https://rubygems.org/gems/desktop-rails"><code>desktop-rails</code></a> (on RubyGems) gives your Rails app awareness of the desktop shell,
       exactly like <code><a href="https://github.com/hotwired/turbo-rails">turbo-rails</a></code> does for Turbo Native mobile apps.
     </p>
 
     <h3>Installation</h3>
     <pre><code><span class="cm"># Gemfile</span>
-gem <span class="st">"turbo_desktop-rails"</span></code></pre>
+gem <span class="st">"desktop-rails"</span></code></pre>
     <pre><code>bundle install
-rails generate turbo_desktop:install</code></pre>
+rails generate desktop_rails:install</code></pre>
 
     <h3>Detection</h3>
     <p>
       Detects desktop app requests via the User-Agent header. The Tauri shell sends
-      <code>Turbo Desktop/0.2.1 (macOS; aarch64)</code>. The detection pattern is configurable.
+      <code>Desktop Rails/0.2.1 (macOS; aarch64)</code>. The detection pattern is configurable.
     </p>
 
     <h3>View Helpers</h3>
@@ -1277,19 +1277,19 @@ rails generate turbo_desktop:install</code></pre>
         </thead>
         <tbody>
           <tr>
-            <td><code>turbo_desktop_app?</code></td>
-            <td>Returns <code>true</code> if the request comes from a Turbo Desktop shell.</td>
+            <td><code>desktop_rails_app?</code></td>
+            <td>Returns <code>true</code> if the request comes from a Desktop Rails shell.</td>
           </tr>
           <tr>
-            <td><code>turbo_desktop_platform</code></td>
+            <td><code>desktop_rails_platform</code></td>
             <td>Returns <code>"macos"</code>, <code>"windows"</code>, <code>"linux"</code>, or <code>nil</code>.</td>
           </tr>
           <tr>
-            <td><code>turbo_desktop_arch</code></td>
+            <td><code>desktop_rails_arch</code></td>
             <td>Returns <code>"aarch64"</code>, <code>"x86_64"</code>, or <code>nil</code>.</td>
           </tr>
           <tr>
-            <td><code>turbo_desktop_only { }</code></td>
+            <td><code>desktop_rails_only { }</code></td>
             <td>Renders the block only when inside the desktop app.</td>
           </tr>
           <tr>
@@ -1297,17 +1297,17 @@ rails generate turbo_desktop:install</code></pre>
             <td>Renders the block only for regular web (non-desktop) users.</td>
           </tr>
           <tr>
-            <td><code>turbo_desktop_bridge(component, **opts)</code></td>
-            <td>Outputs <code>data-turbo-desktop-bridge</code> attributes for bridge components.</td>
+            <td><code>desktop_rails_bridge(component, **opts)</code></td>
+            <td>Outputs <code>data-desktop-rails-bridge</code> attributes for bridge components.</td>
           </tr>
         </tbody>
       </table>
     </div>
 
     <h3>Configuration</h3>
-    <div class="file-label">config/initializers/turbo_desktop.rb</div>
-    <pre><code>TurboDesktop.<span class="fn">configure</span> <span class="kw">do</span> |config|
-  config.user_agent_pattern = <span class="st">/Turbo Desktop/</span>
+    <div class="file-label">config/initializers/desktop_rails.rb</div>
+    <pre><code>DesktopRails.<span class="fn">configure</span> <span class="kw">do</span> |config|
+  config.user_agent_pattern = <span class="st">/Desktop Rails/</span>
 
   config.path_configuration = {
     settings: { screenshots_enabled: <span class="kw">true</span> },
@@ -1327,12 +1327,12 @@ rails generate turbo_desktop:install</code></pre>
 <span class="ht">&lt;%</span> <span class="kw">end</span> <span class="ht">%&gt;</span>
 
 <span class="cm">&lt;%# Show a native-only sidebar button %&gt;</span>
-<span class="ht">&lt;%</span> <span class="fn">turbo_desktop_only</span> <span class="kw">do</span> <span class="ht">%&gt;</span>
+<span class="ht">&lt;%</span> <span class="fn">desktop_rails_only</span> <span class="kw">do</span> <span class="ht">%&gt;</span>
   &lt;button data-controller="sidebar"&gt;Toggle Sidebar&lt;/button&gt;
 <span class="ht">&lt;%</span> <span class="kw">end</span> <span class="ht">%&gt;</span>
 
 <span class="cm">&lt;%# Platform-specific styles %&gt;</span>
-<span class="ht">&lt;%</span> <span class="kw">if</span> <span class="fn">turbo_desktop_platform</span> == <span class="st">"macos"</span> <span class="ht">%&gt;</span>
+<span class="ht">&lt;%</span> <span class="kw">if</span> <span class="fn">desktop_rails_platform</span> == <span class="st">"macos"</span> <span class="ht">%&gt;</span>
   &lt;body class="desktop macos"&gt;
 <span class="ht">&lt;%</span> <span class="kw">end</span> <span class="ht">%&gt;</span></code></pre>
   </div>
@@ -1345,45 +1345,45 @@ rails generate turbo_desktop:install</code></pre>
   <div class="container">
     <h2><span class="gradient-text">CLI Tool</span></h2>
     <p class="lead">
-      The <code>turbo-desktop</code> CLI scaffolds the full Tauri shell into any Rails project and provides dev/build commands.
+      The <code>desktop-rails</code> CLI scaffolds the full Tauri shell into any Rails project and provides dev/build commands.
     </p>
 
     <div class="card-grid">
       <div class="card">
-        <h4><code>npx turbo-desktop init [path]</code></h4>
-        <p>Generates the <code>desktop/</code> directory with all Rust source files (main.rs, config.rs, navigation.rs, bridge.rs, menu.rs, window.rs), Cargo.toml, tauri.conf.json, turbo-desktop.js, and a <code>turbo-desktop.config.json</code> pre-configured for your app.</p>
+        <h4><code>npx desktop-rails init [path]</code></h4>
+        <p>Generates the <code>desktop/</code> directory with all Rust source files (main.rs, config.rs, navigation.rs, bridge.rs, menu.rs, window.rs), Cargo.toml, tauri.conf.json, desktop-rails.js, and a <code>desktop-rails.config.json</code> pre-configured for your app.</p>
       </div>
       <div class="card">
-        <h4><code>npx turbo-desktop dev</code></h4>
-        <p>Starts the Tauri dev server with hot reload. Auto-detects config in current dir or <code>./desktop/</code>. Sets <code>RUST_LOG=turbo_desktop=info</code> for structured logging.</p>
+        <h4><code>npx desktop-rails dev</code></h4>
+        <p>Starts the Tauri dev server with hot reload. Auto-detects config in current dir or <code>./desktop/</code>. Sets <code>RUST_LOG=desktop_rails=info</code> for structured logging.</p>
       </div>
       <div class="card">
-        <h4><code>npx turbo-desktop build [--target arch]</code></h4>
+        <h4><code>npx desktop-rails build [--target arch]</code></h4>
         <p>Builds a production binary. Defaults to <code>aarch64-apple-darwin</code>. Supports any Rust target triple via the <code>--target</code> flag.</p>
       </div>
     </div>
 
     <h3>Example: Add Desktop to an Existing Rails App</h3>
     <pre><code><span class="cm"># From your Rails project root</span>
-npx turbo-desktop init
+npx desktop-rails init
 
 <span class="cm"># Edit the generated config</span>
-vi desktop/turbo-desktop.config.json
+vi desktop/desktop-rails.config.json
 
 <span class="cm"># Start developing</span>
-npx turbo-desktop dev</code></pre>
+npx desktop-rails dev</code></pre>
   </div>
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════════
-     Turbo Desktop vs Electron
+     Desktop Rails vs Electron
      ═══════════════════════════════════════════════════════════════ -->
 <section id="vs-electron">
   <div class="container">
-    <h2><span class="gradient-text">Turbo Desktop vs Electron</span></h2>
+    <h2><span class="gradient-text">Desktop Rails vs Electron</span></h2>
     <p class="lead">
       <a href="https://www.electronjs.org">Electron</a> is the most popular desktop framework.
-      Turbo Desktop takes a fundamentally different approach &mdash; here&rsquo;s how they compare.
+      Desktop Rails takes a fundamentally different approach &mdash; here&rsquo;s how they compare.
     </p>
 
     <h3>Feature Comparison</h3>
@@ -1392,7 +1392,7 @@ npx turbo-desktop dev</code></pre>
         <thead>
           <tr>
             <th style="width:30%">Feature</th>
-            <th style="width:35%">Turbo Desktop</th>
+            <th style="width:35%">Desktop Rails</th>
             <th style="width:35%">Electron</th>
           </tr>
         </thead>
@@ -1495,7 +1495,7 @@ npx turbo-desktop dev</code></pre>
 
     <div class="pros-cons">
       <div class="col pros">
-        <h3 style="color:#7ee787">Turbo Desktop Strengths</h3>
+        <h3 style="color:#7ee787">Desktop Rails Strengths</h3>
         <ul>
           <li>Zero new UI code &mdash; ship your existing Rails views as a desktop app</li>
           <li>Tiny binaries (~5&ndash;10 MB vs ~200 MB for Electron)</li>
@@ -1510,7 +1510,7 @@ npx turbo-desktop dev</code></pre>
         </ul>
       </div>
       <div class="col cons">
-        <h3 style="color:#f85149">Turbo Desktop Limitations</h3>
+        <h3 style="color:#f85149">Desktop Rails Limitations</h3>
         <ul>
           <li>Requires a running server &mdash; no fully offline-capable apps (yet)</li>
           <li>macOS-only UI polish today (Windows/Linux architecture ready but not refined)</li>
@@ -1526,9 +1526,9 @@ npx turbo-desktop dev</code></pre>
       </div>
     </div>
 
-    <h3>When to Choose Turbo Desktop</h3>
+    <h3>When to Choose Desktop Rails</h3>
     <p>
-      Turbo Desktop is the right choice when you <strong style="color:#e6edf3">already have a Rails app</strong> and want to
+      Desktop Rails is the right choice when you <strong style="color:#e6edf3">already have a Rails app</strong> and want to
       give your users a native desktop experience without rewriting your UI. It excels when:
     </p>
     <ul>
@@ -1558,7 +1558,7 @@ npx turbo-desktop dev</code></pre>
   <div class="container">
     <h2><span class="gradient-text">How It Relates to turbo-ios and turbo-android</span></h2>
     <p class="lead">
-      Turbo Desktop is the third leg of the <a href="https://native.hotwired.dev">Hotwire Native</a> story. Same patterns, different platform.
+      Desktop Rails is the third leg of the <a href="https://native.hotwired.dev">Hotwire Native</a> story. Same patterns, different platform.
     </p>
 
     <div class="table-wrapper">
@@ -1568,7 +1568,7 @@ npx turbo-desktop dev</code></pre>
             <th>Concept</th>
             <th><a href="https://github.com/hotwired/turbo-ios">turbo-ios</a></th>
             <th><a href="https://github.com/hotwired/turbo-android">turbo-android</a></th>
-            <th>Turbo Desktop</th>
+            <th>Desktop Rails</th>
           </tr>
         </thead>
         <tbody>
@@ -1606,7 +1606,7 @@ npx turbo-desktop dev</code></pre>
             <td>Rails gem</td>
             <td><a href="https://github.com/hotwired/turbo-rails">turbo-rails</a></td>
             <td><a href="https://github.com/hotwired/turbo-rails">turbo-rails</a></td>
-            <td><a href="https://rubygems.org/gems/turbo_desktop-rails">turbo_desktop-rails</a></td>
+            <td><a href="https://rubygems.org/gems/desktop-rails">desktop-rails</a></td>
           </tr>
           <tr>
             <td>Binary size</td>
@@ -1627,7 +1627,7 @@ npx turbo-desktop dev</code></pre>
     <p>
       The key insight is that <strong style="color:#e6edf3">every concept transfers directly</strong>:
       if you already know how to structure a <a href="https://native.hotwired.dev">Hotwire Native</a> mobile app with path configuration
-      and Strada bridge components, you already know how to use Turbo Desktop.
+      and Strada bridge components, you already know how to use Desktop Rails.
       The only difference is that the native shell is written in <a href="https://www.rust-lang.org">Rust</a> (via <a href="https://tauri.app">Tauri</a>) instead of
       Swift or Kotlin.
     </p>
@@ -1645,8 +1645,8 @@ npx turbo-desktop dev</code></pre>
       <div class="step-number">1</div>
       <div class="step-content">
         <h3>Clone and install dependencies</h3>
-        <pre><code>git clone https://github.com/aguspe/turbo_desktop.git
-cd turbo_desktop
+        <pre><code>git clone https://github.com/DonsWayo/desktop-rails.git
+cd desktop_rails
 cargo install tauri-cli
 npm install</code></pre>
       </div>
@@ -1656,13 +1656,13 @@ npm install</code></pre>
       <div class="step-number">2</div>
       <div class="step-content">
         <h3>Configure your Rails server URL</h3>
-        <p>Edit <code>turbo-desktop.config.json</code> to point at your running Rails app:</p>
+        <p>Edit <code>desktop-rails.config.json</code> to point at your running Rails app:</p>
         <pre><code>{
   <span class="st">"server_url"</span>: <span class="st">"http://localhost:3000"</span>,
   <span class="st">"app_name"</span>: <span class="st">"My App"</span>,
-  <span class="st">"user_agent"</span>: <span class="st">"Turbo Desktop/0.2.1 (macOS; aarch64)"</span>,
+  <span class="st">"user_agent"</span>: <span class="st">"Desktop Rails/0.2.1 (macOS; aarch64)"</span>,
   <span class="st">"window"</span>: { <span class="st">"width"</span>: <span class="nr">1200</span>, <span class="st">"height"</span>: <span class="nr">800</span> },
-  <span class="st">"path_configuration_url"</span>: <span class="st">"http://localhost:3000/turbo-desktop/path-configuration.json"</span>
+  <span class="st">"path_configuration_url"</span>: <span class="st">"http://localhost:3000/desktop-rails/path-configuration.json"</span>
 }</code></pre>
       </div>
     </div>
@@ -1672,9 +1672,9 @@ npm install</code></pre>
       <div class="step-content">
         <h3>Add the Rails gem</h3>
         <pre><code><span class="cm"># Gemfile</span>
-gem <span class="st">"turbo_desktop-rails"</span></code></pre>
+gem <span class="st">"desktop-rails"</span></code></pre>
         <pre><code>bundle install
-rails generate turbo_desktop:install</code></pre>
+rails generate desktop_rails:install</code></pre>
       </div>
     </div>
 
@@ -1683,7 +1683,7 @@ rails generate turbo_desktop:install</code></pre>
       <div class="step-content">
         <h3>Mount the path configuration endpoint</h3>
         <div class="file-label">config/routes.rb</div>
-        <pre><code>mount TurboDesktop::Engine, at: <span class="st">"/turbo-desktop"</span></code></pre>
+        <pre><code>mount DesktopRails::Engine, at: <span class="st">"/desktop-rails"</span></code></pre>
       </div>
     </div>
 
@@ -1708,8 +1708,8 @@ rails generate turbo_desktop:install</code></pre>
 
     <h3>Or scaffold into an existing project</h3>
     <pre><code><span class="cm"># From your Rails project root</span>
-npx turbo-desktop init
-npx turbo-desktop dev</code></pre>
+npx desktop-rails init
+npx desktop-rails dev</code></pre>
   </div>
 </section>
 
@@ -1756,8 +1756,8 @@ npx turbo-desktop dev</code></pre>
 <hr class="divider">
 <footer>
   <div class="footer-links">
-    <a href="https://github.com/aguspe/turbo_desktop">GitHub</a>
-    <a href="https://rubygems.org/gems/turbo_desktop-rails">RubyGems</a>
+    <a href="https://github.com/DonsWayo/desktop-rails">GitHub</a>
+    <a href="https://rubygems.org/gems/desktop-rails">RubyGems</a>
     <a href="https://tauri.app">Tauri</a>
     <a href="https://hotwired.dev">Hotwire</a>
     <a href="https://turbo.hotwired.dev">Turbo</a>
@@ -1768,7 +1768,7 @@ npx turbo-desktop dev</code></pre>
   </div>
   <div class="container">
     <p>
-      <strong class="gradient-text">Turbo Desktop</strong> &mdash;
+      <strong class="gradient-text">Desktop Rails</strong> &mdash;
       Turbo Native for the desktop.
       Built with <a href="https://tauri.app">Tauri</a>,
       <a href="https://hotwired.dev">Hotwire</a>, and

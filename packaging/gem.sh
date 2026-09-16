@@ -3,7 +3,7 @@
 # package with `bundle add` and no compiler.
 #
 # One gem per platform triple. RubyGems resolves the right one automatically:
-# the developer writes `gem "turbo_desktop-runtime"` and gets the build for
+# the developer writes `gem "desktop-rails-runtime"` and gets the build for
 # their machine, the same mechanism nokogiri and sqlite3 use.
 #
 # Usage: packaging/gem.sh --runtime out/ruby --triple arm64-darwin --version 0.1.0
@@ -24,17 +24,17 @@ done
 [ -d "$RUNTIME" ] || { echo "--runtime must be a built interpreter prefix"; exit 1; }
 [ -n "$TRIPLE" ]  || { echo "--triple is required"; exit 1; }
 
-STAGE="$(mktemp -d)/turbo_desktop-runtime"
+STAGE="$(mktemp -d)/desktop-rails-runtime"
 mkdir -p "$STAGE/runtime" "$OUT"
 cp -R packaging/runtime-gem/lib "$STAGE/lib"
 cp -R "$RUNTIME" "$STAGE/runtime/ruby"
 
-cat > "$STAGE/turbo_desktop-runtime.gemspec" <<SPEC
+cat > "$STAGE/desktop-rails-runtime.gemspec" <<SPEC
 Gem::Specification.new do |spec|
-  spec.name     = "turbo_desktop-runtime"
+  spec.name     = "desktop-rails-runtime"
   spec.version  = "$VERSION"
   spec.platform = "$TRIPLE"
-  spec.summary  = "A relocatable Ruby for packaging Turbo Desktop apps"
+  spec.summary  = "A relocatable Ruby for packaging Desktop Rails apps"
   spec.description = <<~TEXT
     A prebuilt, relocatable Ruby that can be copied into an application bundle.
     A package-manager Ruby cannot: it links libyaml, OpenSSL and gmp by absolute
@@ -42,9 +42,9 @@ Gem::Specification.new do |spec|
     --enable-load-relative against statically linked dependencies, so it runs
     from wherever it is put.
   TEXT
-  spec.authors  = ["Turbo Desktop contributors"]
+  spec.authors  = ["Desktop Rails contributors"]
   spec.license  = "MIT"
-  spec.homepage = "https://github.com/aguspe/turbo_desktop"
+  spec.homepage = "https://github.com/DonsWayo/desktop-rails"
   spec.required_ruby_version = ">= 3.1"
 
   spec.files = Dir["lib/**/*", "runtime/**/*"].select { |f| File.file?(f) || File.symlink?(f) }
@@ -53,6 +53,6 @@ Gem::Specification.new do |spec|
 end
 SPEC
 
-( cd "$STAGE" && gem build turbo_desktop-runtime.gemspec --output "$OUT/turbo_desktop-runtime-$VERSION-$TRIPLE.gem" )
-ls -lh "$OUT/turbo_desktop-runtime-$VERSION-$TRIPLE.gem"
+( cd "$STAGE" && gem build desktop-rails-runtime.gemspec --output "$OUT/desktop-rails-runtime-$VERSION-$TRIPLE.gem" )
+ls -lh "$OUT/desktop-rails-runtime-$VERSION-$TRIPLE.gem"
 rm -rf "$(dirname "$STAGE")"

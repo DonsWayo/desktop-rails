@@ -55,8 +55,8 @@ const N_LOG2_MAX = 20;
 
 const COMMENT_PREFIX = "untrusted comment: ";
 const TRUSTED_COMMENT_PREFIX = "trusted comment: ";
-const DEFAULT_SIGNATURE_COMMENT = "signature from turbo-desktop secret key";
-const DEFAULT_SECRET_KEY_COMMENT = "turbo-desktop encrypted secret key";
+const DEFAULT_SIGNATURE_COMMENT = "signature from desktop-rails secret key";
+const DEFAULT_SECRET_KEY_COMMENT = "desktop-rails encrypted secret key";
 
 // Ed25519 keys reach Node's crypto as DER. Both wrappers are fixed-length and
 // fixed-shape for this curve, so the raw 32 bytes can simply be appended.
@@ -376,7 +376,7 @@ export function verifyBytes(publicKeyFile, data, signatureFile) {
 
 /**
  * What goes in the updater manifest, and in the `pubkey` field of
- * turbo-desktop.config.json: base64 of the whole file, because the plugin
+ * desktop-rails.config.json: base64 of the whole file, because the plugin
  * base64-decodes both before parsing them as minisign text.
  */
 export const forManifest = (fileContents) => Buffer.from(fileContents, "utf8").toString("base64");

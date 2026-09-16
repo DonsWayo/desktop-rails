@@ -1,4 +1,4 @@
-<!-- Thanks for contributing to Turbo Desktop! Keep PRs to one concern. -->
+<!-- Thanks for contributing to Desktop Rails! Keep PRs to one concern. -->
 
 ## What & why
 
@@ -12,7 +12,7 @@
 
 - [ ] Tauri/Rust shell (`src-tauri/`)
 - [ ] JS bridge (`src/`, `packages/bridge/`)
-- [ ] Rails gem (`turbo_desktop-rails/`)
+- [ ] Rails gem (`desktop-rails/`)
 - [ ] CLI (`cli/`)
 - [ ] Docs
 

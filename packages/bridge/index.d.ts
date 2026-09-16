@@ -1,28 +1,28 @@
 /**
- * turbo-desktop-bridge — TypeScript definitions
+ * desktop-rails-bridge — TypeScript definitions
  *
- * Re-exports all types from the turbo-desktop.js bridge.
+ * Re-exports all types from the desktop-rails.js bridge.
  */
 
 export {
-  TurboDesktopAPI,
+  DesktopRailsAPI,
   BridgeComponent,
   BridgeMessage,
   BridgeResponse,
   VisitResponse,
   WindowInfo,
-} from "../../src/turbo-desktop";
+} from "../../src/desktop-rails";
 
-import type { TurboDesktopAPI, BridgeComponent as BridgeComponentClass, BridgeResponse } from "../../src/turbo-desktop";
+import type { DesktopRailsAPI, BridgeComponent as BridgeComponentClass, BridgeResponse } from "../../src/desktop-rails";
 
-/** The main Turbo Desktop API (from `window.TurboDesktop`). */
-export declare const TurboDesktop: TurboDesktopAPI;
+/** The main Desktop Rails API (from `window.DesktopRails`). */
+export declare const DesktopRails: DesktopRailsAPI;
 
 /** The BridgeComponent base class for native communication. */
 export declare const BridgeComponent: typeof BridgeComponentClass;
 
 /** Factory to create Stimulus-compatible bridge controller mixins. */
-export declare const stimulusBridge: TurboDesktopAPI["stimulusBridge"];
+export declare const stimulusBridge: DesktopRailsAPI["stimulusBridge"];
 
-/** Check if the current environment is a Turbo Desktop shell. */
-export declare function isTurboDesktop(): boolean;
+/** Check if the current environment is a Desktop Rails shell. */
+export declare function isDesktopRails(): boolean;

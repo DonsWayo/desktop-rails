@@ -35,7 +35,7 @@ let workdir;
 
 before(() => {
   keys = generateKeyPair({ password: PASSWORD });
-  workdir = mkdtempSync(join(tmpdir(), "turbo-desktop-signing-"));
+  workdir = mkdtempSync(join(tmpdir(), "desktop-rails-signing-"));
 });
 
 after(() => {
@@ -364,10 +364,10 @@ describe("the shell reads its updater settings from the app config", () => {
     assert.deepEqual(updater.endpoints, [], "endpoints belong to the app, not the shell");
   });
 
-  test("the bridge builds its updater from turbo-desktop.config.json", () => {
+  test("the bridge builds its updater from desktop-rails.config.json", () => {
     const source = read("src-tauri", "src", "updater_bridge.rs");
 
-    assert.match(source, /TurboDesktopConfig/, "the updater must read the app's own config");
+    assert.match(source, /DesktopRailsConfig/, "the updater must read the app's own config");
     assert.match(source, /\.pubkey\(/, "the public key must be applied at runtime");
     assert.match(source, /\.endpoints\(/, "the endpoints must be applied at runtime");
   });
@@ -378,7 +378,7 @@ describe("the shell reads its updater settings from the app config", () => {
     assert.match(
       source,
       /pub struct UpdaterConfig/,
-      "turbo-desktop.config.json needs an updater section",
+      "desktop-rails.config.json needs an updater section",
     );
     assert.match(
       source,

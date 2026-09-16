@@ -1,6 +1,6 @@
 use crate::bridge::BridgeMessage;
 use crate::security;
-use crate::window::TurboDesktopConfig;
+use crate::window::DesktopRailsConfig;
 use std::path::PathBuf;
 use tauri::Manager;
 use tokio::fs;
@@ -10,7 +10,7 @@ use tokio::io::AsyncWriteExt;
 ///
 /// Provides read, write, exists, list, mkdir, and remove operations.
 /// Every path is resolved against the roots declared in
-/// `turbo-desktop.config.json`; anything outside them is refused.
+/// `desktop-rails.config.json`; anything outside them is refused.
 pub async fn handle_filesystem(
     app: &tauri::AppHandle,
     message: &BridgeMessage,
@@ -40,7 +40,7 @@ struct FsScope<'a> {
 
 /// Roots this app may touch, defaulting to its own data directory.
 fn configured_roots(app: &tauri::AppHandle) -> Vec<PathBuf> {
-    let config = app.state::<TurboDesktopConfig>();
+    let config = app.state::<DesktopRailsConfig>();
     let app_data_dir = app.path().app_data_dir().ok();
     security::allowed_roots(app_data_dir, &config.filesystem)
 }

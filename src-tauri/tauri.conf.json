@@ -1,8 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicedayfor/tauri/dev/crates/tauri-config-schema/schema.json",
-  "productName": "Turbo Desktop",
+  "productName": "Desktop Rails",
   "version": "0.2.1",
-  "identifier": "com.turbo-desktop.app",
+  "identifier": "com.desktop-rails.app",
   "build": {
     "frontendDist": "../src",
     "devUrl": "http://localhost:3000",
@@ -20,7 +20,7 @@
     "active": true,
     "targets": "all",
     "resources": {
-      "../turbo-desktop.config.json": "turbo-desktop.config.json",
+      "../desktop-rails.config.json": "desktop-rails.config.json",
       "../path-configuration.json": "path-configuration.json"
     },
     "icon": [
@@ -50,7 +50,7 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["turbo-desktop"]
+        "schemes": ["desktop-rails"]
       }
     },
     "shell": {

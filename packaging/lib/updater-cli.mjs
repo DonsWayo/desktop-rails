@@ -10,7 +10,7 @@
 //   manifest --manifest <path> --version <v> --target <t> --url <u> --sig <path>
 //            [--notes <text>] [--notes-file <path>] [--pub-date <rfc3339>]
 //   verify   --public <path> --artifact <path> --sig <path>
-//   pubkey   --public <path>          # the value for turbo-desktop.config.json
+//   pubkey   --public <path>          # the value for desktop-rails.config.json
 //
 // Passwords arrive as arguments from the shell scripts, which read them from
 // the environment rather than the command line so they stay out of `ps`.

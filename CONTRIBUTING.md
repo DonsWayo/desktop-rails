@@ -1,6 +1,6 @@
-# Contributing to Turbo Desktop
+# Contributing to Desktop Rails
 
-Thanks for your interest in Turbo Desktop — the [Hotwire Native](https://native.hotwired.dev/)
+Thanks for your interest in Desktop Rails — the [Hotwire Native](https://native.hotwired.dev/)
 pattern brought to the desktop. Contributions of all kinds are welcome: bug reports, docs,
 tests, and features.
 
@@ -8,7 +8,7 @@ tests, and features.
 
 - **Report a bug** — open an issue using the *Bug report* template.
 - **Request a feature** — open an issue using the *Feature request* template.
-- **Pick up a "good first issue"** — see the [issues](https://github.com/aguspe/turbo_desktop/issues)
+- **Pick up a "good first issue"** — see the [issues](https://github.com/DonsWayo/desktop-rails/issues)
   labelled `good first issue`.
 - **Improve docs** — the README and the docs site (`docs/`) are always improvable.
 
@@ -29,27 +29,27 @@ anything, so only your app's own origin can reach them.
 
 ## Project layout
 
-Turbo Desktop is three pieces in one repo:
+Desktop Rails is three pieces in one repo:
 
 | Path | What it is |
 |------|-----------|
 | `src-tauri/` | The Rust/Tauri desktop shell (window mgmt, path-config routing, OS APIs). |
-| `src/`, `packages/bridge/` | The JS layer (`turbo-desktop.js`) that intercepts Turbo visits and bridges to native. |
-| `turbo_desktop-rails/` | The Rails gem — desktop-shell awareness, view helpers, path-configuration endpoint. |
-| `cli/` | The `turbo-desktop` CLI (`npx turbo-desktop new myapp`). |
+| `src/`, `packages/bridge/` | The JS layer (`desktop-rails.js`) that intercepts Turbo visits and bridges to native. |
+| `desktop-rails/` | The Rails gem — desktop-shell awareness, view helpers, path-configuration endpoint. |
+| `cli/` | The `desktop-rails` CLI (`npx desktop-rails new myapp`). |
 | `docs/`, `site/` | Documentation site. |
 
 ## Development setup
 
 ```bash
-git clone https://github.com/aguspe/turbo_desktop.git
-cd turbo_desktop
+git clone https://github.com/DonsWayo/desktop-rails.git
+cd desktop_rails
 cargo install tauri-cli   # if you don't have it
 npm install
 ```
 
-Configure the shell via `turbo-desktop.config.json` (JSON) — see the README quick-start.
-Turbo Desktop points a WebView at a **running Rails app** (`server_url`), so start your Rails
+Configure the shell via `desktop-rails.config.json` (JSON) — see the README quick-start.
+Desktop Rails points a WebView at a **running Rails app** (`server_url`), so start your Rails
 server, then run the shell:
 
 ```bash
@@ -63,7 +63,7 @@ Please run the suite for whichever piece you touched (CI runs all three):
 
 ```bash
 # Rails gem
-cd turbo_desktop-rails && bundle exec rake test
+cd desktop-rails && bundle exec rake test
 
 # JavaScript
 npm test

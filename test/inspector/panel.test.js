@@ -16,7 +16,7 @@ beforeEach(() => {
 
 describe("InspectorPanel", () => {
   it("mounts a shadow root host and starts hidden", () => {
-    const host = document.querySelector("[data-turbo-desktop-inspector]");
+    const host = document.querySelector("[data-desktop-rails-inspector]");
     assert.ok(host, "host element exists");
     assert.ok(host.shadowRoot, "uses shadow DOM");
     assert.equal(panel.visible, false);

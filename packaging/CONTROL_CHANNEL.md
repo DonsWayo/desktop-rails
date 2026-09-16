@@ -9,9 +9,9 @@ job cannot raise a notification while no page is open, which is exactly when it
 wants to.
 
 ```ruby
-TurboDesktop::Native.notify(title: "Export finished", body: "invoice.pdf")
-TurboDesktop::Native.call("window", "resize", width: 1200, height: 900)
-text = TurboDesktop::Native.clipboard_read
+DesktopRails::Native.notify(title: "Export finished", body: "invoice.pdf")
+DesktopRails::Native.call("window", "resize", width: 1200, height: 900)
+text = DesktopRails::Native.clipboard_read
 ```
 
 ## How it works
@@ -72,7 +72,7 @@ There `available?` is false and calls return `nil` rather than raising, so the
 same code runs in both places without a guard at every call site.
 
 A shell that should be there but is not answering raises
-`TurboDesktop::Native::Error` with the address it tried, because that is a
+`DesktopRails::Native::Error` with the address it tried, because that is a
 genuine fault rather than a normal condition.
 
 ## Every component, not only the ones with sugar
@@ -83,7 +83,7 @@ fullscreen, centre, always-on-top and state, all from a background job with no
 page in sight.
 
 ```ruby
-TurboDesktop::Native.call("window", "resize", width: 1200, height: 900)
+DesktopRails::Native.call("window", "resize", width: 1200, height: 900)
 # => {"status" => "ok", "width" => 1200.0, "height" => 900.0}
 ```
 
@@ -93,7 +93,7 @@ The rules belong to the app, not to the caller: a window declared
 what was asked for, which is why the size actually applied is in the reply.
 
 A refusal is a 500 with its reason, which Ruby raises as
-`TurboDesktop::Native::CallFailed` rather than returning quietly.
+`DesktopRails::Native::CallFailed` rather than returning quietly.
 
 ## Tested
 
@@ -118,7 +118,7 @@ A refusal is a 500 with its reason, which Ruby raises as
 
 The shell, the channel and the real Ruby client, in one process tree: a debug
 build of the shell with a `server.command` that boots a Ruby script instead of
-Rails — handshake off stdin, address on stdout, then `TurboDesktop::Native`.
+Rails — handshake off stdin, address on stdout, then `DesktopRails::Native`.
 
 ```
 available=true control=http://127.0.0.1:55221

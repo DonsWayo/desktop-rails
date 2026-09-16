@@ -1,5 +1,5 @@
 use crate::bridge::BridgeMessage;
-use crate::window::{TurboDesktopConfig, UpdaterConfig};
+use crate::window::{DesktopRailsConfig, UpdaterConfig};
 use tauri::Manager;
 use tauri_plugin_updater::{Updater, UpdaterExt};
 
@@ -26,7 +26,7 @@ pub async fn handle_updater(
 /// Copied rather than borrowed because a `State` guard must not be held across
 /// an await, and everything below here is async.
 fn settings(app: &tauri::AppHandle) -> UpdaterConfig {
-    app.try_state::<TurboDesktopConfig>()
+    app.try_state::<DesktopRailsConfig>()
         .map(|config| config.updater.clone())
         .unwrap_or_default()
 }

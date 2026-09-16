@@ -57,13 +57,13 @@ fn main() {
                 bridge::handle_drag_drop(window.app_handle(), drag);
             }
         })
-        // Inject turbo-desktop.js into every page load across all webviews.
+        // Inject desktop-rails.js into every page load across all webviews.
         .on_page_load(|webview, payload| {
             if let PageLoadEvent::Finished = payload.event() {
-                let js = include_str!("../../src/turbo-desktop.js");
+                let js = include_str!("../../src/desktop-rails.js");
                 let _ = webview.eval(js);
 
-                log::info!("Injected turbo-desktop.js into {}", payload.url());
+                log::info!("Injected desktop-rails.js into {}", payload.url());
             }
         })
         .setup(move |app| {
@@ -133,7 +133,7 @@ fn main() {
 
             // Build the main window here rather than in tauri.conf.json, so it can
             // carry the runtime configuration: the user agent the Rails gem detects
-            // on, and the window geometry from turbo-desktop.config.json. Opening
+            // on, and the window geometry from desktop-rails.config.json. Opening
             // straight at the app URL also avoids loading a local page and then
             // scripting a redirect away from it.
             let url: url::Url = server_url.parse().expect("Invalid server URL");
@@ -193,7 +193,7 @@ fn main() {
             // polls: the server says when it is ready.
             let waiting = app.handle().clone();
             let listening_on = app.handle().clone();
-            listening_on.listen("turbo-desktop://server-ready", move |event| {
+            listening_on.listen("desktop-rails://server-ready", move |event| {
                 let payload = event.payload().trim_matches('"').to_string();
                 if payload.is_empty() {
                     return;
@@ -292,7 +292,7 @@ fn main() {
                 log::warn!("Could not set up system tray: {}", e);
             }
 
-            log::info!("Turbo Desktop started — server: {}", server_url);
+            log::info!("Desktop Rails started — server: {}", server_url);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -308,7 +308,7 @@ fn main() {
             window::get_window_info,
         ])
         .build(tauri::generate_context!())
-        .expect("Error building Turbo Desktop")
+        .expect("Error building Desktop Rails")
         .run(|app_handle, event| {
             // Both, because which one arrives depends on how the app was closed:
             // the last window closing raises ExitRequested, while the Quit menu

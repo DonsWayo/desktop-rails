@@ -16,7 +16,7 @@ import {
   guessAppName,
   packageVersion,
   run,
-} from "../cli/turbo-desktop.js";
+} from "../cli/desktop-rails.js";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (...parts) => readFileSync(join(PACKAGE_ROOT, ...parts), "utf-8");
@@ -59,7 +59,7 @@ test("defaultUserAgent reports the running version and platform", () => {
   const ua = defaultUserAgent();
 
   assert.ok(
-    ua.startsWith(`Turbo Desktop/${packageVersion()}`),
+    ua.startsWith(`Desktop Rails/${packageVersion()}`),
     `user agent should carry the package version, got: ${ua}`
   );
   assert.doesNotMatch(ua, /undefined/);
@@ -86,14 +86,14 @@ test("run surfaces a non-zero exit as an error", () => {
 });
 
 test("the injected bridge reports the same version as package.json", () => {
-  const source = readFileSync(join(PACKAGE_ROOT, "src", "turbo-desktop.js"), "utf-8");
+  const source = readFileSync(join(PACKAGE_ROOT, "src", "desktop-rails.js"), "utf-8");
   const match = source.match(/version:\s*"([^"]+)"/);
 
-  assert.ok(match, "src/turbo-desktop.js should declare a version");
+  assert.ok(match, "src/desktop-rails.js should declare a version");
   assert.equal(
     match[1],
     packageVersion(),
-    "src/turbo-desktop.js version drifted from package.json"
+    "src/desktop-rails.js version drifted from package.json"
   );
 });
 
@@ -107,7 +107,7 @@ test("the Rust crate reports the same version as package.json", () => {
 
 test("the Ruby gem reports the same version as package.json", () => {
   const version = readFileSync(
-    join(PACKAGE_ROOT, "turbo_desktop-rails", "lib", "turbo_desktop", "version.rb"),
+    join(PACKAGE_ROOT, "desktop-rails", "lib", "desktop_rails", "version.rb"),
     "utf-8"
   );
   const match = version.match(/VERSION\s*=\s*"([^"]+)"/);
@@ -117,7 +117,7 @@ test("the Ruby gem reports the same version as package.json", () => {
 });
 
 test("the scaffold copies every Rust module main.rs declares", () => {
-  const cli = readFileSync(join(PACKAGE_ROOT, "cli", "turbo-desktop.js"), "utf-8");
+  const cli = readFileSync(join(PACKAGE_ROOT, "cli", "desktop-rails.js"), "utf-8");
   const main = readFileSync(join(PACKAGE_ROOT, "src-tauri", "src", "main.rs"), "utf-8");
 
   const declared = [...main.matchAll(/^mod\s+(\w+);/gm)].map((m) => `${m[1]}.rs`);
@@ -155,7 +155,7 @@ test("each app gets its own bundle identifier", () => {
 
 test("the shell's own config does not leak its identity into scaffolds", () => {
   const conf = JSON.parse(read("src-tauri", "tauri.conf.json"));
-  const cli = read("cli", "turbo-desktop.js");
+  const cli = read("cli", "desktop-rails.js");
 
   // The scaffold must rewrite these rather than copying them.
   for (const key of ["productName", "identifier"]) {
@@ -172,7 +172,7 @@ test("a scaffolded project gets its own package identity", () => {
   const scaffold = desktopPackage("Task Manager");
 
   assert.equal(scaffold.name, "task-manager-desktop");
-  assert.notEqual(scaffold.name, shell.name, "every app would be called turbo-desktop");
+  assert.notEqual(scaffold.name, shell.name, "every app would be called desktop-rails");
   assert.ok(!scaffold.bin, "a scaffold has no cli/ directory for a bin to point at");
   assert.equal(scaffold.private, true);
 });
@@ -180,8 +180,8 @@ test("a scaffolded project gets its own package identity", () => {
 test("a scaffolded project depends on the published shell", () => {
   const scaffold = desktopPackage("Task Manager");
 
-  assert.equal(scaffold.dependencies["turbo-desktop"], `^${packageVersion()}`);
-  assert.ok(scaffold.devDependencies["@tauri-apps/cli"], "turbo-desktop dev shells out to tauri");
+  assert.equal(scaffold.dependencies["desktop-rails"], `^${packageVersion()}`);
+  assert.ok(scaffold.devDependencies["@tauri-apps/cli"], "desktop-rails dev shells out to tauri");
 });
 
 test("the published package carries everything the scaffold copies", () => {
@@ -201,8 +201,8 @@ test("missing prerequisites stop before anything is created", () => {
   // An empty PATH makes every prerequisite unavailable.
   const result = spawnSync(
     process.execPath,
-    [join(PACKAGE_ROOT, "cli", "turbo-desktop.js"), "new", "scratch-app"],
-    { cwd: mkdtempSync(join(tmpdir(), "turbo-desktop-preflight-")), env: { PATH: "" }, encoding: "utf-8" }
+    [join(PACKAGE_ROOT, "cli", "desktop-rails.js"), "new", "scratch-app"],
+    { cwd: mkdtempSync(join(tmpdir(), "desktop-rails-preflight-")), env: { PATH: "" }, encoding: "utf-8" }
   );
 
   assert.equal(result.status, 1, "a missing prerequisite should be a clean exit, not a crash");

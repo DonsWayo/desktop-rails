@@ -4,7 +4,7 @@
 
 **Goal:** Build a dev-only in-app overlay that surfaces available bridge components, a live web↔native message log, the current path-config presentation, and shell info — solving discoverability with zero production cost.
 
-**Architecture:** A self-contained ESM `inspector.js` and `src/inspector/*` units (`BridgeTap`, `InspectorState`, `InspectorPanel`, `catalog`). The core `turbo-desktop.js` lazily `import()`s the inspector only when a gate passes, then `BridgeTap` taps the two existing bridge chokepoints (`sendBridgeMessage` outbound, the `bridge-response` Tauri event inbound). Traffic flows one-way: tap → state → Shadow-DOM panel. The Rails gem exposes a dev-only enable flag.
+**Architecture:** A self-contained ESM `inspector.js` and `src/inspector/*` units (`BridgeTap`, `InspectorState`, `InspectorPanel`, `catalog`). The core `desktop-rails.js` lazily `import()`s the inspector only when a gate passes, then `BridgeTap` taps the two existing bridge chokepoints (`sendBridgeMessage` outbound, the `bridge-response` Tauri event inbound). Traffic flows one-way: tap → state → Shadow-DOM panel. The Rails gem exposes a dev-only enable flag.
 
 **Tech Stack:** Vanilla ESM JavaScript, Node's built-in test runner (`node --test`), jsdom for DOM tests, Shadow DOM for style isolation; Ruby/Minitest for the gem.
 
@@ -30,11 +30,11 @@
 
 **Modify:**
 - `package.json:13` — `test` script so all `test/**/*.test.js` run (currently hard-codes one file).
-- `src/turbo-desktop.js` — add the enablement gate (`_inspectorEnabled`) and the lazy `import()` at the end of the IIFE.
-- `turbo_desktop-rails/lib/turbo_desktop/configuration.rb` — add `inspector_enabled` accessor (default `false`).
-- `turbo_desktop-rails/lib/turbo_desktop/view_helpers.rb` — add `turbo_desktop_inspector?` + `turbo_desktop_inspector_meta_tag`.
-- `turbo_desktop-rails/lib/generators/turbo_desktop/install/templates/initializer.rb.tt` — document enabling in development.
-- `test/turbo_desktop-rails` — extend `configuration_test.rb` and `view_helpers_test.rb`.
+- `src/desktop-rails.js` — add the enablement gate (`_inspectorEnabled`) and the lazy `import()` at the end of the IIFE.
+- `desktop-rails/lib/desktop_rails/configuration.rb` — add `inspector_enabled` accessor (default `false`).
+- `desktop-rails/lib/desktop_rails/view_helpers.rb` — add `desktop_rails_inspector?` + `desktop_rails_inspector_meta_tag`.
+- `desktop-rails/lib/generators/desktop_rails/install/templates/initializer.rb.tt` — document enabling in development.
+- `test/desktop-rails` — extend `configuration_test.rb` and `view_helpers_test.rb`.
 
 **Deferred (NOT in this plan — flagged in spec):** exact matched-rule index in Navigation (needs Rust), `.toml`/config-file gate via Rust, catalog→README generation.
 
@@ -52,7 +52,7 @@ Make the test runner pick up new files under `test/inspector/` before adding any
 In `package.json`, change the `scripts.test` line from:
 
 ```json
-    "test": "node --test test/turbo-desktop.test.js"
+    "test": "node --test test/desktop-rails.test.js"
 ```
 
 to:
@@ -61,12 +61,12 @@ to:
     "test": "node --test"
 ```
 
-`node --test` with no path auto-discovers every file named `*.test.js` (and `test/**`) — both the existing `test/turbo-desktop.test.js` and the new `test/inspector/*.test.js`.
+`node --test` with no path auto-discovers every file named `*.test.js` (and `test/**`) — both the existing `test/desktop-rails.test.js` and the new `test/inspector/*.test.js`.
 
 - [ ] **Step 2: Verify existing tests still run**
 
 Run: `npm test`
-Expected: PASS — the existing `turbo-desktop.test.js` suite runs and passes (same count as before).
+Expected: PASS — the existing `desktop-rails.test.js` suite runs and passes (same count as before).
 
 - [ ] **Step 3: Commit**
 
@@ -143,57 +143,57 @@ export const CATALOG = {
   "notification": {
     description: "Show native OS notifications.",
     erb: `<button data-controller="notification"\n        data-action="click->notification#notify"\n        data-body="Saved!">Notify</button>`,
-    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends TurboDesktop.stimulusBridge(Controller, "notification") {\n  notify(e) { this.sendBridge("connect", { title: "My App", body: e.target.dataset.body }) }\n}`,
+    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends DesktopRails.stimulusBridge(Controller, "notification") {\n  notify(e) { this.sendBridge("connect", { title: "My App", body: e.target.dataset.body }) }\n}`,
   },
   "menu-item": {
     description: "Register an item in the native menu bar.",
-    erb: `<%= tag.button "Export PDF",\n      **turbo_desktop_bridge("menu-item", title: "Export PDF", shortcut: "Cmd+E") %>`,
-    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends TurboDesktop.stimulusBridge(Controller, "menu-item") {\n  connect() { super.connect(); this.sendBridge("register", { title: "Export PDF", shortcut: "Cmd+E" }) }\n}`,
+    erb: `<%= tag.button "Export PDF",\n      **desktop_rails_bridge("menu-item", title: "Export PDF", shortcut: "Cmd+E") %>`,
+    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends DesktopRails.stimulusBridge(Controller, "menu-item") {\n  connect() { super.connect(); this.sendBridge("register", { title: "Export PDF", shortcut: "Cmd+E" }) }\n}`,
   },
   "file-picker": {
     description: "Open a native file open/save dialog.",
     erb: `<button data-controller="file-picker"\n        data-action="click->file-picker#open">Choose file…</button>`,
-    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends TurboDesktop.stimulusBridge(Controller, "file-picker") {\n  open() { this.sendBridge("open", { multiple: false }) }\n  receiveBridge(msg) { console.log("picked", msg.data) }\n}`,
+    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends DesktopRails.stimulusBridge(Controller, "file-picker") {\n  open() { this.sendBridge("open", { multiple: false }) }\n  receiveBridge(msg) { console.log("picked", msg.data) }\n}`,
   },
   "badge": {
     description: "Set the dock / taskbar badge count.",
     erb: `<span data-controller="badge" data-badge-count-value="3"></span>`,
-    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends TurboDesktop.stimulusBridge(Controller, "badge") {\n  static values = { count: Number }\n  connect() { super.connect(); this.sendBridge("set", { count: this.countValue }) }\n}`,
+    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends DesktopRails.stimulusBridge(Controller, "badge") {\n  static values = { count: Number }\n  connect() { super.connect(); this.sendBridge("set", { count: this.countValue }) }\n}`,
   },
   "shortcut": {
     description: "Register a global keyboard shortcut.",
     erb: `<div data-controller="shortcut" data-shortcut-keys-value="CmdOrCtrl+K"></div>`,
-    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends TurboDesktop.stimulusBridge(Controller, "shortcut") {\n  static values = { keys: String }\n  connect() { super.connect(); this.sendBridge("register", { keys: this.keysValue }) }\n  receiveBridge() { /* fired when the shortcut is pressed */ }\n}`,
+    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends DesktopRails.stimulusBridge(Controller, "shortcut") {\n  static values = { keys: String }\n  connect() { super.connect(); this.sendBridge("register", { keys: this.keysValue }) }\n  receiveBridge() { /* fired when the shortcut is pressed */ }\n}`,
   },
   "shell": {
     description: "Spawn and manage native shell processes.",
     erb: `<button data-controller="shell" data-action="click->shell#run">Run</button>`,
-    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends TurboDesktop.stimulusBridge(Controller, "shell") {\n  run() { TurboDesktop.shell.spawn("job-1", "echo", ["hello"]) }\n}`,
+    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends DesktopRails.stimulusBridge(Controller, "shell") {\n  run() { DesktopRails.shell.spawn("job-1", "echo", ["hello"]) }\n}`,
   },
   "fs": {
     description: "Read and write files through the native filesystem bridge.",
     erb: `<button data-controller="fs" data-action="click->fs#read">Read file</button>`,
-    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends TurboDesktop.stimulusBridge(Controller, "fs") {\n  read() { this.sendBridge("read", { path: "~/notes.txt" }) }\n  receiveBridge(msg) { console.log(msg.data) }\n}`,
+    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends DesktopRails.stimulusBridge(Controller, "fs") {\n  read() { this.sendBridge("read", { path: "~/notes.txt" }) }\n  receiveBridge(msg) { console.log(msg.data) }\n}`,
   },
   "sudo": {
     description: "Run a privileged command via the native elevation prompt.",
     erb: `<button data-controller="sudo" data-action="click->sudo#elevate">Install</button>`,
-    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends TurboDesktop.stimulusBridge(Controller, "sudo") {\n  elevate() { this.sendBridge("run", { command: "brew", args: ["install", "foo"] }) }\n}`,
+    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends DesktopRails.stimulusBridge(Controller, "sudo") {\n  elevate() { this.sendBridge("run", { command: "brew", args: ["install", "foo"] }) }\n}`,
   },
   "tray": {
     description: "Add items to the system tray / menu-bar icon.",
     erb: `<div data-controller="tray" data-tray-title-value="My App"></div>`,
-    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends TurboDesktop.stimulusBridge(Controller, "tray") {\n  static values = { title: String }\n  connect() { super.connect(); this.sendBridge("set", { tooltip: this.titleValue }) }\n}`,
+    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends DesktopRails.stimulusBridge(Controller, "tray") {\n  static values = { title: String }\n  connect() { super.connect(); this.sendBridge("set", { tooltip: this.titleValue }) }\n}`,
   },
   "deep-link": {
     description: "Handle custom-scheme deep links opened from outside the app.",
     erb: `<div data-controller="deep-link"></div>`,
-    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends TurboDesktop.stimulusBridge(Controller, "deep-link") {\n  receiveBridge(msg) { Turbo.visit(msg.data.path) }\n}`,
+    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends DesktopRails.stimulusBridge(Controller, "deep-link") {\n  receiveBridge(msg) { Turbo.visit(msg.data.path) }\n}`,
   },
   "updater": {
     description: "Check for and apply native app updates.",
     erb: `<button data-controller="updater" data-action="click->updater#check">Check for updates</button>`,
-    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends TurboDesktop.stimulusBridge(Controller, "updater") {\n  check() { this.sendBridge("check", {}) }\n  receiveBridge(msg) { console.log("update status", msg.data) }\n}`,
+    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends DesktopRails.stimulusBridge(Controller, "updater") {\n  check() { this.sendBridge("check", {}) }\n  receiveBridge(msg) { console.log("update status", msg.data) }\n}`,
   },
 };
 
@@ -585,7 +585,7 @@ beforeEach(() => {
 
 describe("InspectorPanel", () => {
   it("mounts a shadow root host and starts hidden", () => {
-    const host = document.querySelector("[data-turbo-desktop-inspector]");
+    const host = document.querySelector("[data-desktop-rails-inspector]");
     assert.ok(host, "host element exists");
     assert.ok(host.shadowRoot, "uses shadow DOM");
     assert.equal(panel.visible, false);
@@ -666,7 +666,7 @@ export class InspectorPanel {
 
   mount(parent) {
     const host = this.document.createElement("div");
-    host.setAttribute("data-turbo-desktop-inspector", "");
+    host.setAttribute("data-desktop-rails-inspector", "");
     host.style.cssText = "position:fixed;right:0;bottom:0;z-index:2147483647;";
     this.root = host.attachShadow ? host.attachShadow({ mode: "open" }) : host;
     this.hostEl = host;
@@ -883,12 +883,12 @@ Replace the contents of `src/inspector.js` with:
 /**
  * Dev Inspector entry point.
  *
- * startInspector(host, env) wires the inspector units onto a TurboDesktop-like
+ * startInspector(host, env) wires the inspector units onto a DesktopRails-like
  * host: it installs a BridgeTap on the host's sendBridgeMessage, subscribes to
  * inbound bridge-response events, seeds shell facts, mounts the Shadow-DOM
  * panel, and binds the toggle hotkey (Cmd/Ctrl+Shift+D).
  *
- * This module is loaded lazily by turbo-desktop.js only when the inspector gate
+ * This module is loaded lazily by desktop-rails.js only when the inspector gate
  * passes, so it ships no code to production builds.
  */
 import { BridgeTap } from "./inspector/bridge-tap.js";
@@ -936,7 +936,7 @@ Expected: PASS — all four tests green.
 - [ ] **Step 5: Run the full JS suite**
 
 Run: `npm test`
-Expected: PASS — existing `turbo-desktop` suite plus all five inspector suites green.
+Expected: PASS — existing `desktop-rails` suite plus all five inspector suites green.
 
 - [ ] **Step 6: Commit**
 
@@ -952,13 +952,13 @@ git commit -m "feat(inspector): add startInspector entry point and hotkey"
 Add the enablement gate and the lazy `import()` to the core script. The gate is exposed for testing; the actual `import()` is guarded behind it and the Tauri presence check, so it never runs in tests or plain browsers.
 
 **Files:**
-- Modify: `src/turbo-desktop.js` (end of the IIFE, before the closing `})();`)
+- Modify: `src/desktop-rails.js` (end of the IIFE, before the closing `})();`)
 - Test: `test/inspector/gate.test.js`
 
 - [ ] **Step 1: Find the exposure point**
 
-Run: `grep -n "window.__TURBO_DESKTOP__\|__TURBO_DESKTOP__ =\|})();" src/turbo-desktop.js | tail -5`
-Expected: shows where `TurboDesktop` is assigned to `window.__TURBO_DESKTOP__` and the IIFE close `})();`. Insert the new block immediately before `})();`.
+Run: `grep -n "window.__DESKTOP_RAILS__\|__DESKTOP_RAILS__ =\|})();" src/desktop-rails.js | tail -5`
+Expected: shows where `DesktopRails` is assigned to `window.__DESKTOP_RAILS__` and the IIFE close `})();`. Insert the new block immediately before `})();`.
 
 - [ ] **Step 2: Write the failing test**
 
@@ -973,7 +973,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const scriptSource = readFileSync(resolve(__dirname, "../../src/turbo-desktop.js"), "utf-8");
+const scriptSource = readFileSync(resolve(__dirname, "../../src/desktop-rails.js"), "utf-8");
 
 function load({ storage = {}, metaEnabled = false, globalEnabled = false } = {}) {
   const dom = new JSDOM("<!DOCTYPE html><html><head></head><body></body></html>", {
@@ -987,11 +987,11 @@ function load({ storage = {}, metaEnabled = false, globalEnabled = false } = {})
   });
   if (metaEnabled) {
     const m = window.document.createElement("meta");
-    m.setAttribute("name", "turbo-desktop-inspector");
+    m.setAttribute("name", "desktop-rails-inspector");
     m.setAttribute("content", "enabled");
     window.document.head.appendChild(m);
   }
-  if (globalEnabled) window.__TURBO_DESKTOP_INSPECTOR_ENABLED__ = true;
+  if (globalEnabled) window.__DESKTOP_RAILS_INSPECTOR_ENABLED__ = true;
   window.eval(scriptSource);
   return window;
 }
@@ -999,22 +999,22 @@ function load({ storage = {}, metaEnabled = false, globalEnabled = false } = {})
 describe("inspector gate", () => {
   it("is disabled by default", () => {
     const w = load();
-    assert.equal(w.__TURBO_DESKTOP__._inspectorEnabled(), false);
+    assert.equal(w.__DESKTOP_RAILS__._inspectorEnabled(), false);
   });
 
   it("enables via localStorage td:inspector = 1", () => {
     const w = load({ storage: { "td:inspector": "1" } });
-    assert.equal(w.__TURBO_DESKTOP__._inspectorEnabled(), true);
+    assert.equal(w.__DESKTOP_RAILS__._inspectorEnabled(), true);
   });
 
   it("enables via meta tag", () => {
     const w = load({ metaEnabled: true });
-    assert.equal(w.__TURBO_DESKTOP__._inspectorEnabled(), true);
+    assert.equal(w.__DESKTOP_RAILS__._inspectorEnabled(), true);
   });
 
   it("enables via global flag", () => {
     const w = load({ globalEnabled: true });
-    assert.equal(w.__TURBO_DESKTOP__._inspectorEnabled(), true);
+    assert.equal(w.__DESKTOP_RAILS__._inspectorEnabled(), true);
   });
 });
 ```
@@ -1026,7 +1026,7 @@ Expected: FAIL — `_inspectorEnabled` is not a function (undefined).
 
 - [ ] **Step 4: Add the gate and lazy import**
 
-In `src/turbo-desktop.js`, immediately before the IIFE's closing `})();`, insert:
+In `src/desktop-rails.js`, immediately before the IIFE's closing `})();`, insert:
 
 ```js
   // ─── Dev Inspector (lazy, dev-only) ──────────────────────────────────────
@@ -1034,23 +1034,23 @@ In `src/turbo-desktop.js`, immediately before the IIFE's closing `})();`, insert
     try {
       if (window.localStorage && window.localStorage.getItem("td:inspector") === "1") return true;
     } catch (_e) { /* storage may be blocked */ }
-    if (document.querySelector('meta[name="turbo-desktop-inspector"][content="enabled"]')) return true;
-    if (window.__TURBO_DESKTOP_INSPECTOR_ENABLED__ === true) return true;
+    if (document.querySelector('meta[name="desktop-rails-inspector"][content="enabled"]')) return true;
+    if (window.__DESKTOP_RAILS_INSPECTOR_ENABLED__ === true) return true;
     return false;
   }
-  TurboDesktop._inspectorEnabled = inspectorEnabled;
+  DesktopRails._inspectorEnabled = inspectorEnabled;
 
   if (INVOKE && inspectorEnabled()) {
-    // The Tauri shell sets __TURBO_DESKTOP_INSPECTOR_URL__ to the injected
+    // The Tauri shell sets __DESKTOP_RAILS_INSPECTOR_URL__ to the injected
     // asset URL; fall back to a relative path for bundled setups.
-    var inspectorUrl = window.__TURBO_DESKTOP_INSPECTOR_URL__ || "./inspector.js";
+    var inspectorUrl = window.__DESKTOP_RAILS_INSPECTOR_URL__ || "./inspector.js";
     import(inspectorUrl)
-      .then(function (m) { m.startInspector(TurboDesktop, { doc: document, win: window }); })
-      .catch(function (e) { console.error("[turbo-desktop] inspector failed to load", e); });
+      .then(function (m) { m.startInspector(DesktopRails, { doc: document, win: window }); })
+      .catch(function (e) { console.error("[desktop-rails] inspector failed to load", e); });
   }
 ```
 
-> Note: `_inspectorEnabled` is exposed for testing and runtime introspection. The `import()` only runs when both `INVOKE` (real Tauri) is present and the gate passes, so it never fires under jsdom or in a plain browser. Wiring `__TURBO_DESKTOP_INSPECTOR_URL__` to the shell's injected asset path is a small Tauri-side follow-up; the JS contract is complete here.
+> Note: `_inspectorEnabled` is exposed for testing and runtime introspection. The `import()` only runs when both `INVOKE` (real Tauri) is present and the gate passes, so it never fires under jsdom or in a plain browser. Wiring `__DESKTOP_RAILS_INSPECTOR_URL__` to the shell's injected asset path is a small Tauri-side follow-up; the JS contract is complete here.
 
 - [ ] **Step 5: Run test to verify it passes**
 
@@ -1060,12 +1060,12 @@ Expected: PASS — all four gate tests green.
 - [ ] **Step 6: Run the full JS suite (no regressions)**
 
 Run: `npm test`
-Expected: PASS — every suite green, including the original `turbo-desktop.test.js`.
+Expected: PASS — every suite green, including the original `desktop-rails.test.js`.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/turbo-desktop.js test/inspector/gate.test.js
+git add src/desktop-rails.js test/inspector/gate.test.js
 git commit -m "feat(inspector): gate and lazily load the inspector from core"
 ```
 
@@ -1076,24 +1076,24 @@ git commit -m "feat(inspector): gate and lazily load the inspector from core"
 Give Rails developers a one-line, development-only way to turn the inspector on: a config flag plus a helper that emits the enabling `<meta>` tag.
 
 **Files:**
-- Modify: `turbo_desktop-rails/lib/turbo_desktop/configuration.rb`
-- Modify: `turbo_desktop-rails/lib/turbo_desktop/view_helpers.rb`
-- Modify: `turbo_desktop-rails/lib/generators/turbo_desktop/install/templates/initializer.rb.tt`
-- Test: `turbo_desktop-rails/test/configuration_test.rb` (extend)
-- Test: `turbo_desktop-rails/test/view_helpers_test.rb` (extend)
+- Modify: `desktop-rails/lib/desktop_rails/configuration.rb`
+- Modify: `desktop-rails/lib/desktop_rails/view_helpers.rb`
+- Modify: `desktop-rails/lib/generators/desktop_rails/install/templates/initializer.rb.tt`
+- Test: `desktop-rails/test/configuration_test.rb` (extend)
+- Test: `desktop-rails/test/view_helpers_test.rb` (extend)
 
 - [ ] **Step 1: Write the failing config test**
 
-Append to `turbo_desktop-rails/test/configuration_test.rb` (inside the existing test class):
+Append to `desktop-rails/test/configuration_test.rb` (inside the existing test class):
 
 ```ruby
   def test_inspector_disabled_by_default
-    config = TurboDesktop::Configuration.new
+    config = DesktopRails::Configuration.new
     refute config.inspector_enabled
   end
 
   def test_inspector_can_be_enabled
-    config = TurboDesktop::Configuration.new
+    config = DesktopRails::Configuration.new
     config.inspector_enabled = true
     assert config.inspector_enabled
   end
@@ -1101,53 +1101,53 @@ Append to `turbo_desktop-rails/test/configuration_test.rb` (inside the existing 
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `cd turbo_desktop-rails && ruby -Itest -Ilib test/configuration_test.rb`
+Run: `cd desktop-rails && ruby -Itest -Ilib test/configuration_test.rb`
 Expected: FAIL — `NoMethodError: undefined method 'inspector_enabled'`.
 
 - [ ] **Step 3: Add the config accessor**
 
-In `turbo_desktop-rails/lib/turbo_desktop/configuration.rb`, change the `attr_accessor` line and `initialize`:
+In `desktop-rails/lib/desktop_rails/configuration.rb`, change the `attr_accessor` line and `initialize`:
 
 ```ruby
     attr_accessor :path_configuration, :user_agent_pattern, :inspector_enabled
 
     def initialize
       @path_configuration = default_path_configuration
-      @user_agent_pattern = /Turbo Desktop/
+      @user_agent_pattern = /Desktop Rails/
       @inspector_enabled = false
     end
 ```
 
 - [ ] **Step 4: Run it to verify it passes**
 
-Run: `cd turbo_desktop-rails && ruby -Itest -Ilib test/configuration_test.rb`
+Run: `cd desktop-rails && ruby -Itest -Ilib test/configuration_test.rb`
 Expected: PASS.
 
 - [ ] **Step 5: Write the failing helper test**
 
-Append to `turbo_desktop-rails/test/view_helpers_test.rb` (inside the test class). Note the host stubs `tag` to mirror Rails' tag helper minimally:
+Append to `desktop-rails/test/view_helpers_test.rb` (inside the test class). Note the host stubs `tag` to mirror Rails' tag helper minimally:
 
 ```ruby
   def test_inspector_predicate_reflects_config
-    TurboDesktop.configuration.inspector_enabled = true
+    DesktopRails.configuration.inspector_enabled = true
     host = ViewHelpersTestHost.new(DESKTOP_UA)
-    assert host.turbo_desktop_inspector?
+    assert host.desktop_rails_inspector?
   ensure
-    TurboDesktop.configuration.inspector_enabled = false
+    DesktopRails.configuration.inspector_enabled = false
   end
 
   def test_inspector_meta_tag_present_when_enabled
-    TurboDesktop.configuration.inspector_enabled = true
+    DesktopRails.configuration.inspector_enabled = true
     host = ViewHelpersTestHost.new(DESKTOP_UA)
-    assert_includes host.turbo_desktop_inspector_meta_tag.to_s, "turbo-desktop-inspector"
-    assert_includes host.turbo_desktop_inspector_meta_tag.to_s, "enabled"
+    assert_includes host.desktop_rails_inspector_meta_tag.to_s, "desktop-rails-inspector"
+    assert_includes host.desktop_rails_inspector_meta_tag.to_s, "enabled"
   ensure
-    TurboDesktop.configuration.inspector_enabled = false
+    DesktopRails.configuration.inspector_enabled = false
   end
 
   def test_inspector_meta_tag_absent_when_disabled
     host = ViewHelpersTestHost.new(DESKTOP_UA)
-    assert_nil host.turbo_desktop_inspector_meta_tag
+    assert_nil host.desktop_rails_inspector_meta_tag
   end
 ```
 
@@ -1167,39 +1167,39 @@ Also add a minimal `tag` stub to `ViewHelpersTestHost` (near its `capture` stub)
 
 - [ ] **Step 6: Run it to verify it fails**
 
-Run: `cd turbo_desktop-rails && ruby -Itest -Ilib test/view_helpers_test.rb`
-Expected: FAIL — `undefined method 'turbo_desktop_inspector?'`.
+Run: `cd desktop-rails && ruby -Itest -Ilib test/view_helpers_test.rb`
+Expected: FAIL — `undefined method 'desktop_rails_inspector?'`.
 
 - [ ] **Step 7: Add the helpers**
 
-In `turbo_desktop-rails/lib/turbo_desktop/view_helpers.rb`, add inside the `ViewHelpers` module:
+In `desktop-rails/lib/desktop_rails/view_helpers.rb`, add inside the `ViewHelpers` module:
 
 ```ruby
     # Returns true when the Dev Inspector is enabled in configuration.
-    def turbo_desktop_inspector?
-      TurboDesktop.configuration.inspector_enabled
+    def desktop_rails_inspector?
+      DesktopRails.configuration.inspector_enabled
     end
 
     # Emits the <meta> tag that enables the Dev Inspector in the browser, or nil
     # when the inspector is disabled. Place in your layout <head>; it is a no-op
     # in production unless you explicitly enable the inspector there.
     #
-    #   <%= turbo_desktop_inspector_meta_tag %>
-    def turbo_desktop_inspector_meta_tag
-      return nil unless turbo_desktop_inspector?
+    #   <%= desktop_rails_inspector_meta_tag %>
+    def desktop_rails_inspector_meta_tag
+      return nil unless desktop_rails_inspector?
 
-      tag.meta(name: "turbo-desktop-inspector", content: "enabled")
+      tag.meta(name: "desktop-rails-inspector", content: "enabled")
     end
 ```
 
 - [ ] **Step 8: Run it to verify it passes**
 
-Run: `cd turbo_desktop-rails && ruby -Itest -Ilib test/view_helpers_test.rb`
+Run: `cd desktop-rails && ruby -Itest -Ilib test/view_helpers_test.rb`
 Expected: PASS.
 
 - [ ] **Step 9: Document enabling in the initializer template**
 
-In `turbo_desktop-rails/lib/generators/turbo_desktop/install/templates/initializer.rb.tt`, add inside the `TurboDesktop.configure do |config|` block, before the `config.path_configuration` assignment:
+In `desktop-rails/lib/generators/desktop_rails/install/templates/initializer.rb.tt`, add inside the `DesktopRails.configure do |config|` block, before the `config.path_configuration` assignment:
 
 ```ruby
   # Dev Inspector — an in-app overlay (Cmd/Ctrl+Shift+D) that surfaces available
@@ -1211,13 +1211,13 @@ In `turbo_desktop-rails/lib/generators/turbo_desktop/install/templates/initializ
 
 - [ ] **Step 10: Run the gem's full suite**
 
-Run: `cd turbo_desktop-rails && rake test`
+Run: `cd desktop-rails && rake test`
 Expected: PASS — configuration, view-helper, detection, controller, and generator suites all green.
 
 - [ ] **Step 11: Commit**
 
 ```bash
-git add turbo_desktop-rails/lib turbo_desktop-rails/test
+git add desktop-rails/lib desktop-rails/test
 git commit -m "feat(rails): add dev-only inspector enable flag and meta-tag helper"
 ```
 
@@ -1249,13 +1249,13 @@ overlay that shows:
 Enable it from the Rails gem (added by the installer in development):
 
 \`\`\`ruby
-# config/initializers/turbo_desktop.rb
+# config/initializers/desktop_rails.rb
 config.inspector_enabled = Rails.env.development?
 \`\`\`
 
 \`\`\`erb
 <%# app/views/layouts/application.html.erb, in <head> %>
-<%= turbo_desktop_inspector_meta_tag %>
+<%= desktop_rails_inspector_meta_tag %>
 \`\`\`
 
 Or flip it on against any build without a rebuild:
@@ -1269,7 +1269,7 @@ Expected: PASS — all JS suites green.
 
 - [ ] **Step 3: Run the complete gem suite**
 
-Run: `cd turbo_desktop-rails && rake test`
+Run: `cd desktop-rails && rake test`
 Expected: PASS — all Ruby suites green.
 
 - [ ] **Step 4: Commit**
@@ -1284,14 +1284,14 @@ git commit -m "docs: document the Dev Inspector"
 ## Verification Checklist (final)
 
 - [ ] `npm test` is green (existing + 6 new inspector suites).
-- [ ] `cd turbo_desktop-rails && rake test` is green.
-- [ ] With the inspector disabled, `src/turbo-desktop.js` never imports `inspector.js` (verified by the gate test and the `INVOKE && enabled` guard).
+- [ ] `cd desktop-rails && rake test` is green.
+- [ ] With the inspector disabled, `src/desktop-rails.js` never imports `inspector.js` (verified by the gate test and the `INVOKE && enabled` guard).
 - [ ] `BridgeTap` calls the original `sendBridgeMessage` exactly once and preserves its return/throw (verified in `bridge-tap.test.js`).
 - [ ] The panel uses a Shadow root, so host-app CSS cannot leak into it (verified in `panel.test.js`).
 
 ## Manual Smoke (in the example app, after merge)
 
-1. In `turbo_desktop_example_app`, set `config.inspector_enabled = true` and add `<%= turbo_desktop_inspector_meta_tag %>` to the layout head.
+1. In `turbo_desktop_example_app`, set `config.inspector_enabled = true` and add `<%= desktop_rails_inspector_meta_tag %>` to the layout head.
 2. `cargo tauri dev`; press Cmd/Ctrl+Shift+D — the overlay appears.
 3. Open the Components tab — confirm all 11 components listed; click one and copy its snippet.
 4. Trigger a notification — confirm an `↑ notification` row appears in Messages.

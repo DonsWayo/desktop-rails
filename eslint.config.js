@@ -45,7 +45,7 @@ export default [
     ignores: [
       "node_modules/**",
       "src-tauri/**",
-      "turbo_desktop-rails/**",
+      "desktop-rails/**",
       "site/**",
       "debug_project/**",
       "test_raider_project/**",

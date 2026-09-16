@@ -4,7 +4,7 @@ Turn a Rails app plus a relocatable interpreter into something a person can
 download and open, on macOS, Linux or Windows.
 
 ```bash
-packaging/build-runtime.sh --out out/ruby          # or install turbo_desktop-runtime
+packaging/build-runtime.sh --out out/ruby          # or install desktop-rails-runtime
 packaging/verify-runtime.sh out/ruby
 
 packaging/pack.sh        --app ../my_app --runtime out/ruby --gems out/gems --name "Ledger"
@@ -136,7 +136,7 @@ Linux   357M -> 145M, GET /up 200 twice (packed and read-only), 52M tarball
 Signing a release and signing an application are unrelated problems, and only
 the second one needs Apple. `generate-key.sh` makes a minisign keypair,
 `sign-update.sh` signs a bundle and writes the manifest, and the endpoint and
-public key live in `turbo-desktop.config.json` so one shell binary can still
+public key live in `desktop-rails.config.json` so one shell binary can still
 serve every app. See [AUTO_UPDATE.md](AUTO_UPDATE.md).
 
 An update has not yet been watched to apply end to end; everything up to the

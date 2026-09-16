@@ -1,13 +1,13 @@
 ---
 name: Feature request
-about: Suggest an idea or improvement for Turbo Desktop
+about: Suggest an idea or improvement for Desktop Rails
 title: "[Feature]: "
 labels: [enhancement]
 ---
 
 ## Problem / motivation
 
-<!-- What are you trying to do that Turbo Desktop makes hard or impossible today? -->
+<!-- What are you trying to do that Desktop Rails makes hard or impossible today? -->
 
 ## Proposed solution
 
@@ -19,7 +19,7 @@ labels: [enhancement]
 
 - [ ] Tauri/Rust shell (`src-tauri/`)
 - [ ] JS bridge (`src/`, `packages/bridge/`)
-- [ ] Rails gem (`turbo_desktop-rails/`)
+- [ ] Rails gem (`desktop-rails/`)
 - [ ] CLI (`cli/`)
 - [ ] Docs
 - [ ] Bridge component (e.g. notification, menu, tray)

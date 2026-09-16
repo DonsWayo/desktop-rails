@@ -77,12 +77,12 @@ jobs:
           (cd src-tauri && cargo build --release)
           packaging/pack.sh \
             --app "$PWD/example" --runtime "$PWD/out/ruby" --gems "$PWD/out/gems" \
-            --shell src-tauri/target/release/turbo-desktop \
+            --shell src-tauri/target/release/desktop-rails \
             --name "SmokeGui" --bundle-id dev.turbodesktop.smokegui \
             --out "$PWD/dist-gui"
 
       - name: Drive the whole chain through the shell
-        run: packaging/smoke/shell_check.sh dist-gui/SmokeGui.app/Contents/MacOS/turbo-desktop
+        run: packaging/smoke/shell_check.sh dist-gui/SmokeGui.app/Contents/MacOS/desktop-rails
 
       - name: Build the disk image
         run: packaging/dmg.sh dist/Smoke.app
@@ -173,7 +173,7 @@ jobs:
           (cd src-tauri && cargo build --release)
           packaging/pack-linux.sh \
             --app "$PWD/example" --runtime "$PWD/out/ruby" --gems "$PWD/out/gems" \
-            --shell src-tauri/target/release/turbo-desktop \
+            --shell src-tauri/target/release/desktop-rails \
             --name "SmokeGui" --app-id dev.turbodesktop.smokegui \
             --out "$PWD/dist-gui"
 
@@ -273,7 +273,7 @@ jobs:
           packaging\pack-windows.ps1 -App C:\example `
             -Runtime "$env:GITHUB_WORKSPACE\out\ruby" `
             -Gems "$env:GITHUB_WORKSPACE\out\gems" `
-            -Shell "$env:GITHUB_WORKSPACE\src-tauri\target\release\turbo-desktop.exe" `
+            -Shell "$env:GITHUB_WORKSPACE\src-tauri\target\release\desktop-rails.exe" `
             -Name "SmokeGui" -AppId dev.turbodesktop.smokegui `
             -Out "$env:GITHUB_WORKSPACE\dist-gui"
 
@@ -284,11 +284,11 @@ jobs:
           # rather than launching: the exe, its config, and the launcher it
           # spawns must all be present and agree with each other.
           $dir = "$env:GITHUB_WORKSPACE\dist-gui\smokegui"
-          foreach ($f in @("smokegui.exe", "turbo-desktop.config.json", "smokegui.cmd")) {
+          foreach ($f in @("smokegui.exe", "desktop-rails.config.json", "smokegui.cmd")) {
             if (-not (Test-Path "$dir\$f")) { throw "missing $f" }
             Write-Host "  present: $f"
           }
-          $config = Get-Content "$dir\turbo-desktop.config.json" -Raw | ConvertFrom-Json
+          $config = Get-Content "$dir\desktop-rails.config.json" -Raw | ConvertFrom-Json
           if ($config.server.command -ne "smokegui.cmd") {
             throw "the config points at $($config.server.command), which is not the launcher"
           }

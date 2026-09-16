@@ -11,7 +11,7 @@ use tauri::{
 /// Bridge components can dynamically add items via the "menu-item" bridge component.
 pub fn build_menu<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<Menu<R>, tauri::Error> {
     let app_menu = {
-        let mut builder = SubmenuBuilder::new(app, "Turbo Desktop");
+        let mut builder = SubmenuBuilder::new(app, "Desktop Rails");
         #[cfg(target_os = "macos")]
         {
             builder = builder
@@ -138,7 +138,7 @@ pub fn handle_menu_event<R: Runtime>(app: &tauri::AppHandle<R>, event_id: &str) 
         "reload" => navigate_main(app, "reload"),
         "devtools" => {
             if let Some(window) = app.get_webview_window("main") {
-                let _ = window.eval("window.__TURBO_DESKTOP__.toggleDevTools()");
+                let _ = window.eval("window.__DESKTOP_RAILS__.toggleDevTools()");
             }
         }
         "nav-back" => navigate_main(app, "back"),

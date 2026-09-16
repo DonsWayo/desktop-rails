@@ -923,6 +923,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "desktop-rails"
+version = "0.2.1"
+dependencies = [
+ "base64 0.22.1",
+ "cocoa",
+ "env_logger",
+ "getrandom 0.3.4",
+ "log",
+ "minisign-verify",
+ "objc",
+ "regex-lite",
+ "reqwest 0.12.28",
+ "semver",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-autostart",
+ "tauri-plugin-clipboard-manager",
+ "tauri-plugin-deep-link",
+ "tauri-plugin-dialog",
+ "tauri-plugin-notification",
+ "tauri-plugin-opener",
+ "tauri-plugin-shell",
+ "tauri-plugin-updater",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5513,36 +5543,6 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
-
-[[package]]
-name = "turbo-desktop"
-version = "0.2.1"
-dependencies = [
- "base64 0.22.1",
- "cocoa",
- "env_logger",
- "getrandom 0.3.4",
- "log",
- "minisign-verify",
- "objc",
- "regex-lite",
- "reqwest 0.12.28",
- "semver",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-autostart",
- "tauri-plugin-clipboard-manager",
- "tauri-plugin-deep-link",
- "tauri-plugin-dialog",
- "tauri-plugin-notification",
- "tauri-plugin-opener",
- "tauri-plugin-shell",
- "tauri-plugin-updater",
- "tokio",
- "url",
-]
 
 [[package]]
 name = "typeid"

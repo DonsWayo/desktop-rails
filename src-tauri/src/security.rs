@@ -65,7 +65,7 @@ pub fn ensure_trusted_caller(
 ) -> Result<(), String> {
     use tauri::Manager;
 
-    let config = app.state::<crate::window::TurboDesktopConfig>();
+    let config = app.state::<crate::window::DesktopRailsConfig>();
     let url = webview
         .url()
         .map_err(|e| format!("Could not determine the calling page: {}", e))?;
@@ -368,7 +368,7 @@ pub fn resolve_with_grants(
 pub fn authorize_sudo_command(config: &SudoConfig, command: &str) -> Result<(), String> {
     if !config.enabled {
         return Err(
-            "The sudo bridge is disabled. Enable it in turbo-desktop.config.json with \
+            "The sudo bridge is disabled. Enable it in desktop-rails.config.json with \
              \"sudo\": { \"enabled\": true, \"allowed_commands\": [...] }"
                 .to_string(),
         );
@@ -608,7 +608,7 @@ mod tests {
 
     #[test]
     fn resolves_paths_inside_an_allowed_root() {
-        let dir = std::env::temp_dir().join("turbo-desktop-scope-ok");
+        let dir = std::env::temp_dir().join("desktop-rails-scope-ok");
         std::fs::create_dir_all(&dir).unwrap();
         let root = dir.canonicalize().unwrap();
 
@@ -621,7 +621,7 @@ mod tests {
 
     #[test]
     fn rejects_traversal_out_of_the_root() {
-        let dir = std::env::temp_dir().join("turbo-desktop-scope-traversal");
+        let dir = std::env::temp_dir().join("desktop-rails-scope-traversal");
         std::fs::create_dir_all(&dir).unwrap();
         let root = dir.canonicalize().unwrap();
 
@@ -635,7 +635,7 @@ mod tests {
 
     #[test]
     fn rejects_protected_locations_inside_a_root() {
-        let dir = std::env::temp_dir().join("turbo-desktop-scope-denied");
+        let dir = std::env::temp_dir().join("desktop-rails-scope-denied");
         std::fs::create_dir_all(&dir).unwrap();
         let root = dir.canonicalize().unwrap();
 
@@ -664,7 +664,7 @@ mod tests {
 
     #[test]
     fn a_dialog_picked_file_is_reachable_outside_the_roots() {
-        let dir = std::env::temp_dir().join("turbo-desktop-grant-file");
+        let dir = std::env::temp_dir().join("desktop-rails-grant-file");
         std::fs::create_dir_all(&dir).unwrap();
         let picked = dir.canonicalize().unwrap().join("report.csv");
 
@@ -688,7 +688,7 @@ mod tests {
 
     #[test]
     fn a_dialog_picked_folder_covers_its_subtree() {
-        let dir = std::env::temp_dir().join("turbo-desktop-grant-folder");
+        let dir = std::env::temp_dir().join("desktop-rails-grant-folder");
         std::fs::create_dir_all(&dir).unwrap();
         let folder = dir.canonicalize().unwrap();
 
@@ -705,7 +705,7 @@ mod tests {
 
     #[test]
     fn a_grant_does_not_override_protected_locations() {
-        let dir = std::env::temp_dir().join("turbo-desktop-grant-denied");
+        let dir = std::env::temp_dir().join("desktop-rails-grant-denied");
         std::fs::create_dir_all(&dir).unwrap();
         let folder = dir.canonicalize().unwrap();
 
@@ -723,7 +723,7 @@ mod tests {
         // A granted path must match after normalization, so `root/../granted`
         // resolves to the grant itself and is allowed, while unrelated
         // traversal keeps failing.
-        let dir = std::env::temp_dir().join("turbo-desktop-grant-traversal");
+        let dir = std::env::temp_dir().join("desktop-rails-grant-traversal");
         std::fs::create_dir_all(&dir).unwrap();
         let picked = dir.canonicalize().unwrap().join("picked.txt");
 

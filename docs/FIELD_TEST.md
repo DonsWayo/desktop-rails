@@ -1,5 +1,9 @@
 # Building a real app with Turbo Desktop
 
+> Written before the fork was renamed from Turbo Desktop to desktop-rails, so it
+> uses the old names on purpose. The old gem name it mentions still belongs to
+> the upstream project on RubyGems.
+
 Following the documentation literally, as a new user would, and recording every
 place it breaks or needs knowledge the docs do not give.
 

@@ -18,14 +18,14 @@ jobs:
         ruby: ["3.2", "3.3", "3.4", "4.0"]
     defaults:
       run:
-        working-directory: turbo_desktop-rails
+        working-directory: desktop-rails
     steps:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: ${{ matrix.ruby }}
           bundler-cache: true
-          working-directory: turbo_desktop-rails
+          working-directory: desktop-rails
       - run: bundle exec rake test
 
   lint:
@@ -33,14 +33,14 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: turbo_desktop-rails
+        working-directory: desktop-rails
     steps:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.4"
           bundler-cache: true
-          working-directory: turbo_desktop-rails
+          working-directory: desktop-rails
       - run: bundle exec rubocop --format github
 
   javascript:

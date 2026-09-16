@@ -134,7 +134,7 @@ pub async fn retry_connection(
 
     crate::security::ensure_trusted_caller(&app, &webview)?;
 
-    let config = app.state::<crate::window::TurboDesktopConfig>();
+    let config = app.state::<crate::window::DesktopRailsConfig>();
     let url: url::Url = config
         .server_url
         .parse()
@@ -223,7 +223,7 @@ mod tests {
 
     #[test]
     fn an_unresolvable_host_is_not_reachable() {
-        let url = url::Url::parse("http://turbo-desktop.invalid:3000").unwrap();
+        let url = url::Url::parse("http://desktop-rails.invalid:3000").unwrap();
         assert!(!server_is_reachable(&url));
     }
 }

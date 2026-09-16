@@ -180,7 +180,7 @@ pub async fn start(
         // child cannot tell a shell that will write from any other process
         // holding a silent pipe, and waiting for a line that never arrives
         // hangs it forever.
-        .env("TURBO_DESKTOP_HANDSHAKE", "stdin")
+        .env("DESKTOP_RAILS_HANDSHAKE", "stdin")
         .args(&args)
         .stdin(Stdio::piped()) // the handshake goes in here, and EOF reaps the child
         .stdout(Stdio::piped())
@@ -276,7 +276,7 @@ pub async fn start(
                                 // Announced first: moving the window to the app
                                 // is the point, and it must not be lost to a
                                 // failure in the bookkeeping below it.
-                                let _ = app_for_output.emit("turbo-desktop://server-ready", url.clone());
+                                let _ = app_for_output.emit("desktop-rails://server-ready", url.clone());
                                 match app_for_output.try_state::<ServerAddress>() {
                                     Some(address) => address.set(url),
                                     // `state()` would panic here, and a panic in
@@ -329,7 +329,7 @@ async fn supervise(
 
 /// ProcessManager id for the server, so it is distinguishable from anything the
 /// web layer spawns through the shell bridge.
-pub const SERVER_PROCESS_ID: &str = "turbo-desktop:app-server";
+pub const SERVER_PROCESS_ID: &str = "desktop-rails:app-server";
 
 #[cfg(test)]
 mod tests {
@@ -342,7 +342,7 @@ mod tests {
     /// Windows. Getting this wrong made two tests pass on macOS and fail on
     /// Windows for reasons that had nothing to do with the code under test.
     fn scratch_with_launcher(name: &str) -> (PathBuf, String) {
-        let dir = std::env::temp_dir().join(format!("turbo-desktop-invocation-{name}"));
+        let dir = std::env::temp_dir().join(format!("desktop-rails-invocation-{name}"));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 
@@ -499,7 +499,7 @@ mod tests {
 
     #[test]
     fn the_rails_app_is_a_level_above_the_config_by_default() {
-        let dir = std::env::temp_dir().join("turbo-desktop-server-default");
+        let dir = std::env::temp_dir().join("desktop-rails-server-default");
         let desktop = dir.join("desktop");
         std::fs::create_dir_all(&desktop).unwrap();
 
@@ -511,7 +511,7 @@ mod tests {
 
     #[test]
     fn an_explicit_directory_wins() {
-        let dir = std::env::temp_dir().join("turbo-desktop-server-explicit");
+        let dir = std::env::temp_dir().join("desktop-rails-server-explicit");
         let api = dir.join("api");
         std::fs::create_dir_all(&api).unwrap();
 
@@ -554,7 +554,7 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn the_server_outlives_a_panic_in_the_code_that_reads_its_output() {
-        let marker = std::env::temp_dir().join("turbo-desktop-supervise-panic");
+        let marker = std::env::temp_dir().join("desktop-rails-supervise-panic");
         std::fs::remove_file(&marker).ok();
         let (child, stdin) = a_server_that_exits_on_eof(&marker);
 
@@ -582,7 +582,7 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn the_kill_signal_stops_the_server() {
-        let marker = std::env::temp_dir().join("turbo-desktop-supervise-kill");
+        let marker = std::env::temp_dir().join("desktop-rails-supervise-kill");
         std::fs::remove_file(&marker).ok();
         let (child, stdin) = a_server_that_exits_on_eof(&marker);
 
@@ -597,7 +597,7 @@ mod tests {
 
     #[test]
     fn a_missing_directory_is_left_for_the_spawn_to_report() {
-        let dir = std::env::temp_dir().join("turbo-desktop-server-missing");
+        let dir = std::env::temp_dir().join("desktop-rails-server-missing");
         let config = ServerConfig {
             command: Some("bin/rails server".into()),
             directory: Some("nope".into()),

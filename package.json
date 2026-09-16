@@ -1,17 +1,17 @@
 {
-  "name": "turbo-desktop",
+  "name": "desktop-rails",
   "version": "0.2.1",
-  "description": "Turbo Native for Desktop \u2014 wrap your Rails/Turbo app in a native desktop shell",
-  "author": "aguspe",
+  "description": "Ship your Rails app, or any Hotwire app, as a native desktop app",
+  "author": "Juan Carracedo",
   "license": "MIT",
   "type": "module",
-  "homepage": "https://github.com/aguspe/turbo_desktop",
+  "homepage": "https://github.com/DonsWayo/desktop-rails",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/aguspe/turbo_desktop.git"
+    "url": "git+https://github.com/DonsWayo/desktop-rails.git"
   },
   "bugs": {
-    "url": "https://github.com/aguspe/turbo_desktop/issues"
+    "url": "https://github.com/DonsWayo/desktop-rails/issues"
   },
   "keywords": [
     "turbo",
@@ -25,7 +25,7 @@
     "node": ">=18"
   },
   "bin": {
-    "turbo-desktop": "./cli/turbo-desktop.js"
+    "desktop-rails": "./cli/desktop-rails.js"
   },
   "//files": "The CLI scaffolds a project by copying these out of the installed package, so they have to ship with it.",
   "files": [

@@ -85,7 +85,7 @@ pub async fn handle_visit_proposal(
                 &app,
                 &proposal.url,
                 &format!("window-{}", uuid_simple()),
-                properties.title.clone().unwrap_or_else(|| "Turbo Desktop".into()),
+                properties.title.clone().unwrap_or_else(|| "Desktop Rails".into()),
                 (properties.width.unwrap_or(1200.0), properties.height.unwrap_or(800.0)),
             )?;
 
@@ -117,7 +117,7 @@ pub async fn handle_visit_proposal(
 /// into that window — so a proposal pointing at someone else's site would hand
 /// them a window carrying our API.
 fn same_origin_url(app: &tauri::AppHandle, raw: &str) -> Result<url::Url, String> {
-    let config = app.state::<crate::window::TurboDesktopConfig>();
+    let config = app.state::<crate::window::DesktopRailsConfig>();
     let url: url::Url = raw
         .parse()
         .map_err(|e| format!("Invalid visit proposal URL '{}': {}", raw, e))?;
@@ -214,7 +214,7 @@ fn open_child_window(
     (width, height): (f64, f64),
 ) -> Result<(), String> {
     let url = same_origin_url(app, raw_url)?;
-    let config = app.state::<crate::window::TurboDesktopConfig>();
+    let config = app.state::<crate::window::DesktopRailsConfig>();
 
     let mut builder = crate::window::apply_shell_defaults(
         WebviewWindowBuilder::new(app, label, WebviewUrl::External(url)),
@@ -244,7 +244,7 @@ fn open_child_window(
         .build()
         .map_err(|e| format!("Failed to create window '{}': {}", label, e))?;
 
-    inject_turbo_desktop_js(&window);
+    inject_desktop_rails_js(&window);
     Ok(())
 }
 
@@ -254,7 +254,7 @@ fn open_child_window(
 /// window on someone else's site and injecting our bridge into it would be
 /// wrong, so those go to the browser like any other external link.
 fn handed_to_the_system(app: &tauri::AppHandle, raw: &str) -> bool {
-    let config = app.state::<crate::window::TurboDesktopConfig>();
+    let config = app.state::<crate::window::DesktopRailsConfig>();
     let Ok(url) = raw.parse::<url::Url>() else {
         return false;
     };
@@ -335,9 +335,9 @@ pub async fn close_modal(
     Ok(())
 }
 
-/// Inject the turbo-desktop.js bridge script into a webview window.
-fn inject_turbo_desktop_js(window: &tauri::WebviewWindow) {
-    let js = include_str!("../../src/turbo-desktop.js");
+/// Inject the desktop-rails.js bridge script into a webview window.
+fn inject_desktop_rails_js(window: &tauri::WebviewWindow) {
+    let js = include_str!("../../src/desktop-rails.js");
     let _ = window.eval(js);
 }
 

@@ -89,11 +89,11 @@ printf '%s' "$TARGET" | grep -Eq '^(darwin|linux|windows)-(x86_64|aarch64|i686|a
 [ -z "$SIG" ] && SIG="$ARTIFACT.sig"
 
 # CI hands the key over as a secret rather than a file on disk.
-if [ -n "${TURBO_DESKTOP_SIGNING_KEY:-}" ]; then
+if [ -n "${DESKTOP_RAILS_SIGNING_KEY:-}" ]; then
   KEY="$(mktemp)"
   trap 'rm -f "$KEY"' EXIT
   chmod 600 "$KEY"
-  printf '%s\n' "$TURBO_DESKTOP_SIGNING_KEY" > "$KEY"
+  printf '%s\n' "$DESKTOP_RAILS_SIGNING_KEY" > "$KEY"
 fi
 
 [ -f "$KEY" ] || { echo "No signing key at $KEY — run packaging/generate-key.sh first"; exit 1; }
@@ -103,7 +103,7 @@ step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 step "Signing $(basename "$ARTIFACT") ($(du -h "$ARTIFACT" | cut -f1))"
 node "$HERE/lib/updater-cli.mjs" sign \
   --key "$KEY" --artifact "$ARTIFACT" --sig "$SIG" \
-  --password "${TURBO_DESKTOP_SIGNING_PASSWORD:-}" \
+  --password "${DESKTOP_RAILS_SIGNING_PASSWORD:-}" \
   --comment "timestamp:$(date +%s)	file:$(basename "$ARTIFACT")	version:$VERSION	hashed" \
   >/dev/null
 echo "  $SIG"

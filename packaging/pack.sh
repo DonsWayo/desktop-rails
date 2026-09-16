@@ -31,7 +31,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 HERE="$PWD/packaging"
 
-APP_SRC=""; RUNTIME=""; GEMS=""; SHELL_BIN=""; NAME="Turbo Desktop App"
+APP_SRC=""; RUNTIME=""; GEMS=""; SHELL_BIN=""; NAME="Desktop Rails App"
 BUNDLE_ID="dev.turbodesktop.app"; IDENTITY="-"; OUT="$PWD/dist"; KEEP_DEV=0
 VERSION="1.0"; UPDATE_URL=""; UPDATE_PUBKEY=""; UPDATE_PUBKEY_FILE=""
 
@@ -130,7 +130,7 @@ UPDATER
 
   # The shell runs the bundled interpreter, not a developer's Ruby. Relative to
   # the config, which sits beside it in Resources.
-  cat > "$RES/turbo-desktop.config.json" <<CONFIG
+  cat > "$RES/desktop-rails.config.json" <<CONFIG
 {
   "app_name": "$NAME",
   "server_url": "http://127.0.0.1:0",

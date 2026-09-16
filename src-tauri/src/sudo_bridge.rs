@@ -1,6 +1,6 @@
 use crate::bridge::{BridgeMessage, BridgeResponse};
 use crate::security;
-use crate::window::TurboDesktopConfig;
+use crate::window::DesktopRailsConfig;
 use std::path::PathBuf;
 use std::process::Stdio;
 use tauri::Manager;
@@ -13,7 +13,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 /// platform's own elevation UI: `osascript` on macOS, `pkexec` (polkit) on
 /// Linux, UAC via PowerShell on Windows.
 ///
-/// The bridge is disabled unless `turbo-desktop.config.json` enables it and
+/// The bridge is disabled unless `desktop-rails.config.json` enables it and
 /// lists the permitted commands. The system's elevation prompt never shows
 /// what is about to run — and may cache the credential afterwards — so an
 /// app-level confirmation naming the command runs first unless it is turned
@@ -37,7 +37,7 @@ pub async fn handle_sudo(
 ///
 /// `Ok(false)` means the user declined; the caller reports that as a cancellation.
 async fn authorize(app: &tauri::AppHandle, command: &str) -> Result<bool, String> {
-    let config = app.state::<TurboDesktopConfig>();
+    let config = app.state::<DesktopRailsConfig>();
     security::authorize_sudo_command(&config.sudo, command).inspect_err(|e| {
         log::warn!("Sudo: {}", e);
     })?;
@@ -323,7 +323,7 @@ fn windows_temp_paths() -> (PathBuf, PathBuf, PathBuf) {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
 
     let base = std::env::temp_dir().join(format!(
-        "turbo-desktop-sudo-{}-{}",
+        "desktop-rails-sudo-{}-{}",
         std::process::id(),
         COUNTER.fetch_add(1, Ordering::Relaxed)
     ));

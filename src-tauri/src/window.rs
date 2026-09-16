@@ -1,20 +1,20 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// Desktop app configuration loaded from turbo-desktop.config.json.
-/// This file lives in the Rails project root (or wherever the user runs `turbo-desktop init`).
+/// Desktop app configuration loaded from desktop-rails.config.json.
+/// This file lives in the Rails project root (or wherever the user runs `desktop-rails init`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TurboDesktopConfig {
+pub struct DesktopRailsConfig {
     /// The URL of the Rails server to load
     pub server_url: String,
-    /// Optional: URL to fetch path configuration from (defaults to {server_url}/turbo-desktop/path-configuration.json)
+    /// Optional: URL to fetch path configuration from (defaults to {server_url}/desktop-rails/path-configuration.json)
     #[serde(default)]
     pub path_configuration_url: Option<String>,
     /// Application name shown in the title bar and menu
     #[serde(default = "default_app_name")]
     pub app_name: String,
     /// User-Agent the webview sends. This replaces the browser's own string
-    /// rather than extending it, so keep the "Turbo Desktop" token — the Rails
+    /// rather than extending it, so keep the "Desktop Rails" token — the Rails
     /// gem's detection matches on it.
     #[serde(default = "default_user_agent")]
     pub user_agent: String,
@@ -189,7 +189,7 @@ impl Default for WindowConfig {
 }
 
 fn default_app_name() -> String {
-    "Turbo Desktop".into()
+    "Desktop Rails".into()
 }
 
 fn default_user_agent() -> String {
@@ -200,7 +200,7 @@ fn default_user_agent() -> String {
         other => other,
     };
     format!(
-        "Turbo Desktop/{} ({}; {})",
+        "Desktop Rails/{} ({}; {})",
         env!("CARGO_PKG_VERSION"),
         os,
         std::env::consts::ARCH
@@ -225,14 +225,14 @@ fn default_true() -> bool {
 
 /// Name of the configuration file, in the project during development and in the
 /// bundle's resource directory once the app ships.
-pub const CONFIG_FILENAME: &str = "turbo-desktop.config.json";
+pub const CONFIG_FILENAME: &str = "desktop-rails.config.json";
 
 /// Development defaults, used only when a debug build finds no config at all.
-fn default_config() -> TurboDesktopConfig {
-    TurboDesktopConfig {
+fn default_config() -> DesktopRailsConfig {
+    DesktopRailsConfig {
         server_url: "http://localhost:3000".into(),
         path_configuration_url: None,
-        app_name: "Turbo Desktop".into(),
+        app_name: "Desktop Rails".into(),
         user_agent: default_user_agent(),
         window: WindowConfig::default(),
         filesystem: FilesystemConfig::default(),
@@ -243,14 +243,14 @@ fn default_config() -> TurboDesktopConfig {
     }
 }
 
-pub fn parse_config(contents: &str) -> Result<TurboDesktopConfig, String> {
+pub fn parse_config(contents: &str) -> Result<DesktopRailsConfig, String> {
     serde_json::from_str(contents).map_err(|e| e.to_string())
 }
 
 /// A loaded configuration and where it came from.
 #[derive(Debug)]
 pub struct LoadedConfig {
-    pub config: TurboDesktopConfig,
+    pub config: DesktopRailsConfig,
     /// `None` when a development build fell back to defaults.
     pub source: Option<PathBuf>,
 }
@@ -364,7 +364,7 @@ pub const PREFERENCES_FILENAME: &str = "preferences.json";
 /// Settings the person using the app may change, stored in their own config
 /// directory.
 ///
-/// Deliberately separate from [`TurboDesktopConfig`] rather than a partial copy
+/// Deliberately separate from [`DesktopRailsConfig`] rather than a partial copy
 /// of it. This file sits in a directory any process running as the user can
 /// write, so the type is kept unable to express anything but window geometry —
 /// there is no field here that could widen the sudo allowlist, add a filesystem
@@ -582,7 +582,7 @@ mod tests {
         app
     }
 
-    /// Exactly what `TurboDesktop::Native.call("window", "resize", ...)` puts on
+    /// Exactly what `DesktopRails::Native.call("window", "resize", ...)` puts on
     /// the control channel, parsed the way `control::serve` parses it. Going
     /// through the wire format rather than building the struct by hand is the
     /// point: it is what proves Ruby's payload arrives whole.
@@ -758,7 +758,7 @@ mod tests {
     }
 
     fn scratch(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("turbo-desktop-config-{name}"));
+        let dir = std::env::temp_dir().join(format!("desktop-rails-config-{name}"));
         std::fs::remove_dir_all(&dir).ok();
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -779,7 +779,7 @@ mod tests {
         // home directory has only the binary to go on.
         let lookup = ConfigLookup {
             working_dir: None,
-            resource_dir: Some(PathBuf::from("/usr/lib/Turbo Desktop")),
+            resource_dir: Some(PathBuf::from("/usr/lib/Desktop Rails")),
             exe_dir: Some(PathBuf::from("/opt/ledger")),
             development: false,
         };
@@ -787,7 +787,7 @@ mod tests {
         assert_eq!(
             lookup.search_paths(),
             vec![
-                PathBuf::from("/usr/lib/Turbo Desktop").join(CONFIG_FILENAME),
+                PathBuf::from("/usr/lib/Desktop Rails").join(CONFIG_FILENAME),
                 PathBuf::from("/opt/ledger").join(CONFIG_FILENAME),
             ],
             "an installed resource directory wins, but the binary's own is still tried"
@@ -842,7 +842,7 @@ mod tests {
         let err = lookup
             .load()
             .expect_err("a packaged app should refuse to start with no config");
-        assert!(err.contains("No turbo-desktop.config.json"), "got: {err}");
+        assert!(err.contains("No desktop-rails.config.json"), "got: {err}");
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -1081,11 +1081,11 @@ mod tests {
 }
 
 /// Get the effective path configuration URL.
-pub fn path_config_url(config: &TurboDesktopConfig) -> String {
+pub fn path_config_url(config: &DesktopRailsConfig) -> String {
     config
         .path_configuration_url
         .clone()
-        .unwrap_or_else(|| format!("{}/turbo-desktop/path-configuration.json", config.server_url))
+        .unwrap_or_else(|| format!("{}/desktop-rails/path-configuration.json", config.server_url))
 }
 
 /// Apply the settings every webview in the app should carry.
@@ -1097,7 +1097,7 @@ pub fn path_config_url(config: &TurboDesktopConfig) -> String {
 pub fn apply_shell_defaults<'a, M: tauri::Manager<tauri::Wry>>(
     builder: tauri::webview::WebviewWindowBuilder<'a, tauri::Wry, M>,
     app: &tauri::AppHandle,
-    config: &TurboDesktopConfig,
+    config: &DesktopRailsConfig,
     label: &str,
 ) -> tauri::webview::WebviewWindowBuilder<'a, tauri::Wry, M> {
     let server_url = config.server_url.clone();
@@ -1112,7 +1112,7 @@ pub fn apply_shell_defaults<'a, M: tauri::Manager<tauri::Wry>>(
     // Globals the injected script and the error page read. The label lets a
     // window ask to be closed without the page having to be told which it is.
     let globals = format!(
-        "window.__TURBO_DESKTOP_SERVER_URL__ = {};\nwindow.__TURBO_DESKTOP_WINDOW_LABEL__ = {};",
+        "window.__DESKTOP_RAILS_SERVER_URL__ = {};\nwindow.__DESKTOP_RAILS_WINDOW_LABEL__ = {};",
         serde_json::to_string(&server_url).unwrap_or_else(|_| "null".into()),
         serde_json::to_string(label).unwrap_or_else(|_| "null".into()),
     );
@@ -1168,7 +1168,7 @@ pub fn deliver_to_page<R: tauri::Runtime>(
     payload: &serde_json::Value,
 ) {
     let js = format!(
-        "window.__TURBO_DESKTOP__ && window.__TURBO_DESKTOP__.__receive({}, {})",
+        "window.__DESKTOP_RAILS__ && window.__DESKTOP_RAILS__.__receive({}, {})",
         serde_json::to_string(kind).unwrap_or_else(|_| "null".into()),
         serde_json::to_string(payload).unwrap_or_else(|_| "null".into()),
     );
@@ -1243,7 +1243,7 @@ pub async fn handle_window<R: tauri::Runtime>(
 
     match message.event.as_str() {
         "resize" => {
-            let config = app.state::<TurboDesktopConfig>();
+            let config = app.state::<DesktopRailsConfig>();
             let width = message.data["width"]
                 .as_f64()
                 .ok_or("Missing 'width' in window resize")?;

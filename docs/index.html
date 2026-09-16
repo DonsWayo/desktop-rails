@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Turbo Desktop — Documentation</title>
+<title>Desktop Rails — Documentation</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -430,7 +430,7 @@
      ═══════════════════════════════════════════════════════════════ -->
 <nav>
   <div class="container">
-    <span class="logo gradient-text">Turbo Desktop</span>
+    <span class="logo gradient-text">Desktop Rails</span>
     <a href="#problem">The Problem</a>
     <a href="#architecture">Architecture</a>
     <a href="#how-it-works">How It Works</a>
@@ -447,7 +447,7 @@
      ═══════════════════════════════════════════════════════════════ -->
 <section class="hero">
   <div class="container">
-    <h1><span class="gradient-text">Turbo Desktop</span></h1>
+    <h1><span class="gradient-text">Desktop Rails</span></h1>
     <p class="tagline">Turbo Native for Desktop &mdash; wrap your Rails app in a native macOS / Windows / Linux shell</p>
     <div class="badges">
       <span class="badge accent">Tauri 2</span>
@@ -477,7 +477,7 @@
       a custom WebView wrapper with no conventions.
     </p>
     <p>
-      <strong style="color:#e6edf3">Turbo Desktop</strong> fills this gap. It gives you a thin, native desktop shell
+      <strong style="color:#e6edf3">Desktop Rails</strong> fills this gap. It gives you a thin, native desktop shell
       powered by <a href="https://tauri.app">Tauri 2</a> that treats your Rails app as the single source of truth &mdash;
       the same pattern you already know from Hotwire Native, but for the desktop.
     </p>
@@ -520,7 +520,7 @@
         <div class="diagram-box webview">
           <div class="label">Rendering</div>
           <div class="name">WebView</div>
-          <div class="detail">turbo-desktop.js</div>
+          <div class="detail">desktop-rails.js</div>
         </div>
         <div class="diagram-arrow">&rarr;</div>
         <div class="diagram-box native">
@@ -562,7 +562,7 @@
           </div>
           <div class="diagram-arrow" style="display:flex;flex-direction:column;font-size:1rem;line-height:1.3">&darr; send() &nbsp; &uarr; onReceive()</div>
           <div class="diagram-box webview" style="width:100%">
-            <div class="name">turbo-desktop.js</div>
+            <div class="name">desktop-rails.js</div>
             <div class="detail">Tauri invoke / event listen</div>
           </div>
           <div class="diagram-arrow" style="display:flex;flex-direction:column;font-size:1rem;line-height:1.3">&darr; invoke &nbsp; &uarr; emit</div>
@@ -588,7 +588,7 @@
       <div class="step-content">
         <h3>The Tauri shell loads your Rails URL</h3>
         <p>
-          On launch, Rust reads <code>turbo-desktop.config.json</code> for your <code>server_url</code>,
+          On launch, Rust reads <code>desktop-rails.config.json</code> for your <code>server_url</code>,
           then navigates the main WebView window to that URL with <code>window.location.replace()</code>.
         </p>
         <pre><code><span class="cm">// main.rs — startup</span>
@@ -601,16 +601,16 @@ main_window.<span class="fn">eval</span>(&amp;<span class="fn">format!</span>(<s
     <div class="step">
       <div class="step-number">2</div>
       <div class="step-content">
-        <h3>turbo-desktop.js is injected on every page load</h3>
+        <h3>desktop-rails.js is injected on every page load</h3>
         <p>
           The <code>on_page_load</code> callback fires after each navigation completes.
           It injects the full bridge script into the WebView, creating the global
-          <code>window.TurboDesktop</code> API.
+          <code>window.DesktopRails</code> API.
         </p>
         <pre><code><span class="cm">// main.rs — injection</span>
 .<span class="fn">on_page_load</span>(|webview, payload| {
     <span class="kw">if let</span> PageLoadEvent::Finished = payload.<span class="fn">event</span>() {
-        <span class="kw">let</span> js = <span class="fn">include_str!</span>(<span class="st">"../../src/turbo-desktop.js"</span>);
+        <span class="kw">let</span> js = <span class="fn">include_str!</span>(<span class="st">"../../src/desktop-rails.js"</span>);
         <span class="kw">let</span> _ = webview.<span class="fn">eval</span>(js);
     }
 })</code></pre>
@@ -626,10 +626,10 @@ main_window.<span class="fn">eval</span>(&amp;<span class="fn">format!</span>(<s
           Turbo navigate directly, it sends a <strong>visit proposal</strong> to the Rust shell
           via Tauri's <code>invoke</code> IPC.
         </p>
-        <pre><code><span class="cm">// turbo-desktop.js</span>
+        <pre><code><span class="cm">// desktop-rails.js</span>
 document.<span class="fn">addEventListener</span>(<span class="st">"turbo:before-visit"</span>, <span class="kw">async</span> (event) =&gt; {
   <span class="kw">const</span> url = event.detail.url;
-  <span class="kw">const</span> response = <span class="kw">await</span> TurboDesktop.<span class="fn">proposeVisit</span>(url, <span class="st">"advance"</span>);
+  <span class="kw">const</span> response = <span class="kw">await</span> DesktopRails.<span class="fn">proposeVisit</span>(url, <span class="st">"advance"</span>);
 
   <span class="cm">// If the native shell handled it, cancel the Turbo visit</span>
   <span class="kw">if</span> (response.action === <span class="st">"none"</span>) {
@@ -756,7 +756,7 @@ document.<span class="fn">addEventListener</span>(<span class="st">"turbo:before
     <ol>
       <li>A Stimulus controller on the web page extends <code>BridgeComponent</code></li>
       <li>It calls <code>this.send("connect", { title: "Export" })</code></li>
-      <li><code>turbo-desktop.js</code> forwards this to Rust via Tauri's <code>invoke</code></li>
+      <li><code>desktop-rails.js</code> forwards this to Rust via Tauri's <code>invoke</code></li>
       <li>Rust handles it (e.g., registers a native menu item)</li>
       <li>When the native side triggers (e.g., menu clicked), it emits a response back</li>
       <li>The web component receives it via <code>onReceive(message)</code></li>
@@ -817,7 +817,7 @@ document.<span class="fn">addEventListener</span>(<span class="st">"turbo:before
     <div class="file-label">app/javascript/controllers/notification_bridge_controller.js</div>
     <pre><code><span class="kw">import</span> { Controller } <span class="kw">from</span> <span class="st">"@hotwired/stimulus"</span>
 
-<span class="kw">export default class extends</span> TurboDesktop.<span class="fn">stimulusBridge</span>(Controller, <span class="st">"notification"</span>) {
+<span class="kw">export default class extends</span> DesktopRails.<span class="fn">stimulusBridge</span>(Controller, <span class="st">"notification"</span>) {
   <span class="fn">connect</span>() {
     <span class="kw">super</span>.<span class="fn">connect</span>()
     <span class="kw">this</span>.<span class="fn">sendBridge</span>(<span class="st">"connect"</span>, { title: <span class="st">"My App"</span> })
@@ -860,7 +860,7 @@ document.<span class="fn">addEventListener</span>(<span class="st">"turbo:before
     <div class="file-label">app/views/posts/show.html.erb</div>
     <pre><code><span class="cm">&lt;%# Attach bridge data attributes to any element %&gt;</span>
 <span class="ht">&lt;%=</span> tag.button <span class="st">"Export PDF"</span>,
-    **<span class="fn">turbo_desktop_bridge</span>(<span class="st">"menu-item"</span>,
+    **<span class="fn">desktop_rails_bridge</span>(<span class="st">"menu-item"</span>,
       title: <span class="st">"Export PDF"</span>,
       shortcut: <span class="st">"Cmd+E"</span>
     ) <span class="ht">%&gt;</span></code></pre>
@@ -874,14 +874,14 @@ document.<span class="fn">addEventListener</span>(<span class="st">"turbo:before
   <div class="container">
     <h2><span class="gradient-text">Rails Gem</span></h2>
     <p class="lead">
-      The <code>turbo_desktop-rails</code> gem gives your Rails app awareness of the desktop shell,
+      The <code>desktop-rails</code> gem gives your Rails app awareness of the desktop shell,
       exactly like <code>turbo-rails</code> does for Turbo Native mobile apps.
     </p>
 
     <h3>Detection</h3>
     <p>
       The gem detects desktop app requests by inspecting the User-Agent header. The Tauri shell
-      sends a UA string like <code>Turbo Desktop/0.2.1 (macOS; aarch64)</code>.
+      sends a UA string like <code>Desktop Rails/0.2.1 (macOS; aarch64)</code>.
     </p>
 
     <h3>View Helpers</h3>
@@ -891,19 +891,19 @@ document.<span class="fn">addEventListener</span>(<span class="st">"turbo:before
       </thead>
       <tbody>
         <tr>
-          <td><code>turbo_desktop_app?</code></td>
-          <td>Returns <code>true</code> if the request comes from a Turbo Desktop shell.</td>
+          <td><code>desktop_rails_app?</code></td>
+          <td>Returns <code>true</code> if the request comes from a Desktop Rails shell.</td>
         </tr>
         <tr>
-          <td><code>turbo_desktop_platform</code></td>
+          <td><code>desktop_rails_platform</code></td>
           <td>Returns <code>"macos"</code>, <code>"windows"</code>, <code>"linux"</code>, or <code>nil</code>.</td>
         </tr>
         <tr>
-          <td><code>turbo_desktop_arch</code></td>
+          <td><code>desktop_rails_arch</code></td>
           <td>Returns <code>"aarch64"</code>, <code>"x86_64"</code>, or <code>nil</code>.</td>
         </tr>
         <tr>
-          <td><code>turbo_desktop_only { }</code></td>
+          <td><code>desktop_rails_only { }</code></td>
           <td>Renders the block only when inside the desktop app.</td>
         </tr>
         <tr>
@@ -911,8 +911,8 @@ document.<span class="fn">addEventListener</span>(<span class="st">"turbo:before
           <td>Renders the block only for regular web (non-desktop) users.</td>
         </tr>
         <tr>
-          <td><code>turbo_desktop_bridge(component, **opts)</code></td>
-          <td>Outputs <code>data-turbo-desktop-bridge</code> attributes for bridge components.</td>
+          <td><code>desktop_rails_bridge(component, **opts)</code></td>
+          <td>Outputs <code>data-desktop-rails-bridge</code> attributes for bridge components.</td>
         </tr>
       </tbody>
     </table>
@@ -925,12 +925,12 @@ document.<span class="fn">addEventListener</span>(<span class="st">"turbo:before
 <span class="ht">&lt;%</span> <span class="kw">end</span> <span class="ht">%&gt;</span>
 
 <span class="cm">&lt;%# Show a native-only sidebar button %&gt;</span>
-<span class="ht">&lt;%</span> <span class="fn">turbo_desktop_only</span> <span class="kw">do</span> <span class="ht">%&gt;</span>
+<span class="ht">&lt;%</span> <span class="fn">desktop_rails_only</span> <span class="kw">do</span> <span class="ht">%&gt;</span>
   &lt;button data-controller="sidebar"&gt;Toggle Sidebar&lt;/button&gt;
 <span class="ht">&lt;%</span> <span class="kw">end</span> <span class="ht">%&gt;</span>
 
 <span class="cm">&lt;%# Platform-specific styles %&gt;</span>
-<span class="ht">&lt;%</span> <span class="kw">if</span> <span class="fn">turbo_desktop_platform</span> == <span class="st">"macos"</span> <span class="ht">%&gt;</span>
+<span class="ht">&lt;%</span> <span class="kw">if</span> <span class="fn">desktop_rails_platform</span> == <span class="st">"macos"</span> <span class="ht">%&gt;</span>
   &lt;body class="desktop macos"&gt;
 <span class="ht">&lt;%</span> <span class="kw">end</span> <span class="ht">%&gt;</span></code></pre>
   </div>
@@ -947,8 +947,8 @@ document.<span class="fn">addEventListener</span>(<span class="st">"turbo:before
       <div class="step-number">1</div>
       <div class="step-content">
         <h3>Clone and install dependencies</h3>
-        <pre><code>git clone https://github.com/aguspe/turbo_desktop.git
-cd turbo_desktop
+        <pre><code>git clone https://github.com/DonsWayo/desktop-rails.git
+cd desktop_rails
 cargo install tauri-cli
 npm install</code></pre>
       </div>
@@ -958,11 +958,11 @@ npm install</code></pre>
       <div class="step-number">2</div>
       <div class="step-content">
         <h3>Configure your Rails server URL</h3>
-        <p>Edit <code>turbo-desktop.config.json</code> to point at your running Rails app:</p>
+        <p>Edit <code>desktop-rails.config.json</code> to point at your running Rails app:</p>
         <pre><code>{
   <span class="st">"server_url"</span>: <span class="st">"http://localhost:3000"</span>,
   <span class="st">"app_name"</span>: <span class="st">"My App"</span>,
-  <span class="st">"path_configuration_url"</span>: <span class="st">"http://localhost:3000/turbo-desktop/path-configuration.json"</span>
+  <span class="st">"path_configuration_url"</span>: <span class="st">"http://localhost:3000/desktop-rails/path-configuration.json"</span>
 }</code></pre>
       </div>
     </div>
@@ -972,9 +972,9 @@ npm install</code></pre>
       <div class="step-content">
         <h3>Add the Rails gem</h3>
         <pre><code><span class="cm"># Gemfile</span>
-gem <span class="st">"turbo_desktop-rails"</span></code></pre>
+gem <span class="st">"desktop-rails"</span></code></pre>
         <pre><code>bundle install
-rails generate turbo_desktop:install</code></pre>
+rails generate desktop_rails:install</code></pre>
       </div>
     </div>
 
@@ -984,7 +984,7 @@ rails generate turbo_desktop:install</code></pre>
         <h3>Mount the path configuration endpoint</h3>
         <p>The gem ships an engine that serves the path configuration JSON:</p>
         <pre><code><span class="cm"># config/routes.rb</span>
-mount TurboDesktop::Engine, at: <span class="st">"/turbo-desktop"</span></code></pre>
+mount DesktopRails::Engine, at: <span class="st">"/desktop-rails"</span></code></pre>
       </div>
     </div>
 
@@ -1013,7 +1013,7 @@ cargo tauri dev</code></pre>
   <div class="container">
     <h2><span class="gradient-text">How It Relates to turbo-ios and turbo-android</span></h2>
     <p class="lead">
-      Turbo Desktop is the third leg of the Hotwire Native story. Same patterns, different platform.
+      Desktop Rails is the third leg of the Hotwire Native story. Same patterns, different platform.
     </p>
 
     <table>
@@ -1022,7 +1022,7 @@ cargo tauri dev</code></pre>
           <th>Concept</th>
           <th>turbo-ios</th>
           <th>turbo-android</th>
-          <th>Turbo Desktop</th>
+          <th>Desktop Rails</th>
         </tr>
       </thead>
       <tbody>
@@ -1060,7 +1060,7 @@ cargo tauri dev</code></pre>
           <td>Rails gem</td>
           <td>turbo-rails (turbo_native_app?)</td>
           <td>turbo-rails (turbo_native_app?)</td>
-          <td>turbo_desktop-rails (turbo_desktop_app?)</td>
+          <td>desktop-rails (desktop_rails_app?)</td>
         </tr>
         <tr>
           <td>Binary size</td>
@@ -1080,7 +1080,7 @@ cargo tauri dev</code></pre>
     <p>
       The key insight is that <strong style="color:#e6edf3">every concept transfers directly</strong>:
       if you already know how to structure a Hotwire Native mobile app with path configuration
-      and Strada bridge components, you already know how to use Turbo Desktop.
+      and Strada bridge components, you already know how to use Desktop Rails.
       The only difference is that the native shell is written in Rust (via Tauri) instead of
       Swift or Kotlin.
     </p>
@@ -1094,7 +1094,7 @@ cargo tauri dev</code></pre>
 <footer>
   <div class="container">
     <p>
-      <strong class="gradient-text">Turbo Desktop</strong> &mdash;
+      <strong class="gradient-text">Desktop Rails</strong> &mdash;
       Turbo Native for the desktop.
       Built with <a href="https://tauri.app">Tauri</a>,
       <a href="https://hotwired.dev">Hotwire</a>, and

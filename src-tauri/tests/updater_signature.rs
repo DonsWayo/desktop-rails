@@ -178,7 +178,7 @@ fn what_the_signer_produces_today_still_verifies() {
         return;
     }
 
-    let dir = std::env::temp_dir().join("turbo-desktop-updater-signature-test");
+    let dir = std::env::temp_dir().join("desktop-rails-updater-signature-test");
     std::fs::remove_dir_all(&dir).ok();
     std::fs::create_dir_all(&dir).unwrap();
 

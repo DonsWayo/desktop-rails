@@ -29,7 +29,7 @@ param(
   [Parameter(Mandatory = $true)][string]$Runtime,
   [string]$Gems = "",
   [string]$Shell = "",
-  [string]$Name = "Turbo Desktop App",
+  [string]$Name = "Desktop Rails App",
   [string]$AppId = "dev.turbodesktop.app",
   [string]$Out = "$PWD\dist"
 )
@@ -74,7 +74,7 @@ if ($Shell) {
     server_url = "http://127.0.0.1:0"
     window     = @{ width = 1100; height = 800 }
     server     = @{ command = "$slug.cmd"; directory = "." }
-  } | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 "$dir\turbo-desktop.config.json"
+  } | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 "$dir\desktop-rails.config.json"
 }
 
 @"

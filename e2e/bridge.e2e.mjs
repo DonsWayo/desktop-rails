@@ -5,7 +5,7 @@
 // this on ubuntu under xvfb; locally it needs a Linux machine.
 //
 // Native dialogs cannot be driven by WebDriver, so the shell's debug build
-// accepts TURBO_DESKTOP_E2E_PICKER as "what the user would have picked" —
+// accepts DESKTOP_RAILS_E2E_PICKER as "what the user would have picked" —
 // everything after the dialog (grants, filesystem, events) is the real path.
 import { test, before, after } from "node:test";
 import assert from "node:assert";
@@ -30,10 +30,10 @@ const binary = join(
   "src-tauri",
   "target",
   "debug",
-  process.platform === "win32" ? "turbo-desktop.exe" : "turbo-desktop"
+  process.platform === "win32" ? "desktop-rails.exe" : "desktop-rails"
 );
 
-const scratch = mkdtempSync(join(tmpdir(), "turbo-desktop-e2e-"));
+const scratch = mkdtempSync(join(tmpdir(), "desktop-rails-e2e-"));
 const pickedFile = join(scratch, "picked", "report.txt");
 
 let server;
@@ -61,7 +61,7 @@ before(async () => {
     cwd: join(here, "fixture"),
     env: {
       ...process.env,
-      TURBO_DESKTOP_E2E_PICKER: pickedFile,
+      DESKTOP_RAILS_E2E_PICKER: pickedFile,
     },
     stdio: "inherit",
   });
@@ -79,9 +79,9 @@ before(async () => {
     { label: "a WebDriver session", tries: 30, delayMs: 1000 }
   );
 
-  // The shell injects turbo-desktop.js once the fixture page finishes loading.
+  // The shell injects desktop-rails.js once the fixture page finishes loading.
   await waitFor(
-    () => browser.execute(() => Boolean(window.__TURBO_DESKTOP__)),
+    () => browser.execute(() => Boolean(window.__DESKTOP_RAILS__)),
     { label: "the injected bridge" }
   );
 });
@@ -100,15 +100,15 @@ test("the shell loads the app server's page", async () => {
   const heading = await browser.execute(
     () => document.getElementById("heading")?.textContent
   );
-  assert.strictEqual(heading, "Turbo Desktop E2E fixture");
+  assert.strictEqual(heading, "Desktop Rails E2E fixture");
 });
 
 test("the bridge announces itself to the page", async () => {
   const bridge = await browser.execute(() => ({
-    isNative: window.__TURBO_DESKTOP__.isNative,
-    hasFs: typeof window.__TURBO_DESKTOP__.fs.write === "function",
+    isNative: window.__DESKTOP_RAILS__.isNative,
+    hasFs: typeof window.__DESKTOP_RAILS__.fs.write === "function",
     hasClipboard:
-      typeof window.__TURBO_DESKTOP__.clipboard.writeText === "function",
+      typeof window.__DESKTOP_RAILS__.clipboard.writeText === "function",
   }));
   assert.deepStrictEqual(bridge, {
     isNative: true,
@@ -119,7 +119,7 @@ test("the bridge announces itself to the page", async () => {
 
 test("clipboard text survives a write/read round trip", async () => {
   const text = await browser.executeAsync((done) => {
-    const td = window.__TURBO_DESKTOP__;
+    const td = window.__DESKTOP_RAILS__;
     td.clipboard
       .writeText("e2e-clipboard-payload")
       .then(() => td.clipboard.readText())
@@ -133,7 +133,7 @@ test("a save-dialog pick makes the path writable and readable", async () => {
   // The config allows no filesystem roots at all, so this only works if the
   // picker consent grant is honoured end to end.
   const result = await browser.executeAsync((done) => {
-    const td = window.__TURBO_DESKTOP__;
+    const td = window.__DESKTOP_RAILS__;
     td.sendBridgeMessage("file-picker", "save", { title: "Save report" })
       .then((picked) =>
         td.fs
@@ -158,8 +158,8 @@ test("a save-dialog pick makes the path writable and readable", async () => {
 
 test("a path nobody picked is still refused", async () => {
   const result = await browser.executeAsync((done) => {
-    window.__TURBO_DESKTOP__.fs
-      .write("/tmp/turbo-desktop-e2e-unpicked.txt", "nope")
+    window.__DESKTOP_RAILS__.fs
+      .write("/tmp/desktop-rails-e2e-unpicked.txt", "nope")
       .then((r) => done(r))
       .catch((e) => done(`error: ${e}`));
   });
@@ -175,7 +175,7 @@ test("a shell command streams its output back", async () => {
   // Returns the whole observed state rather than just the lines, so a
   // failure says which link broke: the event system, the spawn, or delivery.
   const result = await browser.executeAsync((done) => {
-    const td = window.__TURBO_DESKTOP__;
+    const td = window.__DESKTOP_RAILS__;
     const state = {
       spawn: null,
       lines: [],

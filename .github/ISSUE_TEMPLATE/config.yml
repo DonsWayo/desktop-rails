@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Question / discussion
-    url: https://github.com/aguspe/turbo_desktop/discussions
+    url: https://github.com/DonsWayo/desktop-rails/discussions
     about: Ask questions and share ideas here instead of opening an issue.
   - name: Documentation
-    url: https://aguspe.github.io/turbo_desktop/
+    url: https://github.com/DonsWayo/desktop-rails#readme
     about: Check the docs before filing — your answer may already be there.
