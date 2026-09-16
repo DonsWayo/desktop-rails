@@ -236,9 +236,12 @@ module AppCheck
       puts "OK    shell announced #{url}"
       wait_for_window_root
       @checks.each { |check| run_check(check, url) }
-      fail!("#{@problems} check(s) failed") if @problems.positive?
-
+      # Run even after a check failed, unlike app_check.sh. A Windows run is
+      # long, and whether the server outlives the shell is the question a
+      # failed check above would otherwise hide for another round.
       force_quit_and_confirm(url)
+      fail!("#{@problems} check(s) failed") if @problems.positive?
+      puts "OK    all checks passed"
     end
 
     private
@@ -381,7 +384,7 @@ module AppCheck
         size, taken = AppCheck.screenshot(File.expand_path(@screenshot))
         puts(taken ? "      screenshot: #{@screenshot} (#{size})" : "      no screenshot: #{size}")
       end
-      fail!("the shell started no server process") if server.empty?
+      return problem("the shell started no server process to watch") if server.empty?
 
       _, killed = AppCheck.powershell("Stop-Process -Id #{@pid} -Force")
       fail!("Stop-Process -Force on pid #{@pid} failed") unless killed
@@ -406,9 +409,9 @@ module AppCheck
           puts "FAIL  pid #{p["ProcessId"]} (#{p["Name"]}) outlived Stop-Process -Force on the shell by 15s"
         end
         puts "FAIL  the server still answers #{url}/up" if answering
-        puts "FAIL  force-quitting the shell orphaned its server"
+        problem "force-quitting the shell orphaned its server"
         survivors.each { |p| AppCheck.powershell("Stop-Process -Id #{p["ProcessId"]} -Force") }
-        exit 1
+        return
       end
       ok "server gone after Stop-Process -Force of the shell (#{server.map { |p| p["Name"] }.join(", ")})"
     end
