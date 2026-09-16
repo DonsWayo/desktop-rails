@@ -81,6 +81,11 @@ foreach ($var in @("RUBYOPT", "BUNDLE_GEMFILE", "BUNDLE_BIN_PATH", "BUNDLER_SETU
 & (Join-Path $Runtime "bin\ruby.exe") "$here\vendor-path-gems.rb" $App "$dir\lib\app"
 if ($LASTEXITCODE -ne 0) { throw "vendoring path gems failed" }
 
+# RubyInstaller probes its gem directory by writing a file into it on every
+# start. See the script for why the copy that ships must not.
+& (Join-Path $Runtime "bin\ruby.exe") "$here\windows-runtime-readonly.rb" "$dir\lib\ruby"
+if ($LASTEXITCODE -ne 0) { throw "making the interpreter read-only failed" }
+
 New-Item -ItemType Directory -Force -Path "$dir\lib\app\.bundle" | Out-Null
 "---`nBUNDLE_WITHOUT: `"development:test`"`n" | Set-Content -Encoding ASCII -NoNewline "$dir\lib\app\.bundle\config"
 
