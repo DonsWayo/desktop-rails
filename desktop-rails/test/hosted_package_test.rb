@@ -14,6 +14,7 @@ require "tmpdir"
 class HostedPackageTest < Minitest::Test
   HostedPackage = DesktopRails::HostedPackage
   InvalidConfig = DesktopRails::HostedPackage::InvalidConfig
+  HOSTED = { "server_url" => "https://app.example.com" }.freeze
 
   def load(json = nil, **overrides)
     Dir.mktmpdir do |tmp|
@@ -117,6 +118,31 @@ class HostedPackageTest < Minitest::Test
     assert_includes summary, "clipboard   write only"
     assert_includes summary, "links       other sites open in the browser"
     assert_includes summary, "updates     off"
+    # On by default, and said so, because both reach past the window.
+    assert_includes summary, "notify      pages and Ruby may raise OS notifications"
+    assert_includes summary, "shortcuts   pages may register global shortcuts that use a modifier"
+  end
+
+  def test_a_summon_shortcut_is_checked_and_summarized
+    config = load(HOSTED.merge("shortcuts" => { "summon" => "CmdOrCtrl+Shift+Space" }))
+    assert_includes HostedPackage.capability_summary(config),
+                    "shortcuts   pages may register global shortcuts that use a modifier; CmdOrCtrl+Shift+Space summons the window"
+
+    closed = load(HOSTED.merge("notifications" => { "enabled" => false }, "shortcuts" => { "enabled" => false }))
+    assert_includes HostedPackage.capability_summary(closed), "notify      off"
+    assert_includes HostedPackage.capability_summary(closed), "shortcuts   pages may not register global shortcuts"
+  end
+
+  def test_a_summon_shortcut_the_shell_would_refuse_is_refused_before_packaging
+    [ "Space", "Shift+Space", "Ctrl+", "Space+Ctrl", "Ctrl+Hyper+K", 42 ].each do |summon|
+      error = assert_raises(InvalidConfig, summon.inspect) do
+        load(HOSTED.merge("shortcuts" => { "summon" => summon }))
+      end
+      assert_match(/shortcuts\.summon/, error.message)
+    end
+    %w[Alt+F1 Super+K Ctrl+Alt+Space].each do |summon|
+      load(HOSTED.merge("shortcuts" => { "summon" => summon }))
+    end
   end
 
   def test_the_summary_names_what_a_config_opens

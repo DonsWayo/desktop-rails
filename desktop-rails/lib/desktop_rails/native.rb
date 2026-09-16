@@ -111,8 +111,23 @@ module DesktopRails
 
       # ─── Sugar for the common capabilities ─────────────────────────────────
 
-      def notify(title:, body: nil)
-        call("notification", "show", title: title, body: body)
+      # Raise an OS notification. Returns the shell's reply,
+      # {"status" => "shown", "id" => ..., "clickable" => ...}, once the
+      # platform's notification service has accepted it, and raises CallFailed
+      # when there is none or the config turned notifications off.
+      #
+      # `id` is what a click reports to the app's pages (as
+      # desktop-rails:notification-click), and on Linux a later notification
+      # with the same id replaces the earlier one rather than stacking.
+      def notify(title:, body: nil, id: nil)
+        data = { title: title, body: body }
+        data[:id] = id.to_s if id
+        call("notification", "show", **data)
+      end
+
+      # "granted", "denied", "unavailable" or "unknown"; nil outside the shell.
+      def notification_permission
+        call("notification", "permission")&.fetch("permission", nil)
       end
 
       def clipboard_write(text)
@@ -127,8 +142,22 @@ module DesktopRails
         call("shell", "open-external", url: url)
       end
 
+      # The Dock or launcher badge. A count of 0 or nil clears it. The reply's
+      # "supported" is false where the platform has no badge (Windows), and the
+      # call is then a no-op rather than an error.
       def badge(count)
-        call("badge", "set", count: count)
+        return clear_badge if count.nil? || count.to_i.zero?
+
+        call("badge", "set", count: Integer(count))
+      end
+
+      # A short text badge. macOS only; elsewhere "supported" is false.
+      def badge_label(label)
+        call("badge", "set", label: label.to_s)
+      end
+
+      def clear_badge
+        call("badge", "clear")
       end
     end
   end

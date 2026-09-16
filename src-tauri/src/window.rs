@@ -42,6 +42,57 @@ pub struct DesktopRailsConfig {
     /// Where updates come from, and which key signs them
     #[serde(default)]
     pub updater: UpdaterConfig,
+    /// Whether pages and the app's Ruby may raise OS notifications
+    #[serde(default)]
+    pub notifications: NotificationsConfig,
+    /// Global keyboard shortcuts: whether pages may register them, and the
+    /// one that brings the window forward without any page code
+    #[serde(default)]
+    pub shortcuts: ShortcutsConfig,
+}
+
+/// Notification policy.
+///
+/// On unless the config turns it off. A notification is what a browser page
+/// can already ask for, and the OS lets the person silence an app in its own
+/// settings. What a page on the app origin cannot do is make one look as if it
+/// came from another app: the OS names the sender.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NotificationsConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+impl Default for NotificationsConfig {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+/// Global shortcut policy.
+///
+/// `enabled` decides whether pages (and the app's Ruby) may register shortcuts
+/// at runtime. It is on by default, and limited to combinations with a
+/// modifier, so a page cannot grab plain typing from every other application.
+/// `summon` is independent of it: a shortcut the shell registers itself at
+/// startup that shows and focuses the main window, so a hosted app gets "bring
+/// the assistant forward from anywhere" without writing any JavaScript.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShortcutsConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// An accelerator such as `"CmdOrCtrl+Shift+Space"`.
+    #[serde(default)]
+    pub summon: Option<String>,
+}
+
+impl Default for ShortcutsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            summon: None,
+        }
+    }
 }
 
 /// Where this app looks for updates.
@@ -283,6 +334,8 @@ fn default_config() -> DesktopRailsConfig {
         navigation: NavigationConfig::default(),
         server: ServerConfig::default(),
         updater: UpdaterConfig::default(),
+        notifications: NotificationsConfig::default(),
+        shortcuts: ShortcutsConfig::default(),
     }
 }
 
@@ -1282,6 +1335,38 @@ pub fn deliver_to_page<R: tauri::Runtime>(
     if let Err(e) = window.eval(&js) {
         log::debug!("Could not deliver '{}' to {}: {}", kind, window.label(), e);
     }
+}
+
+/// Bring the main window in front of whatever has focus.
+///
+/// Used by the summon shortcut, a shortcut registered with `focus`, and a click
+/// on a notification. Each step is attempted whatever the one before it did:
+/// a window that was never minimized refuses to unminimize on some platforms,
+/// and that must not stop it being focused.
+pub fn summon_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    use tauri::Manager;
+
+    // A hidden app on macOS (Cmd+H) has to be unhidden as a whole before any
+    // of its windows can come forward.
+    #[cfg(target_os = "macos")]
+    if let Err(e) = app.show() {
+        log::debug!("Could not unhide the app: {}", e);
+    }
+
+    let Some(window) = app.get_webview_window("main") else {
+        log::warn!("No main window to bring forward");
+        return;
+    };
+    for (step, result) in [
+        ("show", window.show()),
+        ("unminimize", window.unminimize()),
+        ("focus", window.set_focus()),
+    ] {
+        if let Err(e) = result {
+            log::debug!("Bringing the window forward: {} failed: {}", step, e);
+        }
+    }
+    log::info!("Brought the main window forward");
 }
 
 /// Deliver to every open webview.

@@ -11,6 +11,13 @@ export {
   BridgeResponse,
   VisitResponse,
   WindowInfo,
+  NotificationShown,
+  NotificationPermission,
+  BadgeResult,
+  ShortcutInfo,
+  ShortcutRegistered,
+  MenuItemInfo,
+  MenuItemRegistered,
 } from "../../src/desktop-rails";
 
 import type { DesktopRailsAPI, BridgeComponent as BridgeComponentClass, BridgeResponse } from "../../src/desktop-rails";

@@ -33,6 +33,12 @@ tauri-plugin-opener = "2.5.4"
 tauri-plugin-deep-link = "2.4.9"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-autostart = "2"
+tauri-plugin-global-shortcut = "2"
+# Already in the tree through tauri-plugin-notification, which wraps it. Used
+# directly because the plugin's desktop show() drops the result on a spawned
+# task, so a missing notification service reads as success, and it offers no
+# way to learn that a notification was clicked.
+notify-rust = "4"
 
 [dev-dependencies]
 # The mock runtime, so the control channel can be driven against a real app
@@ -48,10 +54,22 @@ base64 = "0.22"
 # check for a tray library before creating a tray, which otherwise panics.
 [target.'cfg(target_os = "linux")'.dependencies]
 libloading = "0.7"
+# Already in the tree through notify-rust. Notifications and the launcher badge
+# are both session D-Bus conversations, and the shell holds one connection so a
+# click on a notification comes back on the connection that raised it.
+zbus = "5"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.26"
 objc = "0.2"
+# Already in the tree through tauri. Reads the running app's bundle identifier,
+# which notifications have to be sent under.
+objc2-foundation = { version = "0.3", features = ["NSBundle", "NSString"] }
+
+# Already in the tree through notify-rust. Used directly on Windows for its
+# activation callback, which is how a click on a toast reaches the app.
+[target.'cfg(windows)'.dependencies]
+tauri-winrt-notification = "0.7"
 
 [features]
 default = ["custom-protocol"]

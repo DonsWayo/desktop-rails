@@ -105,6 +105,60 @@ class NativeTest < Minitest::Test
     assert_equal "invoice.pdf", message["data"]["body"]
   end
 
+  def test_notify_sends_exactly_the_payload_the_shell_parses
+    # Kept in step with notifications.rs, whose test parses this same body. A
+    # nil body goes over as null, which the shell reads as no body.
+    with_handshake
+    DesktopRails::Native.notify(title: "Export finished", id: :export)
+
+    message = @received.pop
+    assert_equal({ "component" => "notification", "event" => "show",
+                   "data" => { "title" => "Export finished", "body" => nil, "id" => "export" } }, message)
+  end
+
+  def test_notify_leaves_the_id_out_when_none_is_given
+    with_handshake
+    DesktopRails::Native.notify(title: "Done", body: "3 files")
+
+    refute @received.pop["data"].key?("id"), "the shell generates one"
+  end
+
+  def test_notify_returns_what_the_shell_said
+    with_handshake
+    reply = DesktopRails::Native.notify(title: "Done", id: "sync")
+
+    assert_equal "shown", reply["status"]
+    assert_equal "sync", reply["id"]
+  end
+
+  def test_a_notification_the_os_cannot_show_raises
+    # With no notification service the shell answers 500, and a job that
+    # notifies on completion should learn that nobody saw it.
+    with_handshake
+    error = assert_raises(DesktopRails::Native::CallFailed) do
+      DesktopRails::Native.notify(title: "no daemon")
+    end
+    assert_match(/not running/, error.message)
+  end
+
+  def test_notification_permission_reads_the_shells_answer
+    with_handshake
+    assert_equal "granted", DesktopRails::Native.notification_permission
+    assert_equal "permission", @received.pop["event"]
+  end
+
+  def test_badge_sets_a_count_and_zero_clears
+    with_handshake
+    DesktopRails::Native.badge(3)
+    assert_equal({ "component" => "badge", "event" => "set", "data" => { "count" => 3 } }, @received.pop)
+
+    DesktopRails::Native.badge(0)
+    assert_equal({ "component" => "badge", "event" => "clear", "data" => {} }, @received.pop)
+
+    DesktopRails::Native.badge_label("new")
+    assert_equal({ "label" => "new" }, @received.pop["data"])
+  end
+
   def test_call_reaches_any_component_with_its_payload
     with_handshake
     DesktopRails::Native.call("window", "resize", width: 1200, height: 900)
@@ -210,6 +264,7 @@ class NativeTest < Minitest::Test
   # resize reports the size it applied after the app's minimums, and refuses a
   # size nobody could use — both of which Ruby has to carry back to its caller.
   def reply_to(message)
+    return notification_reply(message) if message["component"] == "notification"
     return [ "200 OK", { status: "ok", text: "from the clipboard" } ] unless
       message["component"] == "window" && message["event"] == "resize"
 
@@ -220,6 +275,19 @@ class NativeTest < Minitest::Test
     else
       [ "200 OK", { status: "ok", width: [ width, 800 ].max, height: [ height, 600 ].max } ]
     end
+  end
+
+  # What notifications.rs answers: the permission it read, the id it showed,
+  # or a refusal when the platform has no notification service.
+  def notification_reply(message)
+    data = message["data"] || {}
+    return [ "200 OK", { status: "ok", permission: "granted" } ] if message["event"] == "permission"
+    if data["title"] == "no daemon"
+      return [ "500 Internal Server Error",
+               { error: "The notification service refused or is not running: ServiceUnknown" } ]
+    end
+
+    [ "200 OK", { status: "shown", id: data["id"] || "notification-1", clickable: true } ]
   end
 
   def write(conn, status, payload)

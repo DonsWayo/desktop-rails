@@ -208,6 +208,180 @@ describe("DesktopRails.setTitle", () => {
   });
 });
 
+// ─── Notifications, badge, shortcuts and menu items ──────────────────────
+//
+// Each of these used to answer "ok" from a stub. The page-side contract is
+// what the shell now implements: the payload each call sends, a refusal that
+// rejects rather than resolving to null, and what fires when the shell
+// reports a click or a key press.
+
+describe("native features on the page", () => {
+  /** An invoke that answers like the shell, refusing what the shell refuses. */
+  function shellLike(refusals = {}) {
+    return async (cmd, args) => {
+      if (cmd !== "handle_bridge_message") return null;
+      const { component, event, data } = args.message;
+      const refusal = refusals[`${component}/${event}`];
+      if (refusal) throw refusal;
+      if (component === "notification" && event === "permission") {
+        return { status: "ok", permission: "granted" };
+      }
+      return { status: "ok", component, event, data };
+    };
+  }
+
+  const sentMessage = (calls, component, event) => {
+    const call = calls.find(
+      (c) => c.cmd === "handle_bridge_message" &&
+             c.args.message.component === component &&
+             c.args.message.event === event
+    );
+    return call && JSON.parse(JSON.stringify(call.args.message.data));
+  };
+
+  const deliver = (window, component, event, data) =>
+    window.DesktopRails.__receive("bridge-response", { component, event, data });
+
+  it("shows a notification with its title, body and id", async () => {
+    const { window, calls } = createEnvironment({ invoke: shellLike() });
+    await window.DesktopRails.notifications.show({ title: "Export finished", body: "invoice.pdf", id: "export" });
+    assert.deepStrictEqual(sentMessage(calls, "notification", "show"), {
+      title: "Export finished", body: "invoice.pdf", id: "export",
+    });
+  });
+
+  it("notify() is shorthand for the same message", async () => {
+    const { window, calls } = createEnvironment({ invoke: shellLike() });
+    await window.DesktopRails.notify("Done", "3 files", { id: "sync" });
+    assert.deepStrictEqual(sentMessage(calls, "notification", "show"), {
+      title: "Done", body: "3 files", id: "sync",
+    });
+  });
+
+  it("rejects with the shell's reason when there is no notification service", async () => {
+    const { window } = createEnvironment({
+      invoke: shellLike({ "notification/show": "The notification service refused or is not running" }),
+    });
+    await assert.rejects(
+      window.DesktopRails.notifications.show({ title: "Done" }),
+      /not running/
+    );
+  });
+
+  it("reports the permission the shell reads", async () => {
+    const { window } = createEnvironment({ invoke: shellLike() });
+    assert.strictEqual(await window.DesktopRails.notifications.permission(), "granted");
+    assert.strictEqual(await window.DesktopRails.notifications.requestPermission(), "granted");
+  });
+
+  it("hands a notification click to onClick and to a DOM event", () => {
+    const { window } = createEnvironment();
+    const clicked = [];
+    let domDetail = null;
+    window.DesktopRails.notifications.onClick((data) => clicked.push(data.id));
+    window.document.addEventListener("desktop-rails:notification-click", (e) => { domDetail = e.detail; });
+
+    deliver(window, "notification", "click", { id: "export" });
+
+    assert.deepStrictEqual(clicked, ["export"]);
+    assert.strictEqual(domDetail.id, "export");
+  });
+
+  it("sets, labels and clears the badge", async () => {
+    const { window, calls } = createEnvironment({ invoke: shellLike() });
+    await window.DesktopRails.badge.set(7);
+    assert.deepStrictEqual(sentMessage(calls, "badge", "set"), { count: 7 });
+    await window.DesktopRails.badge.clear();
+    assert.deepStrictEqual(sentMessage(calls, "badge", "clear"), {});
+
+    const labelled = createEnvironment({ invoke: shellLike() });
+    await labelled.window.DesktopRails.badge.setLabel("new");
+    assert.deepStrictEqual(sentMessage(labelled.calls, "badge", "set"), { label: "new" });
+  });
+
+  it("registers a shortcut with its id, accelerator and focus option", async () => {
+    const { window, calls } = createEnvironment({ invoke: shellLike() });
+    await window.DesktopRails.shortcuts.register("palette", "CmdOrCtrl+Shift+K", { focus: true });
+    assert.deepStrictEqual(sentMessage(calls, "shortcut", "register"), {
+      id: "palette", accelerator: "CmdOrCtrl+Shift+K", focus: true,
+    });
+
+    await window.DesktopRails.shortcuts.unregister("palette");
+    assert.deepStrictEqual(sentMessage(calls, "shortcut", "unregister"), { id: "palette" });
+    await window.DesktopRails.shortcuts.unregisterAll();
+    assert.ok(sentMessage(calls, "shortcut", "unregister-all"));
+  });
+
+  it("rejects a shortcut another application holds instead of resolving to null", async () => {
+    const { window } = createEnvironment({
+      invoke: shellLike({
+        "shortcut/register": "Could not register Ctrl+Alt+K: another application or the system already uses it",
+      }),
+    });
+    await assert.rejects(
+      window.DesktopRails.shortcuts.register("palette", "Ctrl+Alt+K"),
+      (error) => error instanceof window.Error && /another application/.test(error.message)
+    );
+  });
+
+  it("fires only the callbacks for the shortcut that was pressed", () => {
+    const { window } = createEnvironment();
+    const fired = [];
+    const stop = window.DesktopRails.shortcuts.on("palette", (data) => fired.push(data.accelerator));
+    window.DesktopRails.shortcuts.on("search", () => fired.push("wrong one"));
+    const dom = [];
+    window.document.addEventListener("desktop-rails:shortcut", (e) => dom.push(e.detail.id));
+
+    deliver(window, "shortcut", "triggered", { id: "palette", accelerator: "Ctrl+Alt+J" });
+    assert.deepStrictEqual(fired, ["Ctrl+Alt+J"]);
+    assert.deepStrictEqual(dom, ["palette"]);
+
+    stop();
+    deliver(window, "shortcut", "triggered", { id: "palette", accelerator: "Ctrl+Alt+J" });
+    assert.deepStrictEqual(fired, ["Ctrl+Alt+J"], "unsubscribing stops delivery");
+  });
+
+  it("announces the config's summon shortcut", () => {
+    const { window } = createEnvironment();
+    let summoned = null;
+    let viaCallback = null;
+    window.document.addEventListener("desktop-rails:summon", (e) => { summoned = e.detail; });
+    window.DesktopRails.shortcuts.onSummon((data) => { viaCallback = data; });
+
+    deliver(window, "shortcut", "summon", { accelerator: "CmdOrCtrl+Shift+Space" });
+
+    assert.strictEqual(summoned.accelerator, "CmdOrCtrl+Shift+Space");
+    assert.strictEqual(viaCallback.accelerator, "CmdOrCtrl+Shift+Space");
+  });
+
+  it("adds and removes a menu item, and hears its clicks", async () => {
+    const { window, calls } = createEnvironment({ invoke: shellLike() });
+    await window.DesktopRails.menu.add({ id: "export", title: "Export PDF", accelerator: "CmdOrCtrl+Shift+E" });
+    assert.deepStrictEqual(sentMessage(calls, "menu-item", "register"), {
+      id: "export", title: "Export PDF", accelerator: "CmdOrCtrl+Shift+E", menu: null,
+    });
+
+    const clicks = [];
+    window.DesktopRails.menu.onClick("export", (data) => clicks.push(data.id));
+    let dom = null;
+    window.document.addEventListener("desktop-rails:menu-item", (e) => { dom = e.detail; });
+    deliver(window, "menu-item", "click", { id: "export" });
+    deliver(window, "menu-item", "click", { id: "print" });
+    assert.deepStrictEqual(clicks, ["export"]);
+    assert.strictEqual(dom.id, "print", "the DOM event carries every item's clicks");
+
+    await window.DesktopRails.menu.remove("export");
+    assert.deepStrictEqual(sentMessage(calls, "menu-item", "unregister"), { id: "export" });
+  });
+
+  it("is a quiet no-op outside the shell", async () => {
+    const { window } = createEnvironment();
+    assert.strictEqual(await window.DesktopRails.notifications.show({ title: "x" }), null);
+    assert.strictEqual(await window.DesktopRails.shortcuts.register("a", "Ctrl+Alt+A"), null);
+    assert.strictEqual(await window.DesktopRails.notifications.permission(), "unavailable");
+  });
+});
+
 // ─── Window API ───────────────────────────────────────────────────────────
 
 describe("DesktopRails.window", () => {

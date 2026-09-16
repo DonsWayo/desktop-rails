@@ -78,6 +78,54 @@ export interface UpdateInfo {
   error?: string;
 }
 
+/** What the notification service said about a notification. */
+export interface NotificationShown {
+  status: "shown";
+  id: string;
+  /** Whether a click will be reported: true on Linux and Windows, false on macOS. */
+  clickable: boolean;
+}
+
+export type NotificationPermission = "granted" | "denied" | "unavailable" | "unknown";
+
+/** The badge after a set or clear. */
+export interface BadgeResult {
+  status: "ok";
+  count: number | null;
+  label: string | null;
+  /** False where the platform has no such badge; the call was a no-op. */
+  supported: boolean;
+  reason?: string;
+}
+
+export interface ShortcutInfo {
+  id: string;
+  accelerator: string;
+  focus: boolean;
+}
+
+export interface ShortcutRegistered extends ShortcutInfo {
+  status: "registered";
+  /** This id already held this combination, from an earlier page load. */
+  alreadyRegistered: boolean;
+  /** This id held a different combination, which was released. */
+  replaced: boolean;
+  /** Set when the platform cannot make the shortcut truly global (Wayland). */
+  warning?: string;
+}
+
+export interface MenuItemInfo {
+  id: string;
+  title: string;
+  menu: string;
+  accelerator: string | null;
+}
+
+export interface MenuItemRegistered extends MenuItemInfo {
+  status: "registered";
+  alreadyRegistered: boolean;
+}
+
 /** An entry in a directory listing. */
 export interface DirectoryEntry {
   name: string;
@@ -215,6 +263,64 @@ export interface DesktopRailsAPI {
 
     /** Unsubscribe from streaming output events for a privileged process. */
     offOutput(id: string): void;
+  };
+
+  /**
+   * Send a bridge message and reject with the shell's reason when it refuses.
+   * Resolves to null outside the shell.
+   */
+  invokeBridge(
+    component: string,
+    event: string,
+    data?: Record<string, unknown>
+  ): Promise<any>;
+
+  /** OS notifications, delivered by the platform's notification service. */
+  notifications: {
+    /** Rejects when there is no notification service or the config turned them off. */
+    show(options: { title: string; body?: string | null; id?: string | null }): Promise<NotificationShown | null>;
+    permission(): Promise<NotificationPermission>;
+    /** Desktop platforms never prompt; the same as permission(). */
+    requestPermission(): Promise<NotificationPermission>;
+    /** A notification was clicked (Linux, Windows). Returns an unsubscribe function. */
+    onClick(callback: (data: { id: string }) => void): () => void;
+  };
+
+  /** Shorthand for notifications.show(). */
+  notify(
+    title: string,
+    body?: string | null,
+    options?: { id?: string }
+  ): Promise<NotificationShown | null>;
+
+  /** The Dock or launcher badge. */
+  badge: {
+    set(count: number): Promise<BadgeResult | null>;
+    /** macOS only; elsewhere resolves with supported: false. */
+    setLabel(label: string): Promise<BadgeResult | null>;
+    clear(): Promise<BadgeResult | null>;
+  };
+
+  /** Global keyboard shortcuts. Combinations need a Control, Alt/Option or Command/Super modifier. */
+  shortcuts: {
+    /** Rejects when the combination is invalid, taken by another id, or held by another application. */
+    register(id: string, accelerator: string, options?: { focus?: boolean }): Promise<ShortcutRegistered | null>;
+    unregister(id: string): Promise<{ status: "unregistered"; id: string; released: boolean } | null>;
+    /** Releases every shortcut pages registered; the config's summon shortcut stays. */
+    unregisterAll(): Promise<{ status: "unregistered"; released: number } | null>;
+    list(): Promise<{ status: "ok"; shortcuts: ShortcutInfo[]; summon: string | null } | null>;
+    /** Call back when `id` fires. Returns an unsubscribe function. */
+    on(id: string, callback: (data: { id: string; accelerator: string }) => void): () => void;
+    /** The config's summon shortcut fired. */
+    onSummon(callback: (data: { accelerator: string }) => void): () => void;
+  };
+
+  /** Items in the app's menu bar. */
+  menu: {
+    add(item: { id: string; title: string; accelerator?: string | null; menu?: string | null }): Promise<MenuItemRegistered | null>;
+    remove(id: string): Promise<{ status: "unregistered"; id: string; removed: boolean } | null>;
+    list(): Promise<{ status: "ok"; items: MenuItemInfo[] } | null>;
+    onClick(id: string, callback: (data: { id: string }) => void): () => void;
   };
 
   /** Updater API for checking and installing app updates. */

@@ -1,6 +1,7 @@
 // Prevents a console window from appearing on Windows in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod badge;
 mod bridge;
 mod config;
 mod connection;
@@ -9,10 +10,12 @@ mod deep_link;
 mod fs_bridge;
 mod menu;
 mod navigation;
+mod notifications;
 mod process_manager;
 mod security;
 mod server;
 mod shell_bridge;
+mod shortcuts;
 mod sudo_bridge;
 mod tray;
 mod updater_bridge;
@@ -74,6 +77,19 @@ fn main() {
             None,
         ))
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // Every grab goes through shortcuts::ShortcutRegistry, which knows who
+        // owns each combination; the plugin only holds the OS side. Pressed
+        // only, so holding a combination down does not repeat the action.
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, shortcut, event| {
+                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        shortcuts::on_pressed(app, shortcut);
+                    }
+                })
+                .build(),
+        )
+        .manage(menu::PageMenuRegistry::default())
         .manage(process_manager::ProcessManager::new())
         .manage(server::ServerAddress::default())
         .manage(window::LastWindowSize::default())
@@ -149,6 +165,16 @@ fn main() {
             }
             app.manage(config_store);
             app.manage(app_config);
+
+            // The OS halves of notifications and global shortcuts. Managed
+            // before any page or server exists, so the first call finds them.
+            app.manage(notifications::Notifications(notifications::platform_notifier(
+                app.handle(),
+                &app_name,
+            )));
+            app.manage(shortcuts::ShortcutRegistry::new(Box::new(
+                shortcuts::PluginBackend(app.handle().clone()),
+            )));
 
             // The configured origin, and only it, may call the app's commands.
             // Granted before any window exists, so the first page load cannot
@@ -330,6 +356,9 @@ fn main() {
             // raises RunEvent::Opened instead, handled in run() below.
             #[cfg(not(target_os = "macos"))]
             deep_link::handle_files(&app_handle, deep_link::paths_from_args(std::env::args()));
+
+            // After the window exists, since summoning it is all this does.
+            shortcuts::register_summon(&app_handle, &shell_defaults.shortcuts);
 
             // Set up the system tray icon
             if let Err(e) = tray::setup_tray(&app_handle) {
