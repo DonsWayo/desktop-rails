@@ -20,7 +20,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 HERE="$PWD/packaging"
 
-APP_SRC=""; RUNTIME=""; GEMS=""; NAME="Turbo Desktop App"
+APP_SRC=""; RUNTIME=""; GEMS=""; SHELL_BIN=""; NAME="Turbo Desktop App"
 APP_ID="dev.turbodesktop.app"; OUT="$PWD/dist"; KEEP_DEV=0; APPIMAGE=0
 
 while [ $# -gt 0 ]; do
@@ -28,6 +28,7 @@ while [ $# -gt 0 ]; do
     --app)      APP_SRC="$2"; shift 2 ;;
     --runtime)  RUNTIME="$2"; shift 2 ;;
     --gems)     GEMS="$2"; shift 2 ;;
+    --shell)    SHELL_BIN="$2"; shift 2 ;;
     --name)     NAME="$2"; shift 2 ;;
     --app-id)   APP_ID="$2"; shift 2 ;;
     --out)      OUT="$2"; shift 2 ;;
@@ -54,6 +55,32 @@ rsync -a --exclude 'tmp/' --exclude 'log/' --exclude '.git/' --exclude 'node_mod
       "$APP_SRC/" "$DIR/lib/app/"
 cp "$HERE/templates/boot.rb" "$DIR/lib/app/boot.rb"
 echo "  interpreter, gems and app copied"
+
+# With a shell the tree gains a GUI: the binary at the top is what a person
+# runs, and the launcher below becomes the process it spawns. Without one the
+# tree is a server with no window — useful for testing the packaging, not
+# something to hand a person.
+if [ -n "$SHELL_BIN" ]; then
+  [ -x "$SHELL_BIN" ] || { echo "--shell must be an executable"; exit 1; }
+  cp "$SHELL_BIN" "$DIR/$SLUG"
+  chmod +x "$DIR/$SLUG"
+  echo "  shell embedded: $SLUG"
+
+  # Beside the binary, which is where Tauri's resource_dir resolves to for a
+  # plain executable. The command is relative to this file's directory.
+  cat > "$DIR/turbo-desktop.config.json" <<CONFIG
+{
+  "app_name": "$NAME",
+  "server_url": "http://127.0.0.1:0",
+  "window": { "width": 1100, "height": 800 },
+  "server": { "command": "bin/$SLUG", "directory": "." }
+}
+CONFIG
+  # The desktop entry runs the shell, not the bare server.
+  EXEC_NAME="$SLUG"
+else
+  EXEC_NAME="$SLUG"
+fi
 
 cat > "$DIR/bin/$SLUG" <<LAUNCH
 #!/bin/bash

@@ -28,6 +28,7 @@ param(
   [Parameter(Mandatory = $true)][string]$App,
   [Parameter(Mandatory = $true)][string]$Runtime,
   [string]$Gems = "",
+  [string]$Shell = "",
   [string]$Name = "Turbo Desktop App",
   [string]$AppId = "dev.turbodesktop.app",
   [string]$Out = "$PWD\dist"
@@ -58,6 +59,23 @@ $global:LASTEXITCODE = 0
 
 Copy-Item "$here\templates\boot.rb" "$dir\lib\app\boot.rb" -Force
 Write-Host "  interpreter, gems and app copied"
+
+# With a shell the tree gains a GUI: the exe at the top is what a person runs,
+# and the .cmd below becomes the process it spawns.
+if ($Shell) {
+  if (-not (Test-Path $Shell)) { throw "-Shell must be an existing executable" }
+  Copy-Item $Shell "$dir\$slug.exe"
+  Write-Host "  shell embedded: $slug.exe"
+
+  # Beside the binary, which is where Tauri resolves resource_dir to for a plain
+  # executable. The command is relative to this file's directory.
+  @{
+    app_name   = $Name
+    server_url = "http://127.0.0.1:0"
+    window     = @{ width = 1100; height = 800 }
+    server     = @{ command = "$slug.cmd"; directory = "." }
+  } | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 "$dir\turbo-desktop.config.json"
+}
 
 @"
 @echo off
