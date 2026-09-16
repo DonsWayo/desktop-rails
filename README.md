@@ -112,8 +112,8 @@ Known limits:
 - **Hosted mode** is packaged and opened in CI on macOS and Linux, with the
   bridge's origin checks driven from inside the window
   ([hosted-app.yml](.github/workflows/hosted-app.yml)). Its Windows package is
-  built only in the test suite, and its secure defaults need a shell released
-  after 0.3.0.pre2.
+  built only in the test suite. Its secure defaults are in the shell, so use
+  0.3.0.pre3 or later.
 
 ## How it fits together
 
@@ -209,9 +209,8 @@ starts nothing on the user's machine), when an `updater` block is half filled,
 or when it has a key the shell does not read, since the shell silently ignores
 a misspelt `"shel"`.
 
-> The secure defaults below are in the shell, so they need a shell released
-> after 0.3.0.pre2. Until then, build the shell from source (below) and point
-> `DESKTOP_RAILS_SHELL` at it.
+> The secure defaults below are in the shell. Shells from 0.3.0.pre3 on carry
+> them; the 0.3.0.pre1 and pre2 shells do not.
 
 ### Capabilities, and what a compromised page can do
 
@@ -953,7 +952,7 @@ The `desktop-rails` gem gives your Rails app awareness of the desktop shell.
 | Platforms | iOS, iPadOS | Android | macOS, Windows, Linux |
 
 The sizes are measured rather than estimated. The shells in the
-[v0.3.0.pre2 release](https://github.com/DonsWayo/desktop-rails/releases/tag/v0.3.0.pre2)
+[v0.3.0.pre3 release](https://github.com/DonsWayo/desktop-rails/releases/tag/v0.3.0.pre3)
 are 21.6 MB (Windows), 22.6 MB (macOS Apple Silicon), 23.8 MB (macOS Intel) and
 31.6 MB (Linux). A bundled app also carries a relocatable Ruby and every gem the
 app needs, so it is far larger: after pruning, a freshly generated Rails 8.1 app
@@ -1002,7 +1001,7 @@ and shell that `bin/rails desktop:runtime` and `desktop:shell` download, built b
 [release-prebuilt.yml](.github/workflows/release-prebuilt.yml):
 
 ```bash
-git tag v0.3.0.pre2 && git push origin v0.3.0.pre2
+git tag v0.3.0.pre3 && git push origin v0.3.0.pre3
 ```
 
 See **[docs/DISTRIBUTION.md](docs/DISTRIBUTION.md)** for local builds, using it in your own app,

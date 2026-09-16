@@ -22,7 +22,7 @@ bin/rails generate desktop_rails:install
 
 ### Detection
 
-The gem detects Desktop Rails requests via the User-Agent header (`Desktop Rails/0.3.0-pre.2 (macOS; aarch64)`, where the version is the shell's).
+The gem detects Desktop Rails requests via the User-Agent header (`Desktop Rails/0.3.0-pre.3 (macOS; aarch64)`, where the version is the shell's).
 
 ```ruby
 # In controllers
@@ -256,8 +256,8 @@ The app id defaults to `dev.desktop-rails.<your-app-name>`; set
 ## Requirements
 
 - Ruby >= 3.2 to run the generator and the tasks. The packaged app runs on the
-  Ruby that `desktop:runtime` downloads: 4.0 for releases after 0.3.0.pre2,
-  which ship 3.4.
+  Ruby that `desktop:runtime` downloads: 4.0 from 0.3.0.pre3 on; pre1
+  and pre2 ship 3.4.
 - Rails >= 7.0. CI generates a new app with the latest 7.0, 7.1, 7.2 and 8.1
   patch releases, packages it, and opens its window on macOS and Linux
   ([fresh-app.yml](../.github/workflows/fresh-app.yml)).

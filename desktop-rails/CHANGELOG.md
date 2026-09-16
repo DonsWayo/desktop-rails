@@ -8,8 +8,8 @@ A page the window loads is code the shell does not control: in hosted mode it
 is a production website, and an XSS on it must not become code execution or
 file access on the machines running the app. So everything that reaches the
 machine is now off until `desktop-rails.config.json` turns it on, and only the
-configured origin can call the bridge at all. These need a shell built from
-this release; the prebuilt shell of 0.3.0.pre2 still has the old defaults.
+configured origin can call the bridge at all. These need the 0.3.0.pre3 shell or
+later; the prebuilt shells of pre1 and pre2 still have the old defaults.
 
 - **The `shell` component is off by default.** It used to run any command a
   page sent, through a login shell. Enable it with
@@ -71,7 +71,9 @@ this release; the prebuilt shell of 0.3.0.pre2 still has the old defaults.
   `desktop-rails`, and environment variables start with `DESKTOP_RAILS_`. This
   fork of aguspe/turbo_desktop continues as its own project; the MIT notices of
   the original author are kept.
-- Version 0.3.0.pre2 (Cargo and npm: 0.3.0-pre.2). The 0.3.0.pre1 shell
+- Version 0.3.0.pre3 (Cargo and npm: 0.3.0-pre.3): Ruby 4.0.7 runtimes with
+  OpenSSL 4.0.2 (Windows: RubyInstaller 4.0.7-1), and the shell with secure
+  defaults for remote origins. 0.3.0.pre2 before it: the 0.3.0.pre1 shell
   panics on Linux without a tray library and fetches its path configuration
   from port 0; pre2 is the first release carrying both fixes.
 - `release.yml`, which builds installers of the bare shell, runs from the
