@@ -51,8 +51,31 @@
   `DESKTOP_DATA_DIR` the launchers export. With `DesktopRails.secret_key_base`,
   generated on first run and kept at mode 0600.
 
+- The install generator writes the `desktop:` sections of `database.yml`
+  (SQLite in the data directory, mirroring a Rails 8 multi-database layout),
+  `cable.yml` and `storage.yml`, ignores `.desktop-rails/`, and pins json below 3
+  only while Active Support cannot decode with the installed json.
+- `DesktopRails::Database.prepare!`, called by the boot scripts before Puma
+  binds: `db:prepare` for every database of the environment, under a lock.
+- `DesktopRails::Streams` and `desktop_stream_from`: Turbo Streams over
+  server-sent events, served by the engine at `/desktop-rails/stream`.
+- `examples/notes`, and `.github/workflows/fresh-app.yml`, which packages a
+  freshly generated app with the downloaded runtime and shell and launches it.
+
 ### Fixed
 
+- A packaged app on a fresh machine opened onto an empty database: nothing
+  loaded the schema.
+- bootsnap wrote its cache inside the bundle on first launch, breaking a signed
+  app's seal. The boot scripts point it at the data directory.
+- `pack-linux.sh` and `pack-windows.ps1` never vendored path gems or wrote
+  `BUNDLE_WITHOUT`, so any app using this gem by path failed to boot there.
+- Every packer copied `.desktop-rails/`, `storage/` and `config/master.key` into
+  the app it packaged.
+- Gems and asset precompilation ran `bin/bundle` and `bin/rails` as executables,
+  which Windows cannot do.
+- The shell asked port 0 for the path configuration of every bundled app,
+  instead of the address the server announced.
 - `desktop:package` passed the shell only on macOS. Linux and Windows packages
   now embed it too, as `pack-linux.sh --shell` and `pack-windows.ps1 -Shell`
   already supported.

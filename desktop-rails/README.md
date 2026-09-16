@@ -187,6 +187,48 @@ and each setting follows from one of those facts:
 `bin/desktop-boot` is the script both `desktop:run` and the packaged app execute,
 so a failure in one is a failure in the other.
 
+The generator also writes the `desktop:` sections of the files Rails keys by
+environment, so a freshly generated app packages with no edits:
+
+- **`config/database.yml`**: SQLite files under `DesktopRails.data_dir`, one per
+  database the production layout has (the Rails 8 cache, queue and cable
+  databases included). An app on another adapter gets a note instead, since a
+  desktop app has no database server to reach.
+- **`config/cable.yml`**: the `async` adapter. **`config/storage.yml`**: a Disk
+  service in the data directory, which the desktop environment selects.
+- **`.gitignore`**: `/.desktop-rails/`, where the runtime, gems and builds go.
+
+Rerunning the generator leaves sections that already exist alone.
+
+### The database arrives with the app
+
+Nobody runs `db:migrate` on a machine the app was downloaded to. Before Puma
+accepts a request, the boot script calls `DesktopRails::Database.prepare!`, which
+does what `db:prepare` does for every database of the environment: create a
+missing one, load its schema file and seeds, or run pending migrations after an
+update. It holds a lock in the data directory, so two copies starting at once do
+not both load the schema, and it never dumps `db/schema.rb`, which sits inside
+the read-only bundle. `config.prepare_database = false` turns it off.
+
+### Turbo Streams without Action Cable
+
+A packaged app is one process serving one person, so broadcasts go over
+server-sent events, in memory:
+
+```erb
+<%= desktop_stream_from "notes" %>
+```
+
+```ruby
+DesktopRails::Streams.broadcast_prepend_to "notes", target: "notes",
+                                           partial: "notes/note", locals: { note: }
+```
+
+`desktop_stream_from` renders Turbo's own `<turbo-stream-source>` pointing at a
+signed stream name, so a page can only subscribe to what the server rendered.
+Every window of the app receives the broadcast. See `examples/notes` in the
+repository for a complete app.
+
 ### Where a desktop app may write
 
 Rails has no concept of an OS data directory, because a server owns its
