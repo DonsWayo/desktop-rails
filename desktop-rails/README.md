@@ -108,15 +108,59 @@ The generator sets up the desktop environment, and three rake tasks do the rest.
 
 ```bash
 bin/rails generate desktop_rails:install   # initializer, desktop env, bin/desktop-boot
-bin/rails desktop:runtime                  # fetch or build a relocatable Ruby, once
+bin/rails desktop:runtime                  # download a relocatable Ruby, once
 bin/rails desktop:run                      # boot the app the way a bundle will
 bin/rails desktop:package                  # a .app, a Linux tree, or a Windows zip
 ```
 
-The tasks shell out to the packaging scripts in the desktop_rails repository
+The tasks shell out to the packaging scripts in the desktop-rails repository
 rather than reimplementing them, and each one fails with a message naming what is
-missing and how to supply it. Point them at a checkout with
-`DESKTOP_RAILS_PACKAGING`, or in the initializer with `config.packaging_dir`.
+missing and how to supply it. Installing the gem from GitHub brings the scripts
+with it, because Bundler checks out the whole repository:
+
+```ruby
+gem "desktop-rails", github: "DonsWayo/desktop-rails"
+```
+
+Otherwise point the tasks at a checkout with `DESKTOP_RAILS_PACKAGING`, or in the
+initializer with `config.packaging_dir`.
+
+### The interpreter and the shell are downloaded
+
+A packaged app carries its own Ruby and a native shell that opens its window.
+Neither has to be built on your machine: every release of this repository
+publishes both for macOS (Apple Silicon and Intel), Linux x86_64 and Windows x64,
+with a `SHA256SUMS` file beside them.
+
+- `bin/rails desktop:runtime` downloads the interpreter for this machine from the
+  release matching the gem's version (gem `0.3.0.pre1` reads tag `v0.3.0.pre1`),
+  checks it against `SHA256SUMS`, unpacks it into `.desktop-rails/runtime`, and
+  runs the same relocation check CI runs before publishing.
+- `bin/rails desktop:shell` downloads the shell into
+  `.desktop-rails/shell/<version>/`. `desktop:package` runs it first, so a package
+  has a window unless you choose otherwise.
+
+A checksum mismatch or a network failure stops the task. A release that has
+nothing for this platform — Linux on ARM, musl, a version that was never
+released — falls back: the runtime is built from source, and the package is
+built without a window, with a warning saying so.
+
+| Variable | Initializer | What it does |
+| --- | --- | --- |
+| `DESKTOP_RAILS_RELEASE_VERSION` | `config.release_version` | Download another release's assets. |
+| `DESKTOP_RAILS_RELEASE_URL` | `config.release_url` | A mirror laid out as `<url>/v<version>/<asset>`. |
+| `DESKTOP_RAILS_RUNTIME_FROM_SOURCE=1` | — | Build the interpreter (needs a C toolchain; about 20–40 minutes). |
+| `DESKTOP_RAILS_SHELL_FROM_SOURCE=1` | — | `cargo build --release` in the checkout instead of downloading. |
+| `DESKTOP_RAILS_RUNTIME` / `DESKTOP_RAILS_SHELL` | `config.runtime_dir` / `config.shell_binary` | Use one you already have. |
+
+The downloaded Linux shell needs WebKitGTK 4.1 (`libwebkit2gtk-4.1-0`), and
+Windows needs WebView2, which Windows 10 and 11 ship. macOS binaries are signed
+ad-hoc and not notarised; `pack.sh` signs the bundle it builds, and shipping to
+other people's Macs still needs a Developer ID (see `packaging/DISTRIBUTION.md`).
+
+The checksum proves a download arrived whole and is what the release workflow
+uploaded. `SHA256SUMS` comes from the same release, so it does not prove who
+published it: that trust rests on GitHub and on this repository.
 
 ### The desktop environment
 

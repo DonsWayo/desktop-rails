@@ -3,8 +3,13 @@
 Turn a Rails app plus a relocatable interpreter into something a person can
 download and open, on macOS, Linux or Windows.
 
+From a Rails app, `bin/rails desktop:runtime` and `bin/rails desktop:shell`
+download a prebuilt interpreter and shell for the machine they run on, verified
+against the release's `SHA256SUMS` (see `desktop-rails/README.md`). The scripts
+below are what those downloads were built with, and what to use by hand:
+
 ```bash
-packaging/build-runtime.sh --out out/ruby          # or install desktop-rails-runtime
+packaging/build-runtime.sh --out out/ruby          # or download: see Prebuilt releases
 packaging/verify-runtime.sh out/ruby
 
 packaging/pack.sh        --app ../my_app --runtime out/ruby --gems out/gems --name "Ledger"
@@ -16,7 +21,7 @@ packaging\pack-windows.ps1 -App ..\my_app -Runtime out\ruby -Gems out\gems -Name
 |---|---|
 | `build-runtime.sh` | Builds a relocatable Ruby. macOS and Linux; Windows is fetched. |
 | `verify-runtime.sh` | Proves one relocates before you trust it. |
-| `gem.sh` | Wraps a build in a platform gem. |
+| `gem.sh` | Wraps a build in a platform gem, for local use. Not published. |
 | `pack.sh` | macOS `.app`, pruned and signed. |
 | `pack-linux.sh` | Linux directory, tarball and `.desktop` entry. |
 | `pack-windows.ps1` | Windows directory and zip. |
@@ -31,6 +36,29 @@ Longer notes: [CONTROL_CHANNEL.md](CONTROL_CHANNEL.md) for calling native from
 Ruby, [DISTRIBUTION.md](DISTRIBUTION.md) for what Gatekeeper actually does,
 [AUTO_UPDATE.md](AUTO_UPDATE.md) for shipping a second version to people who
 already have the first.
+
+## Prebuilt releases
+
+Pushing a tag named after the gem version — `v0.3.0.pre1` for desktop-rails
+`0.3.0.pre1` — runs `.github/workflows/release-prebuilt.yml`. It builds, on each
+platform's own runner, the interpreter with `build-runtime.sh` (Windows:
+`fetch-windows-runtime.ps1`) and the shell with `cargo build --release`, checks
+the unpacked archive relocates, and publishes a GitHub prerelease:
+
+```
+desktop-rails-runtime-<version>-arm64-darwin.tar.gz   desktop-rails-shell-<version>-arm64-darwin
+desktop-rails-runtime-<version>-x86_64-darwin.tar.gz  desktop-rails-shell-<version>-x86_64-darwin
+desktop-rails-runtime-<version>-x86_64-linux.tar.gz   desktop-rails-shell-<version>-x86_64-linux
+desktop-rails-runtime-<version>-x64-mingw-ucrt.zip    desktop-rails-shell-<version>-x64-mingw-ucrt.exe
+SHA256SUMS
+```
+
+Each runtime archive holds a single `ruby/` directory. The names come from
+`DesktopRails::Packaging`, which the gem also uses to compute download URLs, and
+the workflow refuses a tag, `Cargo.toml` or `package.json` that disagrees with
+the gem's version. After publishing it downloads the release on macOS (both
+architectures), Linux and Windows with the gem's own code and runs the
+interpreter. macOS binaries are signed ad-hoc; nothing is notarised.
 
 ## The four things that decide whether this works
 

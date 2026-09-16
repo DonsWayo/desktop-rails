@@ -28,7 +28,7 @@ class DesktopRakeTasksTest < Minitest::Test
   end
 
   def test_defines_the_three_tasks_the_workflow_promises
-    %w[desktop:runtime desktop:package desktop:run].each do |name|
+    %w[desktop:runtime desktop:shell desktop:package desktop:run].each do |name|
       assert @rake.lookup(name), "#{name} was not defined"
     end
   end
@@ -36,7 +36,7 @@ class DesktopRakeTasksTest < Minitest::Test
   def test_every_task_is_described_so_rake_dash_t_lists_it
     # A task with no desc is invisible to `rake -T`, which is where a developer
     # who has not read the README will look for this workflow.
-    %w[desktop:runtime desktop:package desktop:run].each do |name|
+    %w[desktop:runtime desktop:shell desktop:package desktop:run].each do |name|
       refute_nil @rake.lookup(name).comment, "#{name} has no desc"
     end
   end
@@ -72,5 +72,29 @@ class DesktopRakeTasksTest < Minitest::Test
                       "#{name} must depend on desktop:assets, or the packaged app ships without CSS or JavaScript"
     end
     assert Rake::Task["desktop:assets"].comment, "desktop:assets needs a desc so rake -T lists it"
+  end
+
+  def test_package_obtains_a_shell_first
+    # Without a shell the package is a server with no window. desktop:shell is
+    # a no-op when one is already configured, so depending on it costs nothing
+    # and makes a window the default. First, so a failed download stops the
+    # task before the slow asset and gem work rather than after it.
+    prerequisites = Rake::Task["desktop:package"].prerequisites
+    assert_equal "shell", prerequisites.first
+  end
+
+  def test_download_failures_are_messages_not_backtraces
+    source = File.read(RAKEFILE)
+    assert_match(/rescue DesktopRails::Packaging::MissingPrerequisite, DesktopRails::Packaging::DownloadFailed/, source)
+  end
+
+  def test_only_an_unpublished_release_falls_back_to_building_the_runtime
+    # A checksum mismatch that quietly turned into a forty-minute compile would
+    # hide exactly the thing the checksum exists to surface.
+    source = File.read(RAKEFILE)
+    runtime_task = source[/task :runtime do.*?\n  end\n/m]
+    assert_match(/rescue DesktopRails::Packaging::NotPublished/, runtime_task)
+    refute_match(/rescue DesktopRails::Packaging::DownloadFailed/, runtime_task)
+    refute_match(/rescue StandardError/, runtime_task)
   end
 end

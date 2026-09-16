@@ -7,19 +7,9 @@ require "desktop_rails/paths"
 require "desktop_rails/native"
 
 module DesktopRails
+  # configuration, configure and reset_configuration! live in
+  # desktop_rails/configuration.rb.
   class << self
-    def configuration
-      @configuration ||= Configuration.new
-    end
-
-    def configure
-      yield(configuration)
-    end
-
-    def reset_configuration!
-      @configuration = Configuration.new
-    end
-
     # The per-platform directory this app may write to: Application Support on
     # macOS, %LOCALAPPDATA% on Windows, $XDG_DATA_HOME on Linux. See
     # DesktopRails::Paths for why Rails cannot answer this itself.

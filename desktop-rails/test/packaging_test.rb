@@ -161,7 +161,10 @@ class PackagingRuntimeTest < Minitest::Test
         DesktopRails::Packaging.runtime_dir!
       end
       assert_match(/desktop:runtime/, error.message)
-      assert_match(/desktop-rails-runtime/, error.message)
+      assert_match(/DESKTOP_RAILS_RUNTIME=/, error.message)
+      # The gem it used to suggest was never published, and never will be:
+      # suggesting it sent people to a 404.
+      refute_match(/bundle add/, error.message)
     end
   end
 
@@ -232,7 +235,21 @@ class PackagingCommandTest < Minitest::Test
         assert_equal File.join(paths[:packaging], "pack-linux.sh"), argv.first
         assert_equal "dev.example.ledger", flag(argv, "--app-id")
         refute_includes argv, "--bundle-id", "pack-linux.sh has no --bundle-id"
-        refute_includes argv, "--shell", "pack-linux.sh has no --shell"
+        refute_includes argv, "--shell", "no shell was found, so none may be passed"
+      end
+    end
+  end
+
+  def test_linux_and_windows_embed_the_shell_too
+    # pack-linux.sh and pack-windows.ps1 both take a shell now. Leaving it out
+    # here is how every Linux and Windows package came out with no window even
+    # when a shell was sitting right there.
+    with_sandbox(gems: true, shell: true) do |paths|
+      on_platform(:linux) do
+        assert_equal paths[:shell], flag(DesktopRails::Packaging.package_command, "--shell")
+      end
+      on_platform(:windows) do
+        assert_equal paths[:shell], flag(DesktopRails::Packaging.package_command, "-Shell")
       end
     end
   end

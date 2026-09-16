@@ -1,9 +1,9 @@
-require "fileutils"
 # frozen_string_literal: true
 
 # The Rails-native packaging workflow.
 #
-#   bin/rails desktop:runtime   # get a relocatable interpreter, once
+#   bin/rails desktop:runtime   # download (or build) a relocatable interpreter, once
+#   bin/rails desktop:shell     # download the shell that gives the app a window
 #   bin/rails desktop:package   # build the bundle for this platform
 #   bin/rails desktop:run       # boot the app exactly as the bundle will
 #
@@ -11,16 +11,20 @@ require "fileutils"
 # reimplementing them. See DesktopRails::Packaging for why, and for where the
 # scripts are looked for.
 
+require "fileutils"
+require "rbconfig"
 require "desktop_rails/packaging"
+require "desktop_rails/prebuilt"
 
 # Lambdas rather than `def`, which inside a .rake file would define methods on
 # Object and collide with whatever else the application has loaded.
 
 # Rake turns any exception into a backtrace, which buries the one sentence a
-# developer needs. A missing prerequisite is a message, not a crash.
+# developer needs. A missing prerequisite, or a download that failed, is a
+# message, not a crash.
 with_clear_failures = lambda do |&block|
   block.call
-rescue DesktopRails::Packaging::MissingPrerequisite => e
+rescue DesktopRails::Packaging::MissingPrerequisite, DesktopRails::Packaging::DownloadFailed => e
   abort "\n#{e.message}"
 end
 
@@ -41,27 +45,99 @@ run = lambda do |argv|
 end
 
 namespace :desktop do
-  desc "Fetch or build the relocatable Ruby a packaged app ships"
+  desc "Download (or build) the relocatable Ruby a packaged app ships"
   task :runtime do
     with_clear_failures.call do
       packaging = DesktopRails::Packaging
 
       if (existing = packaging.runtime_dir)
         puts "A relocatable Ruby is already here: #{existing}"
-        puts "Delete it, or set DESKTOP_RAILS_RUNTIME elsewhere, to build another."
+        puts "Delete it, or set DESKTOP_RAILS_RUNTIME elsewhere, to get another."
         next
       end
 
       out = packaging.build_dir.join("runtime")
-      if packaging.platform == :windows
-        puts "Fetching RubyInstaller's portable archive into #{out}"
+      triple = packaging.release_triple
+      version = packaging.release_version
+      downloaded = false
+
+      if packaging.runtime_from_source?
+        puts "DESKTOP_RAILS_RUNTIME_FROM_SOURCE is set, so nothing is downloaded."
+      elsif triple.nil?
+        puts "No prebuilt runtime is published for #{RbConfig::CONFIG["host_cpu"]}-#{RbConfig::CONFIG["host_os"]}; building one instead."
       else
-        puts "Building a relocatable Ruby into #{out}."
-        puts "This compiles OpenSSL, libyaml and Ruby itself, so it takes a while."
-        puts "`bundle add desktop-rails-runtime` installs a prebuilt one instead."
+        begin
+          puts "Downloading the prebuilt runtime for #{triple} (desktop-rails #{version}) into #{out}"
+          DesktopRails::Prebuilt.install_runtime(into: out, triple: triple, version: version,
+                                                 base_url: packaging.release_base_url)
+          downloaded = true
+        rescue DesktopRails::Packaging::NotPublished => e
+          # Only a release or asset that does not exist falls back. A checksum
+          # mismatch or a network failure aborts, because building instead
+          # would hide it.
+          puts "#{e.message.strip}\nBuilding one instead."
+        end
       end
-      run.call(packaging.runtime_command(out: out))
+
+      if downloaded
+        # The same check every build passes in CI before it is published, run
+        # again here, because what matters is that it works on this machine.
+        run.call(packaging.runtime_check_command(out, triple: triple))
+      else
+        if packaging.platform == :windows
+          puts "Fetching RubyInstaller's portable archive into #{out}"
+        else
+          puts "Building a relocatable Ruby into #{out}."
+          puts "This compiles OpenSSL, libyaml and Ruby itself, so it takes a while and needs a C toolchain."
+        end
+        run.call(packaging.runtime_command(out: out))
+      end
       puts "\nRuntime ready: #{out}"
+    end
+  end
+
+  desc "Download (or build) the desktop shell that gives a packaged app its window"
+  task :shell do
+    with_clear_failures.call do
+      packaging = DesktopRails::Packaging
+
+      if (existing = packaging.shell_binary)
+        puts "Shell: #{existing}"
+        next
+      end
+
+      if packaging.shell_from_source?
+        puts "DESKTOP_RAILS_SHELL_FROM_SOURCE is set: building the shell with cargo."
+        run.call(packaging.shell_build_command)
+        puts "\nShell ready: #{packaging.shell_binary_in_checkout}"
+        next
+      end
+
+      # A missing shell is a warning, not a failure. This runs before every
+      # desktop:package, and a bundle with no window is still a legitimate
+      # thing to build on a platform no release covers.
+      no_window = lambda do |reason|
+        warn "\n#{reason.strip}"
+        warn "The package will have no window. Build the shell in a checkout with"
+        warn "DESKTOP_RAILS_SHELL_FROM_SOURCE=1, or point DESKTOP_RAILS_SHELL at one."
+      end
+
+      triple = packaging.release_triple
+      if triple.nil?
+        no_window.call("No prebuilt shell is published for #{RbConfig::CONFIG["host_cpu"]}-#{RbConfig::CONFIG["host_os"]}.")
+        next
+      end
+
+      version = packaging.release_version
+      out = packaging.downloaded_shell_path(version: version)
+      begin
+        puts "Downloading the desktop shell for #{triple} (desktop-rails #{version})"
+        DesktopRails::Prebuilt.install_shell(into: out, triple: triple, version: version,
+                                             base_url: packaging.release_base_url)
+        puts "Shell ready: #{out}"
+      rescue DesktopRails::Packaging::NotPublished => e
+        no_window.call(e.message)
+      end
     end
   end
 
@@ -115,7 +191,9 @@ namespace :desktop do
   end
 
   desc "Package this Rails app for the current platform"
-  task package: %i[assets gems] do
+  # The shell first: it is a quick download, and a failed one should stop the
+  # task before minutes of asset and gem work rather than after.
+  task package: %i[shell assets gems] do
     with_clear_failures.call do
       packaging = DesktopRails::Packaging
       argv = packaging.package_command
