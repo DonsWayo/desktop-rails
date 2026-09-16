@@ -82,6 +82,25 @@ module DesktopRails
       "#{DesktopRails.configuration.inspector_mount_path.chomp("/")}/inspector.js"
     end
 
+    # Subscribe this page to Turbo Streams broadcast with DesktopRails::Streams,
+    # over server-sent events rather than Action Cable.
+    #
+    #   <%= desktop_stream_from "notes" %>
+    #   <%= desktop_stream_from @project, :comments %>
+    #
+    # Renders Turbo's own <turbo-stream-source>, which opens an EventSource for
+    # any URL that is not ws:// and applies each message as a Turbo Stream.
+    def desktop_stream_from(*streamables, **attributes)
+      signed = DesktopRails::Streams.signed_stream_name(streamables)
+      src =
+        if respond_to?(:desktop_rails) && desktop_rails.respond_to?(:stream_path)
+          desktop_rails.stream_path(name: signed)
+        else
+          "#{DesktopRails.configuration.inspector_mount_path.chomp("/")}/stream?#{{ name: signed }.to_query}"
+        end
+      tag.turbo_stream_source(src: src, **attributes)
+    end
+
     private
 
     def validate_bridge_name!(name, label)
