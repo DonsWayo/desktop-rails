@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 /**
- * desktop-rails CLI
+ * desktop-rails CLI: the desktop shell around a Rails server you run yourself
+ * (hosted mode). Packaging an app with its own Ruby is the gem's job, through
+ * bin/rails desktop:package, and needs none of this.
  *
  * Commands:
  *   new    — Create a new Rails app with Desktop Rails pre-configured
@@ -104,10 +106,11 @@ function cmdNew(args) {
   const gemfilePath = join(appDir, "Gemfile");
   const gemfileContent = readFileSync(gemfilePath, "utf-8");
   if (!gemfileContent.includes("desktop-rails")) {
-    // Constrained on purpose. Unpinned, Bundler quietly resolves back to an
-    // ancient version when the current one does not support the running Ruby,
-    // and the failure only shows up later as a missing generator.
-    appendFileSync(gemfilePath, '\ngem "desktop-rails", "~> 0.1"\n');
+    // From GitHub, because the gem is not on RubyGems: the "~> 0.1" this used
+    // to write matched nothing Bundler could find. At the tag of this CLI's own
+    // version, because the shell scaffolded below is copied from this package
+    // and speaks the handshake of the gem released with it.
+    appendFileSync(gemfilePath, `\n${gemfileLine()}\n`);
   }
 
   // Steps 3 and 4 run other people's tools against a Rails app that already
@@ -118,7 +121,7 @@ function cmdNew(args) {
     `  cd ${appName}\n` +
     `  bundle install\n` +
     `  bin/rails generate desktop_rails:install\n` +
-    `  npx desktop-rails init .\n`;
+    `  desktop-rails init .\n`;
 
   console.log("\nInstalling gems...\n");
   try {
@@ -146,7 +149,7 @@ function cmdNew(args) {
   Desktop Rails app "${appName}" is ready!
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  cd ${appName}/desktop && npx desktop-rails dev
+  cd ${appName}/desktop && npm install && npm run dev
 
   Opening the app starts the Rails server for you. To manage the
   server yourself, remove "server.command" from
@@ -340,13 +343,11 @@ function cmdInit(args) {
 Desktop Rails initialized successfully!
 
 Next steps:
-  1. Add the gem to your Gemfile:
-     gem 'desktop-rails', path: '../desktop_rails/desktop-rails'
+  1. Add the gem, which also mounts its engine and writes the initializer:
+     bundle add desktop-rails --github DonsWayo/desktop-rails
+     bin/rails generate desktop_rails:install
 
-  2. Mount the engine in config/routes.rb:
-     mount DesktopRails::Engine => "/desktop-rails"
-
-  3. Configure path rules in config/initializers/desktop_rails.rb:
+  2. Configure path rules in config/initializers/desktop_rails.rb:
      DesktopRails.configure do |config|
        config.path_configuration = {
          rules: [
@@ -356,8 +357,8 @@ Next steps:
        }
      end
 
-  4. Start the desktop app (it starts the Rails server too):
-     cd desktop && desktop-rails dev
+  3. Start the desktop app (it starts the Rails server too):
+     cd desktop && npm install && npm run dev
 `);
 }
 
@@ -440,7 +441,8 @@ function cmdBuild(args) {
 
   child.on("exit", (code) => {
     if (code === 0) {
-      console.log("\nBuild complete! Check src-tauri/target/release/bundle/");
+      // tauri puts a build for an explicit --target under that target's name.
+      console.log(`\nBuild complete! Check src-tauri/target/${target}/release/bundle/`);
     }
     process.exit(code ?? 0);
   });
@@ -448,13 +450,21 @@ function cmdBuild(args) {
 
 function cmdHelp() {
   console.log(`
-desktop-rails — Turbo Native for Desktop
+desktop-rails — a native window for a Rails server you run yourself
+
+This CLI scaffolds and builds the desktop shell for hosted mode. Shipping a Rails
+app with its own Ruby does not need it: add the gem, then run
+bin/rails desktop:package (https://github.com/DonsWayo/desktop-rails#quick-start).
+
+It is not published to npm. Run it from GitHub or from a checkout:
+  npx github:DonsWayo/desktop-rails <command>
+  node cli/desktop-rails.js <command>
 
 Commands:
-  new <appname> [--icon <file>]   Create a new Rails app with Desktop Rails
-  init [path] [--icon <file>]     Add desktop support to an existing Rails app
+  new <appname> [--icon <file>]   Create a new Rails app with a desktop/ shell project
+  init [path] [--icon <file>]     Add a desktop/ shell project to an existing Rails app
   dev                             Start the desktop app in development mode
-  build [--target <arch>]         Build for distribution (default: aarch64-apple-darwin)
+  build [--target <triple>]       Build installers (default: this machine's target)
   help                            Show this help message
 
 Options:
@@ -466,7 +476,7 @@ Examples:
   desktop-rails new myapp --icon ./logo.png    # ...with a custom icon
   desktop-rails init .                         # Add desktop to existing Rails app
   desktop-rails dev                            # Start dev mode
-  desktop-rails build                          # Build for Apple Silicon
+  desktop-rails build                          # Build for this machine
   desktop-rails build --target universal-apple-darwin  # Universal binary
 `);
 }
@@ -509,6 +519,25 @@ export function requireTool(command, message) {
 export function packageVersion() {
   const pkg = JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf-8"));
   return pkg.version;
+}
+
+/**
+ * The gem's spelling of a version: npm 0.3.0-pre.2 is gem 0.3.0.pre2. The
+ * inverse of DesktopRails::Packaging.semver, and what release tags are named
+ * after, so it is how this CLI finds the release it belongs to.
+ */
+export function gemVersion(version = packageVersion()) {
+  const [core, pre] = version.split("-", 2);
+  return pre ? `${core}.${pre.replace(/\./g, "")}` : core;
+}
+
+export function releaseTag(version = packageVersion()) {
+  return `v${gemVersion(version)}`;
+}
+
+// The line `new` adds to the app's Gemfile.
+export function gemfileLine(version = packageVersion()) {
+  return `gem "desktop-rails", github: "DonsWayo/desktop-rails", tag: "${releaseTag(version)}"`;
 }
 
 export function defaultUserAgent() {
@@ -569,8 +598,10 @@ function slugify(name) {
 /**
  * The package.json a scaffolded desktop project gets.
  *
- * It depends on the published shell rather than vendoring it, so an app picks up
- * fixes with an ordinary npm update.
+ * It depends on the shell rather than vendoring it, so an app picks up fixes by
+ * changing one line. From GitHub at the release tag of this CLI's version,
+ * because the package is not on npm: the semver range this used to write named
+ * a package `npm install` could not find.
  */
 export function desktopPackage(appName) {
   return {
@@ -584,7 +615,7 @@ export function desktopPackage(appName) {
       tauri: "tauri",
     },
     dependencies: {
-      "desktop-rails": `^${packageVersion()}`,
+      "desktop-rails": `github:DonsWayo/desktop-rails#${releaseTag()}`,
     },
     devDependencies: {
       "@tauri-apps/cli": "^2.0.0",

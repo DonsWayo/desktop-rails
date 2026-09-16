@@ -13,6 +13,8 @@ import {
   defaultBuildTarget,
   defaultUserAgent,
   extractIconFlag,
+  gemfileLine,
+  gemVersion,
   guessAppName,
   packageVersion,
   run,
@@ -183,11 +185,44 @@ test("a scaffolded project gets its own package identity", () => {
   assert.equal(scaffold.private, true);
 });
 
-test("a scaffolded project depends on the published shell", () => {
+// The package is not on npm, so a semver range names something `npm install`
+// cannot find. The release tag of this version is what exists.
+test("a scaffolded project depends on the shell released with this CLI", () => {
   const scaffold = desktopPackage("Task Manager");
 
-  assert.equal(scaffold.dependencies["desktop-rails"], `^${packageVersion()}`);
+  assert.equal(
+    scaffold.dependencies["desktop-rails"],
+    `github:DonsWayo/desktop-rails#v${gemVersion()}`
+  );
   assert.ok(scaffold.devDependencies["@tauri-apps/cli"], "desktop-rails dev shells out to tauri");
+});
+
+test("gemVersion spells this version the way the gem and its release tag do", () => {
+  const version = read("desktop-rails", "lib", "desktop_rails", "version.rb").match(/VERSION\s*=\s*"([^"]+)"/)[1];
+
+  assert.equal(gemVersion(), version);
+  assert.equal(gemVersion("0.3.0-pre.2"), "0.3.0.pre2");
+  assert.equal(gemVersion("1.0.0"), "1.0.0");
+});
+
+// The gem is not on RubyGems either; the "~> 0.1" `new` used to write resolved
+// to nothing.
+test("new adds the gem from GitHub at this version's tag", () => {
+  assert.equal(
+    gemfileLine("0.3.0-pre.2"),
+    'gem "desktop-rails", github: "DonsWayo/desktop-rails", tag: "v0.3.0.pre2"'
+  );
+});
+
+test("help describes what the CLI is for now, not upstream's tagline", () => {
+  const result = spawnSync(process.execPath, [join(PACKAGE_ROOT, "cli", "desktop-rails.js"), "help"], {
+    encoding: "utf-8",
+  });
+
+  assert.equal(result.status, 0);
+  assert.doesNotMatch(result.stdout, /Turbo Native/);
+  assert.match(result.stdout, /bin\/rails desktop:package/, "should point bundled apps at the gem");
+  assert.match(result.stdout, /not published to npm/);
 });
 
 test("the published package carries everything the scaffold copies", () => {
