@@ -1,0 +1,266 @@
+name: Release prebuilt runtimes and shells
+
+# Push a tag named after the gem version — v0.3.0.pre1 for desktop-rails
+# 0.3.0.pre1 — and get, for every platform, the two things a Rails developer
+# should not have to build: the relocatable interpreter and the shell binary.
+#
+# bin/rails desktop:runtime and desktop:shell download these. They compute
+# each URL from the gem's version and platform, with no API call, so asset
+# names here come from DesktopRails::Packaging (see .github/scripts/
+# release_plan.rb) and the release is refused when the tag, the gem, Cargo.toml
+# and package.json do not agree.
+#
+# macOS artifacts are signed ad-hoc and not notarised. Without a Developer ID
+# Gatekeeper rejects them when downloaded by a browser (see
+# packaging/DISTRIBUTION.md); the gem downloads without a quarantine attribute,
+# and pack.sh re-signs everything it bundles.
+#
+# A release is a prerelease when the gem version is one (0.3.0.pre1), and never
+# a draft: drafts need a token to download, and the gem has none.
+
+on:
+  push:
+    tags: ["v*"]
+  # Releases the version in the checked-out source, creating its tag at this
+  # commit if it does not exist yet.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+      assets: ${{ steps.plan.outputs.assets }}
+      expected: ${{ steps.plan.outputs.expected }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+      - name: Name the release from the gem
+        id: plan
+        run: ruby .github/scripts/release_plan.rb
+
+  unix:
+    name: ${{ matrix.triple }}
+    needs: plan
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-14,       triple: arm64-darwin,  arch: arm64 }
+          - { os: macos-15-intel, triple: x86_64-darwin, arch: x86_64 }
+          - { os: ubuntu-24.04,   triple: x86_64-linux,  arch: x86-64 }
+    env:
+      RUNTIME_ASSET: ${{ fromJSON(needs.plan.outputs.assets)[matrix.triple].runtime }}
+      SHELL_ASSET: ${{ fromJSON(needs.plan.outputs.assets)[matrix.triple].shell }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # zlib for Ruby; gtk and webkit for the shell, which cannot link without
+      # their headers.
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential zlib1g-dev \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - uses: actions/cache@v4
+        with:
+          path: .runtime-build/vendor
+          key: vendor-${{ matrix.triple }}-openssl3.5.4-libdir-yaml0.2.5
+
+      - name: Build the interpreter
+        run: packaging/build-runtime.sh --out "$PWD/out/ruby"
+
+      - name: It relocates
+        run: packaging/verify-runtime.sh "$PWD/out/ruby"
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Build the shell
+        run: cargo build --release --manifest-path src-tauri/Cargo.toml
+
+      - name: Sign the shell ad-hoc
+        if: runner.os == 'macOS'
+        run: |
+          codesign --force --sign - src-tauri/target/release/desktop-rails
+          codesign --verify --strict src-tauri/target/release/desktop-rails
+
+      - name: Stage the assets
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          tar -C out -czf "dist/$RUNTIME_ASSET" ruby
+          cp src-tauri/target/release/desktop-rails "dist/$SHELL_ASSET"
+          # A shell for the wrong architecture would download, verify and then
+          # fail to exec on every machine that fetched it.
+          file "dist/$SHELL_ASSET" | tee /dev/stderr | grep -q "${{ matrix.arch }}"
+          ls -lh dist
+
+      # What a developer gets is the archive, not out/ruby. Unpack it somewhere
+      # else, under a path with a space, and hold it to the same check.
+      - name: The archive works where it lands
+        run: |
+          set -euo pipefail
+          landed="$RUNNER_TEMP/landed here"
+          mkdir -p "$landed"
+          tar -xzf "dist/$RUNTIME_ASSET" -C "$landed"
+          packaging/verify-runtime.sh "$landed/ruby"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prebuilt-${{ matrix.triple }}
+          path: dist/*
+          if-no-files-found: error
+
+  windows:
+    name: x64-mingw-ucrt
+    needs: plan
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      RUNTIME_ASSET: ${{ fromJSON(needs.plan.outputs.assets)['x64-mingw-ucrt'].runtime }}
+      SHELL_ASSET: ${{ fromJSON(needs.plan.outputs.assets)['x64-mingw-ucrt'].shell }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch and check the portable interpreter
+        shell: pwsh
+        run: packaging/fetch-windows-runtime.ps1 -Out "$env:GITHUB_WORKSPACE\out\ruby"
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Build the shell
+        shell: pwsh
+        run: |
+          cargo build --release --manifest-path src-tauri/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { throw "the shell did not build" }
+
+      - name: Stage the assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          # bsdtar from System32 rather than Compress-Archive, which silently
+          # skips hidden files, and rather than whichever tar is first on PATH,
+          # which on a runner can be Git's GNU tar that cannot write a zip.
+          & "$env:SystemRoot\System32\tar.exe" -a -c -f "dist\$env:RUNTIME_ASSET" -C out ruby
+          if ($LASTEXITCODE -ne 0) { throw "could not archive the interpreter" }
+          Copy-Item src-tauri\target\release\desktop-rails.exe "dist\$env:SHELL_ASSET"
+          Get-ChildItem dist | Format-Table Name, Length
+
+      # Unpacked the way the gem unpacks it, Expand-Archive, somewhere else and
+      # under a path with a space, then asked the gem's own Windows check.
+      - name: The archive works where it lands
+        shell: pwsh
+        run: |
+          $landed = "$env:RUNNER_TEMP\landed here"
+          Expand-Archive -LiteralPath "dist\$env:RUNTIME_ASSET" -DestinationPath $landed -Force
+          & "$landed\ruby\bin\ruby.exe" -Idesktop-rails/lib -rdesktop_rails/packaging `
+            -e 'eval DesktopRails::Packaging::WINDOWS_RUNTIME_CHECK'
+          if ($LASTEXITCODE -ne 0) { throw "the unpacked interpreter failed its check" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prebuilt-x64-mingw-ucrt
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    needs: [plan, unix, windows]
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.plan.outputs.tag }}
+      VERSION: ${{ needs.plan.outputs.version }}
+      PRERELEASE: ${{ needs.plan.outputs.prerelease }}
+      EXPECTED: ${{ needs.plan.outputs.expected }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: prebuilt-*
+          merge-multiple: true
+          path: release
+
+      - name: Checksums, and exactly the expected assets
+        working-directory: release
+        run: |
+          set -euo pipefail
+          sha256sum -- desktop-rails-* > SHA256SUMS
+          cat SHA256SUMS
+          expected=$(echo "$EXPECTED" | tr ' ' '\n' | sort)
+          actual=$(find . -maxdepth 1 -type f -printf '%f\n' | sort)
+          if [ "$expected" != "$actual" ]; then
+            echo "The release would not match what the gem looks for:"
+            diff <(echo "$expected") <(echo "$actual") || true
+            exit 1
+          fi
+
+      - name: Publish
+        run: |
+          set -euo pipefail
+          cat > notes.md <<NOTES
+          Prebuilt downloads for desktop-rails $VERSION.
+
+          \`bin/rails desktop:runtime\` and \`bin/rails desktop:shell\` fetch these for
+          the machine they run on and verify each against \`SHA256SUMS\`; there is no
+          need to download anything by hand.
+
+          - \`desktop-rails-runtime-*\`: the relocatable Ruby a packaged app ships.
+            Each was checked to relocate before publication: nothing links into a
+            package manager, and psych and OpenSSL do real work from a moved path.
+          - \`desktop-rails-shell-*\`: the Tauri shell that gives a packaged app its
+            window. The Linux shell needs WebKitGTK 4.1 on the machine; Windows needs
+            WebView2, which Windows 10 and 11 ship.
+
+          macOS binaries are signed ad-hoc and are not notarised.
+          NOTES
+
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # A re-run replaces the assets rather than failing on them.
+            gh release upload "$TAG" release/* --clobber -R "$GITHUB_REPOSITORY"
+            gh release edit "$TAG" --draft=false --prerelease="$PRERELEASE" -R "$GITHUB_REPOSITORY"
+          else
+            flags=()
+            if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+            gh release create "$TAG" release/* -R "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" --title "desktop-rails $VERSION" \
+              --notes-file notes.md "${flags[@]}"
+          fi
+          gh release view "$TAG" -R "$GITHUB_REPOSITORY"
+
+  # The release as a stranger sees it: public URLs, no token, the gem's own
+  # download code, on every platform it serves.
+  verify:
+    name: download on ${{ matrix.os }}
+    needs: publish
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15-intel, ubuntu-24.04, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      # Any Ruby will do: the download code is standard library only, which is
+      # also why no bundle is installed here.
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+      - name: Download, verify, unpack and run
+        run: ruby .github/scripts/prebuilt_check.rb

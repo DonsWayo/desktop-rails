@@ -4,16 +4,18 @@ Desktop Rails apps are [Tauri](https://tauri.app) apps, so distribution means pr
 installers per OS. This guide covers the easy path (a release workflow), local builds, and the
 optional-but-recommended signing/update setup.
 
-## TL;DR — cut a release by pushing a tag
+## TL;DR — build installers from the Actions tab
 
-This repo ships [`.github/workflows/release.yml`](../.github/workflows/release.yml). To release:
+This repo ships [`.github/workflows/release.yml`](../.github/workflows/release.yml). Run it from
+**Actions → Release → Run workflow**.
 
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
+It used to run on every `v*` tag. Those tags now belong to
+[`release-prebuilt.yml`](../.github/workflows/release-prebuilt.yml), which publishes the prebuilt
+interpreter and shell that `bin/rails desktop:runtime` and `desktop:shell` download (see
+[`packaging/README.md`](../packaging/README.md#prebuilt-releases)); two workflows creating a release
+for the same tag would race.
 
-CI then builds on three runners (Tauri can't cross-compile) and attaches installers to a **draft
+CI builds on three runners (Tauri can't cross-compile) and attaches installers to a **draft
 GitHub Release** for you to review and publish:
 
 | Platform | You get |
@@ -21,8 +23,6 @@ GitHub Release** for you to review and publish:
 | macOS (universal) | `.dmg` + `.app` (runs on Intel **and** Apple Silicon) |
 | Windows | `.msi` + NSIS `.exe` |
 | Linux | `.deb` + `.AppImage` |
-
-You can also run it manually from the **Actions → Release → Run workflow** button.
 
 ## What ships inside the app
 

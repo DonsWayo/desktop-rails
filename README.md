@@ -787,12 +787,16 @@ npx desktop-rails new myapp --icon ./logo.png
 
 ## Distribution
 
-Ship native installers for macOS, Windows, and Linux by pushing a git tag — the
-[release workflow](.github/workflows/release.yml) builds each OS and attaches the installers to a
-draft GitHub Release:
+Build native installers for macOS, Windows, and Linux from **Actions → Release → Run workflow** —
+the [release workflow](.github/workflows/release.yml) builds each OS and attaches the installers
+to a draft GitHub Release.
+
+Pushing a `v*` tag named after the gem version publishes something else: the prebuilt interpreter
+and shell that `bin/rails desktop:runtime` and `desktop:shell` download, built by
+[release-prebuilt.yml](.github/workflows/release-prebuilt.yml):
 
 ```bash
-git tag v0.1.0 && git push origin v0.1.0
+git tag v0.3.0.pre1 && git push origin v0.3.0.pre1
 ```
 
 See **[docs/DISTRIBUTION.md](docs/DISTRIBUTION.md)** for local builds, using it in your own app,
