@@ -3,7 +3,7 @@
   "description": "Main window capabilities for Desktop Rails. The remote URL list has to stay broad because the app server is chosen at runtime in desktop-rails.config.json; the real caller check lives in src/security.rs (is_trusted_origin) and runs on every bridge message.",
   "windows": ["main", "modal-*", "window-*"],
   "remote": {
-    "urls": ["http://localhost:*", "https://*"]
+    "urls": ["http://localhost:*", "http://127.0.0.1:*", "https://*"]
   },
   "permissions": [
     "allow-handle-visit-proposal",

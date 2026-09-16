@@ -71,3 +71,25 @@ test("the capability grants no permission for a command that does not exist", ()
     );
   }
 });
+
+/**
+ * A packaged app's server binds 127.0.0.1 on a port the OS picks, and the
+ * window loads exactly that origin. The capability only listed localhost, so
+ * Tauri refused every bridge call from every packaged app before it reached
+ * the shell's own origin check: invoke existed and every call failed. Found by
+ * launching examples/notes in CI and asking the shell for its window state.
+ */
+test("the capability admits the origin every packager configures", () => {
+  const capability = JSON.parse(read("src-tauri", "capabilities", "main.json"));
+
+  for (const packer of ["pack.sh", "pack-linux.sh", "pack-windows.ps1"]) {
+    const source = read("packaging", packer);
+    const configured = source.match(/server_url["\s=:]+"?(http:\/\/[^:"]+):0"?/);
+
+    assert.ok(configured, `${packer} should configure a loopback server_url with port 0`);
+    assert.ok(
+      capability.remote.urls.includes(`${configured[1]}:*`),
+      `${packer} points the window at ${configured[1]}, which the capability does not admit`
+    );
+  }
+});
