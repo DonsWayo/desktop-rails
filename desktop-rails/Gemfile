@@ -8,3 +8,7 @@ gem "rails", ">= 7.0"
 gem "turbo-rails", ">= 1.0"
 
 gem "rubocop-rails-omakase", require: false
+
+# DesktopRails::Database is tested against a real SQLite database, since loading
+# a schema and migrating are exactly what a mock would get wrong.
+gem "sqlite3"

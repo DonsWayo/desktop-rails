@@ -2,6 +2,11 @@ require "bundler/setup"
 require "minitest/autorun"
 require "rails/generators"
 require "rails/generators/test_case"
+require "minitest/mock"
+require "erb"
+require "yaml"
+require "rails"
+require "desktop_rails"
 
 # Load the generator
 require_relative "../../lib/generators/desktop_rails/install/install_generator"
@@ -181,7 +186,10 @@ class InstallGeneratorTest < Rails::Generators::TestCase
       # generator writes would apply to `desktop:run` and not to the bundle
       # that actually ships.
       %q(ENV["RAILS_ENV"] = "desktop"),
-      "DESKTOP_RAILS_ENV"
+      "DESKTOP_RAILS_ENV",
+      # Both have to bring the schema up to date before Puma binds, or a packaged
+      # app on a fresh machine serves 500s from an empty database.
+      "DesktopRails::Database.prepare! if defined?(DesktopRails::Database)"
     ].each do |line|
       assert_includes packed, line
       assert_includes generated, line, "bin/desktop-boot has drifted from boot.rb on: #{line}"
@@ -201,6 +209,198 @@ class InstallGeneratorTest < Rails::Generators::TestCase
       assert_match(/config", "environments", "desktop\.rb"/, content)
       assert_match(/ENV\["RAILS_ENV"\] = "desktop"/, content)
       assert_match(/DESKTOP_RAILS_ENV/, content, "there has to be a way to override it")
+    end
+  end
+
+  # ─── Configuration files keyed by environment ───────────────────────────
+  #
+  # The generator used to print "add a `desktop:` section to database.yml" and
+  # write nothing, and skipping that failed at boot with a message that never
+  # mentions this gem. A freshly generated app has to package with no edits.
+
+  RAILS_8_DATABASE_YML = <<~YAML
+    default: &default
+      adapter: sqlite3
+      max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+      timeout: 5000
+
+    development:
+      <<: *default
+      database: storage/development.sqlite3
+
+    production:
+      primary:
+        <<: *default
+        database: storage/production.sqlite3
+      cache:
+        <<: *default
+        database: storage/production_cache.sqlite3
+        migrations_paths: db/cache_migrate
+      queue:
+        <<: *default
+        database: storage/production_queue.sqlite3
+        migrations_paths: db/queue_migrate
+      cable:
+        <<: *default
+        database: storage/production_cable.sqlite3
+        migrations_paths: db/cable_migrate
+  YAML
+
+  SINGLE_DATABASE_YML = <<~YAML
+    default: &default
+      adapter: sqlite3
+      timeout: 5000
+
+    development:
+      <<: *default
+      database: storage/development.sqlite3
+
+    production:
+      <<: *default
+      database: storage/production.sqlite3
+  YAML
+
+  def write_config(path, content)
+    full = File.join(destination_root, path)
+    FileUtils.mkdir_p(File.dirname(full))
+    File.write(full, content)
+  end
+
+  # database.yml as Rails will read it: ERB first, with the data directory
+  # pointed somewhere known.
+  def desktop_database_config
+    previous = ENV["DESKTOP_DATA_DIR"]
+    ENV["DESKTOP_DATA_DIR"] = "/data/dir"
+    rendered = ERB.new(File.read(File.join(destination_root, "config/database.yml"))).result
+    YAML.safe_load(rendered, aliases: true).fetch("desktop")
+  ensure
+    ENV["DESKTOP_DATA_DIR"] = previous
+  end
+
+  test "mirrors the Rails 8 multi-database layout into the data directory" do
+    write_config("config/database.yml", RAILS_8_DATABASE_YML)
+    run_generator
+
+    desktop = desktop_database_config
+    assert_equal %w[primary cache queue cable], desktop.keys
+    assert_equal "/data/dir/app.sqlite3", desktop["primary"]["database"]
+    assert_equal "/data/dir/app_cache.sqlite3", desktop["cache"]["database"]
+    assert_equal "db/queue_migrate", desktop["queue"]["migrations_paths"]
+    assert_equal "db/cable_migrate", desktop["cable"]["migrations_paths"]
+    desktop.each_value do |config|
+      assert_equal "sqlite3", config["adapter"], "the shared default should be merged in"
+    end
+  end
+
+  test "writes a single database for a single-database app" do
+    write_config("config/database.yml", SINGLE_DATABASE_YML)
+    run_generator
+
+    desktop = desktop_database_config
+    assert_equal "sqlite3", desktop["adapter"]
+    assert_equal "/data/dir/app.sqlite3", desktop["database"]
+  end
+
+  test "the database section never creates the data directory" do
+    # database.yml is evaluated in every environment. Development and test have
+    # no business creating the packaged app's directory on a developer's machine.
+    write_config("config/database.yml", SINGLE_DATABASE_YML)
+    run_generator
+    assert_file "config/database.yml" do |content|
+      assert_match(/DesktopRails\.data_dir\.join/, content)
+      refute_match(/create: true/, content)
+    end
+  end
+
+  test "is idempotent over every file it appends to" do
+    write_config("config/database.yml", RAILS_8_DATABASE_YML)
+    write_config("config/cable.yml", "development:\n  adapter: async\n")
+    write_config("config/storage.yml", "local:\n  service: Disk\n  root: storage\n")
+    write_config(".gitignore", "/tmp/*\n")
+    run_generator
+    run_generator
+
+    %w[config/database.yml config/cable.yml config/storage.yml].each do |path|
+      assert_file path do |content|
+        assert_equal 1, content.scan(/^desktop:/).size, "#{path} gained a second desktop section"
+      end
+    end
+    assert_file ".gitignore" do |content|
+      assert_equal 1, content.scan(%r{^/\.desktop-rails/$}).size
+    end
+  end
+
+  test "leaves a desktop section the app already has alone" do
+    write_config("config/database.yml", SINGLE_DATABASE_YML + "\ndesktop:\n  <<: *default\n  database: mine.sqlite3\n")
+    run_generator
+    assert_file "config/database.yml" do |content|
+      assert_equal 1, content.scan(/^desktop:/).size
+      assert_includes content, "mine.sqlite3"
+    end
+  end
+
+  test "a server database gets a note, not a guess" do
+    write_config("config/database.yml", <<~YAML)
+      default: &default
+        adapter: postgresql
+      production:
+        <<: *default
+        database: app_production
+    YAML
+    output = run_generator
+    assert_file "config/database.yml" do |content|
+      refute_match(/^desktop:/, content)
+    end
+    assert_match(/postgresql/, output)
+    assert_match(/desktop:/, output)
+  end
+
+  test "an app with no database.yml installs with a note" do
+    output = run_generator
+    assert_no_file "config/database.yml"
+    assert_match(/no config\/database\.yml/, output)
+  end
+
+  test "broadcasts stay in process" do
+    write_config("config/cable.yml", "production:\n  adapter: solid_cable\n")
+    run_generator
+    assert_file "config/cable.yml" do |content|
+      assert_equal({ "adapter" => "async" }, YAML.safe_load(content)["desktop"])
+    end
+  end
+
+  test "uploads go to the data directory, and the environment selects that service" do
+    write_config("config/storage.yml", "local:\n  service: Disk\n  root: storage\n")
+    run_generator
+    assert_file "config/storage.yml", /desktop:\n  service: Disk\n  root: <%= DesktopRails\.data_dir\.join\("storage"\) %>/
+    assert_file "config/environments/desktop.rb", /config\.active_storage\.service = :desktop/
+  end
+
+  test "the desktop environment never dumps the schema into the bundle" do
+    run_generator
+    assert_file "config/environments/desktop.rb", /dump_schema_after_migration = false/
+  end
+
+  test "the build directory is ignored" do
+    write_config(".gitignore", "/log/*\n")
+    run_generator
+    assert_file ".gitignore", %r{^/\.desktop-rails/$}
+  end
+
+  test "pins json only while Active Support cannot decode with it" do
+    write_config("Gemfile", "source \"https://rubygems.org\"\ngem \"rails\"\n")
+
+    DesktopRails::Generators::InstallGenerator.stub(:active_support_decodes_json?, true) do
+      run_generator
+    end
+    assert_file("Gemfile") { |content| refute_match(/gem "json"/, content) }
+
+    DesktopRails::Generators::InstallGenerator.stub(:active_support_decodes_json?, false) do
+      run_generator
+      run_generator
+    end
+    assert_file "Gemfile" do |content|
+      assert_equal 1, content.scan(/^gem "json", "< 3"$/).size
     end
   end
 

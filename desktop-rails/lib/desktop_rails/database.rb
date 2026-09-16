@@ -49,8 +49,14 @@ module DesktopRails
           # file is the one the app was built with, and it stays that way.
           dump_was = ::ActiveRecord.dump_schema_after_migration
           ::ActiveRecord.dump_schema_after_migration = false
+          # What `db:load_config` sets up before any db: task. Without it the
+          # primary database's migrations are looked for in db/migrate relative
+          # to the working directory, and relative migrations_paths such as
+          # db/cache_migrate resolve the same way — so the app root has to be
+          # the working directory while they are read.
+          ::ActiveRecord::Migrator.migrations_paths = tasks.migrations_paths
           begin
-            tasks.prepare_all
+            Dir.chdir(::Rails.root.to_s) { tasks.prepare_all }
           ensure
             ::ActiveRecord.dump_schema_after_migration = dump_was
           end
