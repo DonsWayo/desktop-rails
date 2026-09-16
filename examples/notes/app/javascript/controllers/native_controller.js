@@ -34,7 +34,20 @@ export default class extends Controller {
     this.statusTarget.textContent = ok
       ? `The shell says this is the "${state.label}" window, ${Math.round(state.width)}×${Math.round(state.height)}.`
       : "The shell did not answer."
-    await this.report("javascript", ok, { state, bridge: typeof window.__TAURI_INTERNALS__?.invoke })
+    await this.report("javascript", ok, ok ? { state } : { state, error: await this.whyNot() })
+  }
+
+  // DesktopRails logs a failed call and returns null, which is right for an
+  // app and useless for finding out what went wrong, so ask once more directly.
+  async whyNot() {
+    try {
+      await window.__TAURI_INTERNALS__.invoke("handle_bridge_message", {
+        message: { component: "window", event: "state", data: {} }
+      })
+      return "the direct call succeeded"
+    } catch (error) {
+      return String(error)
+    }
   }
 
   async report(kind, ok, detail) {

@@ -79,41 +79,62 @@ done
 echo "$ROOT_DONE" | grep -q "Completed 200" || fail "the window's request for / did not succeed: $ROOT_DONE"
 echo "OK    the window loaded / — $(echo "$ROOT_DONE" | sed 's/^ *//' | cut -c1-60)"
 
+# Every check runs even after one fails, so a single CI run reports everything
+# that is wrong rather than only the first thing. The shell's own log is only
+# printed once, at the end.
+PROBLEMS=0
+problem() { echo "FAIL  $*"; PROBLEMS=$((PROBLEMS + 1)); }
+
 for check in "$@"; do
   kind="${check%%=*}"
   value="${check#*=}"
   case "$kind" in
     text)
-      BODY=$(curl -s --max-time 20 "$URL/")
-      echo "$BODY" | grep -qF "$value" || fail "GET / does not contain '$value'"
-      echo "OK    GET / contains '$value'"
+      if curl -s --max-time 20 "$URL/" | grep -qF "$value"; then
+        echo "OK    GET / contains '$value'"
+      else
+        problem "GET / does not contain '$value'"
+      fi
       ;;
     path|request)
       CODE=$(curl -s -o "$LOG.body" -w "%{http_code}" --max-time 30 "$URL$value")
-      [ "$CODE" = "200" ] || { head -c 2000 "$LOG.body"; echo; fail "GET $value returned $CODE"; }
-      echo "OK    GET $value 200"
+      if [ "$CODE" = "200" ]; then
+        echo "OK    GET $value 200"
+      else
+        head -c 2000 "$LOG.body"; echo
+        problem "GET $value returned $CODE"
+      fi
       ;;
     marker)
       FILE="$REPORTS/$value.json"
       for _ in $(seq 1 90); do
         [ -s "$FILE" ] && break
-        kill -0 "$PID" 2>/dev/null || fail "the shell exited while waiting for $FILE"
+        kill -0 "$PID" 2>/dev/null || break
         sleep 1
       done
-      [ -s "$FILE" ] || fail "no $value report in $REPORTS within 90s"
-      grep -q '"ok": *true' "$FILE" || { cat "$FILE"; echo; fail "the $value report says it failed"; }
-      echo "OK    $value report: $(head -c 300 "$FILE")"
+      if [ ! -s "$FILE" ]; then
+        problem "no $value report in $REPORTS"
+      elif grep -q '"ok": *true' "$FILE"; then
+        echo "OK    $value report: $(tr -s ' \n' ' ' < "$FILE" | head -c 400)"
+      else
+        cat "$FILE"; echo
+        problem "the $value report says it failed"
+      fi
       ;;
     unchanged)
       WRITTEN=$(find "$value" -newer "$STAMP" 2>/dev/null | head -5)
-      [ -z "$WRITTEN" ] || fail "the app wrote inside its own read-only tree: $WRITTEN"
-      echo "OK    nothing written under $value"
+      if [ -z "$WRITTEN" ]; then
+        echo "OK    nothing written under $value"
+      else
+        problem "the app wrote inside its own read-only tree: $WRITTEN"
+      fi
       ;;
     *)
-      fail "unknown check '$check'"
+      problem "unknown check '$check'"
       ;;
   esac
 done
+[ "$PROBLEMS" -eq 0 ] || fail "$PROBLEMS check(s) failed"
 
 # SIGKILL, so nothing in the shell gets to tidy up; the server must still go.
 kill -9 "$PID" 2>/dev/null

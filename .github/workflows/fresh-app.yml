@@ -48,13 +48,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # What any Linux desktop has: a display to open a window on, and the
-      # webview the shell links against.
+      # What a Linux desktop has: a display to open a window on, and the webview
+      # the shell links against. Also a tray library, which the 0.3.0.pre1
+      # shell panics without; the shell built from this commit does not, and
+      # the example below runs with it removed to prove that.
       - name: Linux desktop libraries
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb libwebkit2gtk-4.1-0 libgtk-3-0 rsync
+          sudo apt-get install -y -qq xvfb libwebkit2gtk-4.1-0 libgtk-3-0 rsync \
+            libayatana-appindicator3-1
 
       - uses: ruby/setup-ruby@v1
         with:
@@ -98,9 +101,11 @@ jobs:
         working-directory: ${{ env.FRESH }}
         run: |
           set -euo pipefail
-          bin/rails desktop:package
-          # The shell has to be the downloaded one: no checkout shell exists yet.
-          ls .desktop-rails/shell/*/desktop-rails
+          bin/rails desktop:package | tee "$RUNNER_TEMP/fresh-package.log"
+          # The shell has to be the downloaded one: nothing has been built here.
+          # Checked on what packaging reports, because pack.sh re-signs the
+          # binary it embeds, so the bytes in the bundle differ on macOS.
+          grep -E '^  shell: +.*/\.desktop-rails/shell/[^/]+/desktop-rails$' "$RUNNER_TEMP/fresh-package.log"
 
       - name: Launch it and check the window loaded the app
         run: |
@@ -112,8 +117,6 @@ jobs:
             bin="$FRESH/.desktop-rails/dist/fresh/fresh"
             tree="$FRESH/.desktop-rails/dist/fresh/lib/app"
           fi
-          cmp "$bin" "$FRESH"/.desktop-rails/shell/*/desktop-rails
-          echo "the bundle's shell is the downloaded release shell"
           DESKTOP_DATA_DIR="$(mktemp -d)" ${{ matrix.gui }} packaging/smoke/app_check.sh "$bin" \
             "text=Welcome#index" "unchanged=$tree"
 
@@ -130,7 +133,11 @@ jobs:
         if: ${{ !cancelled() && runner.os == 'Linux' }}
         run: |
           sudo apt-get install -y -qq build-essential libgtk-3-dev libwebkit2gtk-4.1-dev \
-            libappindicator3-dev librsvg2-dev patchelf
+            librsvg2-dev patchelf
+          # The tray library is loaded at runtime, not linked. Without it the
+          # shell must still open its window, with no tray.
+          sudo apt-get remove -y -qq libayatana-appindicator3-1 libappindicator3-1 || true
+          ! ldconfig -p | grep -q appindicator3
 
       - uses: dtolnay/rust-toolchain@stable
         if: ${{ !cancelled() }}
@@ -151,7 +158,8 @@ jobs:
           set -euo pipefail
           bundle install
           bin/rails desktop:runtime
-          bin/rails desktop:package
+          bin/rails desktop:package | tee "$RUNNER_TEMP/notes-package.log"
+          grep -E '^  shell: +.*/src-tauri/target/release/desktop-rails$' "$RUNNER_TEMP/notes-package.log"
 
       - name: Launch the example and drive both native directions
         if: ${{ !cancelled() }}
@@ -164,8 +172,6 @@ jobs:
             bin="$PWD/examples/notes/.desktop-rails/dist/notes/notes"
             tree="$PWD/examples/notes/.desktop-rails/dist/notes/lib/app"
           fi
-          cmp "$bin" src-tauri/target/release/desktop-rails
-          echo "the bundle's shell is the one built from this commit"
           data="$RUNNER_TEMP/notes-data"
           rm -rf "$data" && mkdir -p "$data"
           # A model-backed page on an empty data directory proves the schema and
