@@ -28,6 +28,14 @@ handshake = $stdout.dup
 handshake.sync = true
 $stdout.reopen($stderr)
 
+# bootsnap, which every new Rails app requires from config/boot.rb, caches
+# under tmp/cache beside config/ unless told otherwise. That is inside the
+# bundle: it breaks a signed .app's seal on macOS and fails outright wherever
+# the app is installed read-only. The data directory is the app's to write.
+if (data_dir = ENV["DESKTOP_DATA_DIR"]) && !data_dir.empty?
+  ENV["BOOTSNAP_CACHE_DIR"] ||= File.join(data_dir, "tmp", "cache")
+end
+
 app, _ = Rack::Builder.parse_file(File.expand_path("config.ru", __dir__))
 
 # Bring the app's databases up to date before Puma accepts a request. A packaged

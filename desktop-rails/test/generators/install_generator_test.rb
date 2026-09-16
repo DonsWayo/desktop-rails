@@ -189,10 +189,34 @@ class InstallGeneratorTest < Rails::Generators::TestCase
       "DESKTOP_RAILS_ENV",
       # Both have to bring the schema up to date before Puma binds, or a packaged
       # app on a fresh machine serves 500s from an empty database.
-      "DesktopRails::Database.prepare! if defined?(DesktopRails::Database)"
+      "DesktopRails::Database.prepare! if defined?(DesktopRails::Database)",
+      # Both have to keep bootsnap's cache out of the bundle. CI caught a
+      # packaged app writing tmp/cache/bootsnap inside its own read-only tree.
+      %q(ENV["BOOTSNAP_CACHE_DIR"] ||= File.join(data_dir, "tmp", "cache"))
     ].each do |line|
       assert_includes packed, line
       assert_includes generated, line, "bin/desktop-boot has drifted from boot.rb on: #{line}"
+    end
+  end
+
+  test "both boot scripts do things in the order that makes them work" do
+    # The bootsnap cache has to be redirected before config/boot.rb requires
+    # bootsnap, which happens while config.ru is parsed; the schema can only be
+    # prepared once the app has loaded, and has to be before Puma accepts a
+    # request.
+    template = File.expand_path("../../../packaging/templates/boot.rb", __dir__)
+    run_generator
+    scripts = [ File.read(File.join(destination_root, "bin/desktop-boot")) ]
+    scripts << File.read(template) if File.exist?(template)
+
+    scripts.each do |script|
+      bootsnap = script.index("BOOTSNAP_CACHE_DIR")
+      parse = script.index("Rack::Builder.parse_file")
+      prepare = script.index("DesktopRails::Database.prepare!")
+      run = script.index("launcher.run")
+      assert bootsnap < parse, "the bootsnap cache is redirected after the app has loaded"
+      assert parse < prepare, "the schema is prepared before the app has loaded"
+      assert prepare < run, "the schema is prepared after Puma starts"
     end
   end
 
