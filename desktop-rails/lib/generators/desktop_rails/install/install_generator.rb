@@ -6,7 +6,9 @@ module DesktopRails
     class InstallGenerator < Rails::Generators::Base
       source_root File.expand_path("templates", __dir__)
 
-      desc "Install Desktop Rails into your Rails application"
+      desc "Install desktop-rails into your Rails application"
+
+      HOSTED_MODE_GUIDE = "https://github.com/DonsWayo/desktop-rails#wrapping-a-server-you-run-yourself"
 
       class_option :desktop_env, type: :boolean, default: true,
                    desc: "Generate config/environments/desktop.rb and bin/desktop-boot"
@@ -163,23 +165,27 @@ module DesktopRails
                   "cannot use the installed version. Run `bundle install`."
       end
 
+      # The steps the README's quick start gives, in its order. This used to lead
+      # with `npx desktop-rails init` and `dev`, upstream's flow for a shell that
+      # wraps a running server: that package is not on npm, and it is not what
+      # this generator has just set up.
       def show_next_steps
         say ""
-        say "Desktop Rails installed!", :green
+        say "desktop-rails installed!", :green
         say ""
         @notes.each do |note|
           say "Note: #{note}", :yellow
           say ""
         end
-        say "To develop:"
-        say "  1. npx desktop-rails init      # scaffold the desktop shell"
-        say "  2. rails server                # start your Rails app"
-        say "  3. npx desktop-rails dev       # launch the desktop app"
-        say ""
-        say "To ship:"
-        say "  1. bin/rails desktop:runtime   # fetch or build a relocatable Ruby, once"
-        say "  2. bin/rails desktop:run       # boot the app the way a bundle will"
-        say "  3. bin/rails desktop:package   # build the app for this platform"
+        if options[:desktop_env]
+          say "Next:"
+          say "  bin/rails desktop:runtime   # download the Ruby your app will ship with, once"
+          say "  bin/rails desktop:run       # boot the app the way the bundle will, without a window"
+          say "  bin/rails desktop:package   # build the app for this platform into .desktop-rails/dist/"
+          say ""
+        end
+        say "To open a server you run yourself in the window instead, see"
+        say "  #{HOSTED_MODE_GUIDE}"
         say ""
       end
 

@@ -428,6 +428,20 @@ class InstallGeneratorTest < Rails::Generators::TestCase
     end
   end
 
+  # ─── What it says next ───────────────────────────────────────────────────
+
+  # The closing instructions used to lead with `npx desktop-rails init` and
+  # `dev`, a flow for a package that is not on npm, before the steps that
+  # package what the generator had just set up.
+  test "the next steps are the quick start's, in its order" do
+    output = run_generator
+    steps = %w[desktop:runtime desktop:run desktop:package].map { |task| output.index("bin/rails #{task}") }
+    assert steps.all?, "every packaging step should be named:\n#{output}"
+    assert_equal steps.sort, steps, "in the order the README gives them"
+    refute_match(/npx/, output)
+    assert_includes output, "#wrapping-a-server-you-run-yourself"
+  end
+
   # ─── Opting out ──────────────────────────────────────────────────────────
 
   test "skipping the desktop environment leaves both files out" do
@@ -435,5 +449,11 @@ class InstallGeneratorTest < Rails::Generators::TestCase
     assert_no_file "config/environments/desktop.rb"
     assert_no_file "bin/desktop-boot"
     assert_file "config/initializers/desktop_rails.rb"
+  end
+
+  test "skipping the desktop environment does not offer packaging steps it cannot run" do
+    output = run_generator [ "--no-desktop-env" ]
+    refute_match(/desktop:run/, output)
+    assert_includes output, "#wrapping-a-server-you-run-yourself"
   end
 end
