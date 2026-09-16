@@ -44,6 +44,11 @@ tauri = { version = "2", features = ["test"] }
 minisign-verify = "0.2"
 base64 = "0.22"
 
+# Already in the tree through libappindicator-sys; declared so the shell can
+# check for a tray library before creating a tray, which otherwise panics.
+[target.'cfg(target_os = "linux")'.dependencies]
+libloading = "0.7"
+
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.26"
 objc = "0.2"
