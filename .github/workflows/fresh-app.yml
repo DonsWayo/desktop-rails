@@ -241,10 +241,15 @@ jobs:
           print("OK    second launch: pending migration applied, data kept, seeds not rerun")
           PY
 
+  # Windows runs the same journey in two jobs rather than one, because each
+  # half has a long compile of its own (the fresh app's gems, the shell) and
+  # they need not wait for each other. The window checks are the ones the unix
+  # jobs make, run by the same app_check.sh under Git Bash; only the final kill
+  # differs, and packaging/smoke/kill_shell.ps1 says why.
   windows:
-    name: Windows (bundle shape)
+    name: Windows
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     env:
       FRESH: C:\fresh
     steps:
@@ -283,7 +288,14 @@ jobs:
 
       - name: bin/rails desktop:package
         working-directory: ${{ env.FRESH }}
-        run: ruby bin\rails desktop:package
+        shell: pwsh
+        run: |
+          ruby bin\rails desktop:package | Tee-Object -FilePath "$env:RUNNER_TEMP\fresh-package.log"
+          if ($LASTEXITCODE -ne 0) { throw "desktop:package failed" }
+          # The downloaded shell, as on macOS and Linux: nothing was built here.
+          if (-not (Select-String -Path "$env:RUNNER_TEMP\fresh-package.log" -Pattern '^  shell: +.*[\\/]\.desktop-rails[\\/]shell[\\/][^\\/]+[\\/]desktop-rails\.exe$')) {
+            throw "the package did not embed the downloaded shell"
+          }
 
       - name: The GUI tree carries what it should
         shell: pwsh
@@ -310,3 +322,84 @@ jobs:
           $env:DESKTOP_DATA_DIR = Join-Path $env:RUNNER_TEMP "fresh-data"
           ruby desktop-rails\exe\desktop-rails-tool smoke launch "$env:FRESH\.desktop-rails\dist\fresh\fresh.cmd"
           if ($LASTEXITCODE -ne 0) { throw "the packaged app did not hold to its contract" }
+
+      # The whole tree rather than lib\app: the exe sits at its top, and an app
+      # installed under C:\Program Files cannot write beside its own exe either.
+      - name: Launch it and check the window loaded the app
+        shell: bash
+        run: |
+          set -euo pipefail
+          tree="$(cygpath -u "$FRESH")/.desktop-rails/dist/fresh"
+          data="$(cygpath -m "$RUNNER_TEMP")/fresh-gui-data"
+          rm -rf "$data" && mkdir -p "$data" "$RUNNER_TEMP/screenshots"
+          APP_CHECK_SCREENSHOT="$RUNNER_TEMP/screenshots/fresh.png" DESKTOP_DATA_DIR="$data" \
+            packaging/smoke/app_check.sh "$tree/fresh.exe" \
+            "text=Welcome#index" "unchanged=$tree"
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: windows-fresh-screenshots
+          path: ${{ runner.temp }}/screenshots
+          if-no-files-found: ignore
+          retention-days: 7
+
+  windows-example:
+    name: Windows (examples/notes)
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Build the shell
+        working-directory: src-tauri
+        run: cargo build --release
+
+      - name: Package the example
+        working-directory: examples/notes
+        shell: pwsh
+        run: |
+          bundle install
+          if ($LASTEXITCODE -ne 0) { throw "bundle install failed" }
+          ruby bin\rails desktop:runtime
+          if ($LASTEXITCODE -ne 0) { throw "desktop:runtime failed" }
+          ruby bin\rails desktop:package | Tee-Object -FilePath "$env:RUNNER_TEMP\notes-package.log"
+          if ($LASTEXITCODE -ne 0) { throw "desktop:package failed" }
+          if (-not (Select-String -Path "$env:RUNNER_TEMP\notes-package.log" -Pattern '^  shell: +.*[\\/]src-tauri[\\/]target[\\/]release[\\/]desktop-rails\.exe$')) {
+            throw "the package did not embed the shell built from this commit"
+          }
+
+      - name: Launch the example and drive both native directions
+        shell: bash
+        run: |
+          set -euo pipefail
+          tree="$PWD/examples/notes/.desktop-rails/dist/notes"
+          data="$(cygpath -m "$RUNNER_TEMP")/notes-data"
+          rm -rf "$data" && mkdir -p "$data" "$RUNNER_TEMP/screenshots"
+          # A model-backed page on an empty data directory proves the schema and
+          # seeds were loaded; the reports prove the bridge worked in the window.
+          APP_CHECK_SCREENSHOT="$RUNNER_TEMP/screenshots/notes.png" DESKTOP_DATA_DIR="$data" \
+            packaging/smoke/app_check.sh "$tree/notes.exe" \
+            "text=Welcome to Notes" \
+            "marker=javascript" \
+            "marker=stream" \
+            "request=/native/window" \
+            "marker=ruby" \
+            "unchanged=$tree"
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: windows-notes-screenshots
+          path: ${{ runner.temp }}/screenshots
+          if-no-files-found: ignore
+          retention-days: 7
