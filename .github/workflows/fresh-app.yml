@@ -286,15 +286,30 @@ jobs:
         working-directory: ${{ env.FRESH }}
         run: ruby bin\rails desktop:runtime
 
+      # Unlike macOS and Linux, the shell is built from this commit. The
+      # prebuilt 0.3.0.pre2 shell opened this app's window and passed the checks
+      # below that existed then, but it opens a console window over the app, and
+      # predates the bridge's origin rules and the fix for a server that
+      # announces itself before the window exists. Point this back at the
+      # download once a release carries them.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Build the shell
+        working-directory: src-tauri
+        run: cargo build --release
+
       - name: bin/rails desktop:package
         working-directory: ${{ env.FRESH }}
         shell: pwsh
         run: |
           ruby bin\rails desktop:package | Tee-Object -FilePath "$env:RUNNER_TEMP\fresh-package.log"
           if ($LASTEXITCODE -ne 0) { throw "desktop:package failed" }
-          # The downloaded shell, as on macOS and Linux: nothing was built here.
-          if (-not (Select-String -Path "$env:RUNNER_TEMP\fresh-package.log" -Pattern '^  shell: +.*[\\/]\.desktop-rails[\\/]shell[\\/][^\\/]+[\\/]desktop-rails\.exe$')) {
-            throw "the package did not embed the downloaded shell"
+          # desktop:package prefers a shell built in the checkout the gem sits in.
+          if (-not (Select-String -Path "$env:RUNNER_TEMP\fresh-package.log" -Pattern '^  shell: +.*[\\/]src-tauri[\\/]target[\\/]release[\\/]desktop-rails\.exe$')) {
+            throw "the package did not embed the shell built from this commit"
           }
 
       - name: The GUI tree carries what it should
