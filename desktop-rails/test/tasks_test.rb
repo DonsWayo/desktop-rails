@@ -83,6 +83,22 @@ class DesktopRakeTasksTest < Minitest::Test
     assert_equal "shell", prerequisites.first
   end
 
+  def test_hosted_packaging_is_a_described_task_that_obtains_a_shell_first
+    # A hosted package is the shell and a config, so the one thing it cannot do
+    # without is the shell. Nothing else in the bundled chain — assets, gems, a
+    # runtime — is a prerequisite: none of it goes inside.
+    task = @rake.lookup("desktop:package:hosted")
+    assert task, "desktop:package:hosted was not defined"
+    refute_nil task.comment, "desktop:package:hosted has no desc"
+    assert_equal [ "desktop:shell" ], task.prerequisite_tasks.map(&:name)
+    assert @rake.lookup("desktop:package"), "the namespace must not replace desktop:package itself"
+  end
+
+  def test_config_mistakes_are_messages_not_backtraces
+    source = File.read(RAKEFILE)
+    assert_match(/DesktopRails::HostedPackage::InvalidConfig, DesktopRails::Packager::InvalidInput/, source)
+  end
+
   def test_download_failures_are_messages_not_backtraces
     source = File.read(RAKEFILE)
     assert_match(/rescue DesktopRails::Packaging::MissingPrerequisite, DesktopRails::Packaging::DownloadFailed/, source)

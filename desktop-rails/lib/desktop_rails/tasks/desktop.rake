@@ -7,12 +7,17 @@
 #   bin/rails desktop:package   # build the bundle for this platform
 #   bin/rails desktop:run       # boot the app exactly as the bundle will
 #
-# Each task shells out to the scripts under packaging/ rather than
+#   bin/rails desktop:package:hosted  # a window onto a server you run: shell + config, no Ruby
+#
+# The bundled tasks shell out to the scripts under packaging/ rather than
 # reimplementing them. See DesktopRails::Packaging for why, and for where the
-# scripts are looked for.
+# scripts are looked for. desktop:package:hosted has nothing to relocate, prune
+# or vendor, and assembles its package in Ruby with DesktopRails::Packager, the
+# layouts the bundled packers are meant to move onto.
 
 require "fileutils"
 require "rbconfig"
+require "desktop_rails/hosted_package"
 require "desktop_rails/packaging"
 require "desktop_rails/prebuilt"
 
@@ -24,7 +29,9 @@ require "desktop_rails/prebuilt"
 # message, not a crash.
 with_clear_failures = lambda do |&block|
   block.call
-rescue DesktopRails::Packaging::MissingPrerequisite, DesktopRails::Packaging::DownloadFailed => e
+rescue DesktopRails::Packaging::MissingPrerequisite, DesktopRails::Packaging::DownloadFailed,
+       DesktopRails::HostedPackage::InvalidConfig, DesktopRails::Packager::InvalidInput,
+       DesktopRails::Packager::CommandFailed => e
   abort "\n#{e.message}"
 end
 
@@ -208,6 +215,51 @@ namespace :desktop do
       puts "  shell:   #{packaging.shell_binary || "(none — the bundle will have no window)"}"
       puts "  out:     #{packaging.dist_dir}"
       run.call(argv)
+    end
+  end
+
+  namespace :package do
+    # Hosted mode: the window opens a server that already runs somewhere, the
+    # way a Hotwire Native app wraps a website. The package is the downloaded
+    # shell and a desktop-rails.config.json, so building it needs neither Rust
+    # nor a relocatable Ruby, and nothing but the shell runs on the user's
+    # machine.
+    #
+    #   DESKTOP_RAILS_CONFIG      the config (default: config/desktop-rails.config.json)
+    #   DESKTOP_RAILS_SERVER_URL  server_url, replacing the config's
+    #   DESKTOP_RAILS_APP_ID      bundle identifier (default: DesktopRails.app_id)
+    #   DESKTOP_RAILS_ICON        a .png (or .icns on macOS)
+    desc "Package a desktop app for a server you already run (shell and config, no Ruby inside)"
+    task hosted: "desktop:shell" do
+      with_clear_failures.call do
+        packaging = DesktopRails::Packaging
+        config_path = packaging.hosted_config_path
+        config = DesktopRails::HostedPackage.load_config(
+          path: config_path, server_url: ENV["DESKTOP_RAILS_SERVER_URL"], name: DesktopRails.app_name
+        )
+
+        package = DesktopRails::HostedPackage.new(
+          config: config,
+          name: config["app_name"],
+          app_id: DesktopRails.app_id,
+          shell: packaging.shell_binary,
+          out: packaging.dist_dir,
+          icon: ENV["DESKTOP_RAILS_ICON"],
+          identity: DesktopRails.configuration.signing_identity
+        )
+
+        puts "Packaging #{package.name} (#{package.app_id}) for #{packaging.platform}, hosted"
+        puts "  config:  #{config_path || "(none — from DESKTOP_RAILS_SERVER_URL)"}"
+        puts "  shell:   #{package.shell || "(none)"}"
+        puts "  out:     #{package.out}"
+        puts "\nWhat a page from the server can reach on the machine:"
+        DesktopRails::HostedPackage.capability_summary(config).each { |line| puts "  #{line}" }
+        puts
+
+        layout = package.build
+        puts "\nHosted app ready: #{layout.root}"
+        layout.artifacts.each { |artifact| puts "  and #{artifact}" }
+      end
     end
   end
 

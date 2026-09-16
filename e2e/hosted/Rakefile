@@ -1,0 +1,5 @@
+# The desktop:* tasks, including desktop:package:hosted, come from the
+# desktop-rails engine, exactly as they do in a generated app.
+require_relative "app"
+
+Rails.application.load_tasks

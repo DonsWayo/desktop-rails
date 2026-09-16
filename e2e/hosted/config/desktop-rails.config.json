@@ -1,0 +1,6 @@
+{
+  "app_name": "Hosted Check",
+  "server_url": "http://127.0.0.1:3100",
+  "window": { "width": 1000, "height": 760 },
+  "navigation": { "internal_hosts": ["localhost"] }
+}

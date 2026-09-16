@@ -141,6 +141,24 @@ module DesktopRails
         build_dir.join("dist").to_s
     end
 
+    # ─── Hosted mode ─────────────────────────────────────────────────────────
+
+    # The desktop-rails.config.json a hosted package is built from, or nil when
+    # there is none and the config comes from DESKTOP_RAILS_SERVER_URL alone.
+    #
+    # config/ rather than the app root, where a checked-in file sits with the
+    # rest of the app's configuration. An explicit path that does not exist is
+    # still returned, so the caller can say it is missing rather than quietly
+    # building from defaults.
+    def hosted_config_path(env: ENV)
+      explicit = Paths.presence(env["DESKTOP_RAILS_CONFIG"])
+      return explicit if explicit
+
+      root = app_root || Pathname.new(Dir.pwd)
+      candidate = File.join(root.to_s, "config", "desktop-rails.config.json")
+      File.file?(candidate) ? candidate : nil
+    end
+
     # ─── The interpreter ─────────────────────────────────────────────────────
 
     def runtime_candidates

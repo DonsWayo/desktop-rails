@@ -1,0 +1,133 @@
+name: A hosted app, end to end
+
+# Hosted mode, followed the way a company with a Rails app on the internet would
+# follow it: its server is already running, `bin/rails desktop:package:hosted`
+# wraps it in a desktop app with no Rust and no Ruby inside, and a person opens
+# that app. Then what matters about hosted mode is asserted from outside:
+#
+#   * the window loaded the server's page (the server's own log says so),
+#   * a page from the configured origin reached the bridge, and found the shell,
+#     clipboard reads and the filesystem closed because the config says nothing,
+#   * a frame of another origin inside that page could not call the bridge,
+#   * a link to an unlisted site went to the browser and the window stayed,
+#   * a second origin, loaded as the window's own page, was refused,
+#
+# each reported back by the page to the server that served it.
+#
+# e2e/hosted is a one-file Rails app that plays both servers, on 127.0.0.1:3100
+# (the app) and localhost:3101 (someone else, listed in navigation.internal_hosts
+# so it may load in the window). The shell is built from this commit, because
+# the checks are about the shell's policy: the release a user downloads carries
+# whatever the last tag did.
+
+on:
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: hosted-app-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUBY_VERSION: "3.4.8"
+
+jobs:
+  hosted:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS, os: macos-14, gui: "" }
+          - { name: Linux, os: ubuntu-24.04, gui: "xvfb-run -a" }
+    env:
+      APP_URL: http://127.0.0.1:3100
+      OTHER_URL: http://localhost:3101
+    steps:
+      - uses: actions/checkout@v4
+
+      # Outside the checkout, and never inside the bundle: writing into a signed
+      # .app breaks its seal.
+      - name: A place for logs
+        run: echo "LOGS=$RUNNER_TEMP/hosted-logs" >> "$GITHUB_ENV"
+
+      - name: Linux desktop and build libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb libwebkit2gtk-4.1-0 libgtk-3-0 \
+            build-essential libgtk-3-dev libwebkit2gtk-4.1-dev librsvg2-dev patchelf
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler-cache: true
+          working-directory: e2e/hosted
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Build the shell from this commit
+        working-directory: src-tauri
+        run: cargo build --release
+
+      # Stand-ins for a server that already runs somewhere. Started before the
+      # app exists, as a real one would be.
+      - name: Start the app's server and someone else's
+        working-directory: e2e/hosted
+        run: |
+          mkdir -p "$LOGS"
+          RAILS_ENV=production HOSTED_LOG="$LOGS/app.log" REPORTS_FILE="$LOGS/app-reports.jsonl" \
+            nohup bundle exec puma -b tcp://127.0.0.1:3100 config.ru > "$LOGS/app-puma.out" 2>&1 &
+          RAILS_ENV=production HOSTED_LOG="$LOGS/other.log" REPORTS_FILE="$LOGS/other-reports.jsonl" \
+            nohup bundle exec puma -b tcp://localhost:3101 config.ru > "$LOGS/other-puma.out" 2>&1 &
+          ruby check.rb wait "$APP_URL" "$OTHER_URL"
+
+      - name: bin/rails desktop:package:hosted
+        working-directory: e2e/hosted
+        env:
+          DESKTOP_RAILS_SHELL: ${{ github.workspace }}/src-tauri/target/release/desktop-rails
+        run: |
+          set -euo pipefail
+          bundle exec rake desktop:package:hosted | tee "$LOGS/package.log"
+          # A config that opens nothing must say so before it is packaged.
+          grep -F "shell       off" "$LOGS/package.log"
+          ruby check.rb package .desktop-rails/dist "Hosted Check" "$APP_URL"
+
+      # A shell's background job, not a Ruby subprocess: see check.rb.
+      - name: Launch it and check what the window did
+        run: |
+          set -uo pipefail
+          if [ "$RUNNER_OS" = macOS ]; then
+            bin="$PWD/e2e/hosted/.desktop-rails/dist/Hosted Check.app/Contents/MacOS/desktop-rails"
+          else
+            bin="$PWD/e2e/hosted/.desktop-rails/dist/hosted-check/hosted-check"
+          fi
+          RUST_LOG=info ${{ matrix.gui }} "$bin" > "$LOGS/shell.log" 2>&1 &
+          echo $! > "$LOGS/shell.pid"
+          ruby e2e/hosted/check.rb window \
+            --shell-log "$LOGS/shell.log" \
+            --app-log "$LOGS/app.log" --app-reports "$LOGS/app-reports.jsonl" \
+            --other-reports "$LOGS/other-reports.jsonl"
+
+      - name: The signature still verifies after running
+        if: runner.os == 'macOS'
+        run: codesign --verify --strict --deep "e2e/hosted/.desktop-rails/dist/Hosted Check.app"
+
+      - name: Stop everything
+        if: always()
+        run: |
+          kill "$(cat "$LOGS/shell.pid" 2>/dev/null)" 2>/dev/null || true
+          pkill -f "puma.*config.ru" || true
+
+      - name: Keep the logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hosted-logs-${{ matrix.name }}
+          path: ${{ env.LOGS }}
+          if-no-files-found: ignore
