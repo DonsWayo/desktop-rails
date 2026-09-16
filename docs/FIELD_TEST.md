@@ -252,9 +252,9 @@ was found here too, but was fixed on the prebuilt-downloads branch first.
 Until this, Windows was the one platform where no window had ever been opened:
 its job checked the bundle's shape and booted the server with no shell. The
 fresh-app workflow now has two Windows jobs on `windows-latest`, one for a
-freshly generated app (Rails 8.1, the 0.3.0.pre2 runtime and shell downloaded
-by `desktop:package`) and one for `examples/notes` (the shell built from the
-commit). Both launch the packaged `.exe`, and the runner's interactive session
+freshly generated app (Rails 8.1 and the 0.3.0.pre2 runtime downloaded by
+`desktop:runtime`) and one for `examples/notes`. Both launch the packaged
+`.exe`, and the runner's interactive session
 shows a real window: WebView2 is preinstalled, the shell's process has a main
 window handle titled with the app's name, and a screenshot of the desktop is
 kept as a workflow artifact.
@@ -285,13 +285,31 @@ nothing Windows-specific. What it found:
    monitor's next probe sent the window to the app at 13:37:38. An early
    announcement is now kept until the window exists, and delivered exactly
    once. *`src-tauri/src/server.rs`, the `WindowArrival` tests.* This is a shell
-   change, so the downloaded 0.3.0.pre2 shell does not have it; the fresh app
-   passes without it, only slower.
+   change, so the downloaded 0.3.0.pre2 shell does not have it.
 
-3. **The launcher named Ruby 3.4's gem directory outright.** `GEM_PATH` held
+3. **Every launch opened a console window over the app.** Only the screenshot
+   of the first green run showed it: the Notes window, and on top of it a
+   Windows Terminal titled `C:\Windows\system32\cmd.exe`. The shell is a GUI
+   program with no console, and the server it starts is a `.cmd` launcher, so
+   Windows gave `cmd.exe` a console of its own and showed it. No check could
+   see that, because the window underneath still did everything asked of it.
+   The server — and a shell-bridge command, which goes through `cmd` the same
+   way — is now started with `CREATE_NO_WINDOW`, and the harness fails when a
+   window other than the shell's opens with the app.
+   *`src-tauri/src/process_manager.rs`, the console window tests, which run on
+   the Windows Rust job; `app_check_test.rb`, the stray window tests.*
+
+4. **The launcher named Ruby 3.4's gem directory outright.** `GEM_PATH` held
    `lib\ruby\lib\ruby\gems\3.4.0`, which a Ruby 4.0 runtime does not have. The
    packer now asks the interpreter for `RbConfig::CONFIG["ruby_version"]`.
    *`test/packers_test.rb`.*
+
+The downloaded 0.3.0.pre2 shell passed every check but the console window on
+Windows, for the fresh app, in fresh-app run 35109683062 (commit 5ccc1fe,
+since rebased). Since then both Windows jobs build the shell from the commit,
+as the example always did: findings 2 and 3, and the bridge's origin rules
+that landed on main meanwhile, are shell changes no release carries yet. The
+fresh app goes back to the download once one does.
 
 Force-quitting the shell does not orphan the server, so nothing was changed
 there. Windows has no signal to reap a child with and the server is not even

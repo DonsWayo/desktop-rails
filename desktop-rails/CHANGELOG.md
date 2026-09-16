@@ -178,6 +178,11 @@ later; the prebuilt shells of pre1 and pre2 still have the old defaults.
   replaces that probe in the interpreter it ships
   (`packaging/windows-runtime-readonly.rb`) with the answer a read-only
   install gets.
+- Every packaged Windows app opened a `cmd.exe` console window over its own
+  window on launch: the shell has no console, so the `.cmd` launcher got a new
+  one. The app server and shell-bridge commands are started with
+  `CREATE_NO_WINDOW`. Needs a new shell release to reach apps that download the
+  prebuilt shell.
 - The Windows launcher hardcoded Ruby 3.4's gem directory in `GEM_PATH`. The
   packer now asks the shipped interpreter for its ABI version.
 - The shell dropped the server's address when the server announced itself
