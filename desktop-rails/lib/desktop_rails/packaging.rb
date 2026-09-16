@@ -49,7 +49,7 @@ module DesktopRails
     # ─── Locating the packaging scripts ──────────────────────────────────────
 
     # The gem cannot ship packaging/: those scripts live at the root of the
-    # desktop_rails repository, above this gem's own directory, and RubyGems
+    # desktop-rails repository, above this gem's own directory, and RubyGems
     # will not package files from outside a gem root. So they are located
     # instead, and when they cannot be found the error says how to point at them.
     def packaging_dir
@@ -58,20 +58,25 @@ module DesktopRails
       return Pathname.new(found) if found
 
       raise MissingPrerequisite, <<~MSG
-        Could not find the desktop_rails packaging scripts.
+        Could not find the desktop-rails packaging scripts.
 
         Looked in:
         #{candidates.map { |c| "  #{c}" }.join("\n")}
 
-        They live in the desktop_rails repository, not in this gem — RubyGems
-        cannot package files from above a gem's own root. Clone it, then point
-        at the directory with an environment variable:
+        They live in the desktop-rails repository, not in this gem — RubyGems
+        cannot package files from above a gem's own root. Installing the gem
+        from GitHub brings them along:
 
-          DESKTOP_RAILS_PACKAGING=/path/to/desktop_rails/packaging bin/rails desktop:package
+          bundle add desktop-rails --github DonsWayo/desktop-rails
+
+        Or clone https://github.com/DonsWayo/desktop-rails and point at the
+        directory with an environment variable:
+
+          DESKTOP_RAILS_PACKAGING=/path/to/desktop-rails/packaging bin/rails desktop:package
 
         or in config/initializers/desktop_rails.rb:
 
-          config.packaging_dir = "/path/to/desktop_rails/packaging"
+          config.packaging_dir = "/path/to/desktop-rails/packaging"
       MSG
     end
 
@@ -81,8 +86,11 @@ module DesktopRails
         Paths.presence(DesktopRails.configuration.packaging_dir)&.to_s,
         # A checkout of this repository, with the gem in desktop-rails/.
         File.expand_path("../../../packaging", __dir__),
-        # A Rails app sitting inside, or beside, a checkout.
+        # A Rails app sitting inside, or beside, a checkout. `git clone` names
+        # the checkout desktop-rails; desktop_rails is the name from before the
+        # rename, still looked for so an existing layout keeps working.
         (app_root && File.expand_path("packaging", app_root.to_s)),
+        (app_root && File.expand_path("../desktop-rails/packaging", app_root.to_s)),
         (app_root && File.expand_path("../desktop_rails/packaging", app_root.to_s))
       ].compact
     end

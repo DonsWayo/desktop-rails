@@ -7,7 +7,7 @@ require "stringio"
 require "json"
 
 # A sandbox that looks like the two directories the packaging workflow needs: a
-# checkout of desktop_rails's packaging/ scripts, and a Rails app to package.
+# checkout of desktop-rails's packaging/ scripts, and a Rails app to package.
 # Building them here rather than pointing at the real repository keeps the
 # assertions about *decisions* — which packer, which flags — and not about
 # whichever files happen to exist on the machine running the suite.
@@ -103,11 +103,25 @@ class PackagingScriptResolutionTest < Minitest::Test
   end
 
   def test_a_checkout_beside_the_gem_is_found_without_configuration
-    # The common case: somebody working in the desktop_rails repository itself.
+    # The common case: somebody working in the desktop-rails repository itself.
     with_env("DESKTOP_RAILS_PACKAGING" => nil, "DESKTOP_RAILS_APP" => nil) do
       expected = File.expand_path("../../packaging", __dir__)
       skip "no checkout at #{expected}" unless File.exist?(File.join(expected, "pack.sh"))
       assert_equal expected, DesktopRails::Packaging.packaging_dir.to_s
+    end
+  end
+
+  # The error used to tell people to clone the repository, and then only looked
+  # for a checkout named desktop_rails beside the app, which is not what
+  # `git clone https://github.com/DonsWayo/desktop-rails` creates.
+  def test_a_clone_beside_the_app_is_found_under_the_name_git_gives_it
+    Dir.mktmpdir do |tmp|
+      app = File.join(tmp, "app")
+      clone = File.join(tmp, "desktop-rails", "packaging")
+      FileUtils.mkdir_p([ app, clone ])
+      with_env("DESKTOP_RAILS_PACKAGING" => nil, "DESKTOP_RAILS_APP" => app) do
+        assert_includes DesktopRails::Packaging.packaging_candidates, clone
+      end
     end
   end
 
