@@ -82,4 +82,3 @@ Details: [Tauri updater](https://tauri.app/plugin/updater/).
 
 ---
 
-More at the official site: **[desktop-rails.dev](https://desktop-rails.dev/)**.

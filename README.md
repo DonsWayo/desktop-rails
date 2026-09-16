@@ -1,86 +1,147 @@
 <p align="center">
-  <img src="desktop-rails-icon.png" alt="Desktop Rails" width="180" />
+  <img src="desktop-rails-icon.png" alt="desktop-rails" width="180" />
 </p>
 
-<h1 align="center">Desktop Rails</h1>
+<h1 align="center">desktop-rails</h1>
 
 <p align="center">
-  <strong>Turbo Native for Desktop</strong> — wrap your Rails app in a native macOS / Windows / Linux shell
-</p>
-
-<p align="center">
-  <strong>🌐 Official site: <a href="https://desktop-rails.dev/">desktop-rails.dev</a></strong>
+  <strong>Ship your Rails app as a desktop app</strong> — your views and Hotwire in a native window, your Ruby bundled inside, for macOS, Linux and Windows
 </p>
 
 <p align="center">
-  <a href="https://desktop-rails.dev/">Website</a> •
-  <a href="#features">Features</a> •
-  <a href="#architecture">Architecture</a> •
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#path-configuration">Path Config</a> •
-  <a href="#bridge-components">Bridge</a> •
-  <a href="#rails-gem">Rails Gem</a> •
-  <a href="#comparison">Comparison</a> •
-  <a href="https://github.com/DonsWayo/desktop-rails#readme">Docs</a>
+  <a href="#quick-start">Quick start</a> •
+  <a href="#two-ways-to-use-it">Two ways to use it</a> •
+  <a href="#status">Status</a> •
+  <a href="#bridge-components">Native features</a> •
+  <a href="#rails-gem">Rails gem</a> •
+  <a href="examples/notes">Example app</a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Tauri-2.0-blue?logo=tauri" alt="Tauri 2" />
-  <img src="https://img.shields.io/badge/Rust-stable-orange?logo=rust" alt="Rust" />
-  <img src="https://img.shields.io/badge/Rails-7+-red?logo=rubyonrails" alt="Rails" />
-  <img src="https://img.shields.io/badge/Hotwire-Turbo_Drive-yellow" alt="Hotwire" />
+  <img src="https://img.shields.io/badge/Tauri-2-blue?logo=tauri" alt="Tauri 2" />
+  <img src="https://img.shields.io/badge/Rails-7+-red?logo=rubyonrails" alt="Rails 7+" />
+  <img src="https://img.shields.io/badge/Hotwire-Turbo_Streams_over_SSE-yellow" alt="Hotwire" />
   <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License" />
 </p>
 
 ---
 
-## The Problem
+Rails developers have Hotwire Native for phones and nothing for the desktop.
+desktop-rails packages a Rails app into a native application: a small
+[Tauri 2](https://tauri.app) window using the operating system's webview, a
+relocatable Ruby, your app and its gems, and a SQLite database created in the
+user's data directory on first launch. Nobody installs Ruby. Your views,
+Turbo Frames, Turbo Streams and Stimulus controllers work as they do on the web,
+and both JavaScript and Ruby can call native features such as notifications,
+the clipboard, window control and scoped file access.
 
-Rails developers already have **Hotwire Native** (`turbo-ios` and `turbo-android`) to wrap their web apps in native mobile shells. But there has been *nothing* for desktop.
+desktop-rails continues [aguspe/turbo_desktop](https://github.com/aguspe/turbo_desktop)
+as its own project.
 
-**Desktop Rails** fills this gap. It gives you a thin, native desktop shell powered by [Tauri 2](https://tauri.app) that treats your Rails app as the single source of truth — the same pattern you already know from Hotwire Native, but for the desktop.
+## Quick start
 
-## Example App
+You need a Rails 8 app and a Ruby to run its generators. Rails 7 is allowed by
+the gemspec but not tested. No Rust or Node is needed. Your gems are installed
+for the bundled Ruby, so gems with native extensions need the same build tools
+they always do.
 
-Here's what a Rails app looks like running inside Desktop Rails (from the [example Task Manager app](https://github.com/aguspe/turbo_desktop_example_app)):
-
-<p align="center">
-  <img src="docs/screenshots/dashboard.png" alt="Dashboard — desktop features banner, stats, recent tasks" width="700" />
-</p>
-
-## Features
-
-- **No new UI framework** — your existing Rails views, Turbo Frames, and Stimulus controllers just work
-- **Native when you need it** — notifications, file pickers, menus, and keyboard shortcuts via Bridge Components
-- **Tiny binary** — Tauri uses the OS WebView, no bundled Chromium. Ship a ~5-10 MB app
-- **Path configuration** — JSON-based routing rules (same concept as turbo-ios / turbo-android)
-- **Bridge components** — web-to-native communication via Stimulus controllers
-- **Rails gem** — `desktop-rails` gives your Rails app desktop shell awareness
-- **CLI scaffolding** — `npx desktop-rails new myapp` to get started fast
-
-## Architecture
-
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────────────┐
-│ Rails Server │ ──▶ │   WebView    │ ──▶ │  Tauri / Rust    │
-│ HTML + Turbo │     │ turbo-       │     │  Windows, menus, │
-│   Drive      │     │ desktop.js   │     │  OS APIs         │
-└──────────────┘     └──────────────┘     └──────────────────┘
+```bash
+bundle add desktop-rails --github DonsWayo/desktop-rails
+bin/rails generate desktop_rails:install
+bin/rails desktop:runtime    # downloads the Ruby your app will ship with
+bin/rails desktop:package    # downloads the window app and builds the bundle
 ```
 
-Three layers that mirror the Hotwire Native pattern:
+The bundle lands in `.desktop-rails/dist/`: a `.app` on macOS, a directory tree
+on Linux, and a directory with a launcher plus a zip of it on Windows. To boot
+the app the way the bundle does, without a window:
 
-1. **Rails Server** — your existing app serves HTML with Turbo Drive
-2. **WebView** — `desktop-rails.js` intercepts Turbo visits and bridges to native
-3. **Tauri Shell** — Rust handles window management, path config routing, and OS APIs
+```bash
+bin/rails desktop:run
+```
 
-## Quick Start
+The generator adds a `desktop` Rails environment, the database, cable and
+storage settings for it, and `bin/desktop-boot`, which is what the packaged app
+runs. On every launch the app brings its databases up to date before it accepts
+a request: a new install loads `db/schema.rb` and seeds, and an update runs
+pending migrations.
+
+This exact sequence runs on every push: a freshly generated Rails app is
+packaged on macOS, Linux and Windows, and its window is opened on macOS and
+Linux ([fresh-app.yml](.github/workflows/fresh-app.yml)).
+
+[examples/notes](examples/notes) is a complete app built this way. It streams
+Turbo updates over server-sent events without Action Cable, and calls the shell
+from both a Stimulus controller and a Rails controller.
+
+## Two ways to use it
+
+**Bundled.** The quick start above. The app ships with its own Ruby and runs
+entirely on the user's machine, which suits tools that work offline and keep
+their data locally.
+
+**Hosted.** The window opens a Rails app you already run on a server, the way
+Hotwire Native apps do on phones. Nothing is bundled but the window app, and
+the same native features are available to pages from that server's origin. See
+[Wrapping a server you run yourself](#wrapping-a-server-you-run-yourself).
+
+The shell also works without Ruby. Any server-rendered Hotwire app can sit
+behind it in hosted mode.
+
+## Status
+
+desktop-rails is a prerelease. It is installed from GitHub rather than
+RubyGems until it has been proven with more apps than its own examples.
+
+| Platform | Package | Window opened in CI | Native calls tested in CI |
+|---|---|---|---|
+| macOS (Apple Silicon, Intel) | `.app` | yes | JavaScript and Ruby |
+| Linux x86_64 (glibc) | directory tree | yes | JavaScript and Ruby |
+| Windows x64 | directory and zip | no | no |
+
+Known limits:
+
+- **macOS signing.** Bundles are signed ad hoc. Gatekeeper blocks them on other
+  people's Macs until they are signed with a Developer ID and notarized; see
+  [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md).
+- **Linux.** The window needs WebKitGTK 4.1 on the user's machine. ARM and musl
+  Linux have no prebuilt downloads, so `desktop:runtime` compiles Ruby from
+  source there and packages have no window.
+- **Hosted mode** has less CI coverage than bundled mode.
+
+## How it fits together
+
+```
+┌────────────────────────┐  stdin: control URL + token   ┌──────────────────────┐
+│ Tauri shell (Rust)     │ ────────────────────────────▶ │ Ruby + your Rails app│
+│ window, menus, tray,   │ ◀──────────────────────────── │ Puma on 127.0.0.1:0  │
+│ native features        │  stdout: {"url": ...}         │ bin/desktop-boot     │
+└──────────┬─────────────┘                               └──────────┬───────────┘
+           │ webview loads the announced URL                        │
+           ▼                                                        │
+┌────────────────────────┐   HTML, Turbo Streams over SSE           │
+│ Your views + Hotwire   │ ◀────────────────────────────────────────┘
+│ window.DesktopRails    │   Ruby calls native features through the
+└────────────────────────┘   token-protected control channel
+```
+
+The server listens on a random loopback port and announces it on its first line
+of output. The shell hands it a control-channel URL and token over stdin, which
+is also how the server knows to exit: when the shell goes away, even by force
+quit, stdin closes and the server stops. The bundle is read-only; everything the
+app writes goes to the operating system's data directory.
+
+## Wrapping a server you run yourself
+
+Hosted mode: the shell opens a Rails server you run, locally in development or
+on the internet in production. This section builds the shell from a checkout,
+which needs Rust and Node.
 
 ### 1. Clone and install dependencies
 
 ```bash
 git clone https://github.com/DonsWayo/desktop-rails.git
-cd desktop_rails
+cd desktop-rails
 cargo install tauri-cli
 npm install
 ```
@@ -234,14 +295,9 @@ Making the key and signing a release: [packaging/AUTO_UPDATE.md](packaging/AUTO_
 
 ### 3. Add the Rails gem
 
-```ruby
-# Gemfile
-gem "desktop-rails"
-```
-
 ```bash
-bundle install
-rails generate desktop_rails:install
+bundle add desktop-rails --github DonsWayo/desktop-rails
+bin/rails generate desktop_rails:install
 ```
 
 ### 4. Serve path configuration from Rails
@@ -796,7 +852,7 @@ and shell that `bin/rails desktop:runtime` and `desktop:shell` download, built b
 [release-prebuilt.yml](.github/workflows/release-prebuilt.yml):
 
 ```bash
-git tag v0.3.0.pre1 && git push origin v0.3.0.pre1
+git tag v0.3.0.pre2 && git push origin v0.3.0.pre2
 ```
 
 See **[docs/DISTRIBUTION.md](docs/DISTRIBUTION.md)** for local builds, using it in your own app,
@@ -805,7 +861,7 @@ and the optional signing / auto-update setup.
 ## Project Structure
 
 ```
-desktop_rails/
+desktop-rails/
 ├── src/                    # JavaScript (desktop-rails.js)
 ├── src-tauri/              # Rust / Tauri shell
 │   └── src/
@@ -818,7 +874,9 @@ desktop_rails/
 │       ├── sudo_bridge.rs  # Privileged commands
 │       ├── config.rs       # Path configuration
 │       └── window.rs       # Window management & app config
-├── desktop-rails/    # Rails gem
+├── desktop-rails/          # Rails gem
+├── examples/notes/         # Example app, packaged in CI
+├── packaging/              # Runtime build and pack scripts
 ├── cli/                    # CLI scaffolding tool
 ├── templates/              # Project templates
 ├── test/                   # Tests

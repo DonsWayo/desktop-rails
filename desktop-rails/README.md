@@ -6,17 +6,11 @@ This gem gives your Rails app awareness of the Desktop Rails shell, exactly like
 
 ## Installation
 
-Add to your Gemfile:
-
-```ruby
-gem "desktop-rails"
-```
-
-Then run:
+desktop-rails is installed from GitHub until it is published on RubyGems:
 
 ```bash
-bundle install
-rails generate desktop_rails:install
+bundle add desktop-rails --github DonsWayo/desktop-rails
+bin/rails generate desktop_rails:install
 ```
 
 ## Usage
