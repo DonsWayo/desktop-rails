@@ -11,6 +11,16 @@ module DesktopRails
       class_option :desktop_env, type: :boolean, default: true,
                    desc: "Generate config/environments/desktop.rb and bin/desktop-boot"
 
+      # A class method so the tests can stub it: they cannot swap the json gem
+      # under a running process.
+      def self.active_support_decodes_json?
+        require "active_support/json"
+        ActiveSupport::JSON.decode("{}")
+        true
+      rescue ArgumentError
+        false
+      end
+
       def initialize(*)
         super
         @notes = []
@@ -135,7 +145,7 @@ module DesktopRails
       # Decided by calling the real thing in the app being installed into, so the
       # pin is only written while the combination is actually broken.
       def pin_json_when_active_support_cannot_decode
-        return if active_support_decodes_json?
+        return if self.class.active_support_decodes_json?
 
         path = "Gemfile"
         source = read_destination(path)
@@ -184,15 +194,6 @@ module DesktopRails
         source.match?(/^#{Regexp.escape(name)}:/)
       end
 
-      # A seam for the tests, which cannot swap the json gem under a running
-      # process.
-      def active_support_decodes_json?
-        require "active_support/json"
-        ActiveSupport::JSON.decode("{}")
-        true
-      rescue ArgumentError
-        false
-      end
 
       # What config/database.yml configures, read without evaluating its ERB:
       # the generator runs before the app has booted, and a template that calls
