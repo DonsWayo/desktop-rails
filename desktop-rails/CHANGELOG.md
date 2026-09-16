@@ -9,9 +9,36 @@
   `desktop-rails`, and environment variables start with `DESKTOP_RAILS_`. This
   fork of aguspe/turbo_desktop continues as its own project; the MIT notices of
   the original author are kept.
+- Version 0.3.0.pre1 (Cargo and npm: 0.3.0-pre.1).
+- `release.yml`, which builds installers of the bare shell, runs from the
+  Actions tab only. `v*` tags belong to `release-prebuilt.yml`, and two
+  workflows creating a release for one tag would race.
+- `release-runtimes.yml` is now `release-prebuilt.yml`. Its `runtime-v*` tags
+  and `desktop-rails-runtime` platform gems are gone: that gem was never
+  published, and the missing-runtime message no longer suggests
+  `bundle add desktop-rails-runtime`.
 
 ### Added
 
+- Prebuilt downloads. `bin/rails desktop:runtime` now downloads the relocatable
+  interpreter for this machine from the GitHub release matching the gem version
+  (gem `0.3.0.pre1`, tag `v0.3.0.pre1`), verifies it against the release's
+  `SHA256SUMS`, unpacks it and runs the relocation check — no C toolchain, no
+  forty-minute compile. It builds from source only when asked
+  (`DESKTOP_RAILS_RUNTIME_FROM_SOURCE=1`) or when the release has nothing for the
+  platform, and says which. A bad checksum or a network failure stops instead.
+- `bin/rails desktop:shell` does the same for the shell binary, or runs
+  `cargo build` in a checkout with `DESKTOP_RAILS_SHELL_FROM_SOURCE=1`.
+  `desktop:package` runs it first, so a package has a window by default. The
+  downloaded shell is found after `DESKTOP_RAILS_SHELL`, `config.shell_binary`
+  and a checkout build.
+- `config.release_url` / `DESKTOP_RAILS_RELEASE_URL` and
+  `config.release_version` / `DESKTOP_RAILS_RELEASE_VERSION` choose where and
+  which release to download from.
+- `.github/workflows/release-prebuilt.yml` publishes those downloads for
+  arm64-darwin, x86_64-darwin, x86_64-linux and x64-mingw-ucrt on every `v*`
+  tag, as a prerelease when the version is one, named by the same code the gem
+  uses to find them, then downloads them back on each platform to prove it.
 - Rails-native packaging workflow: `rake desktop:runtime`, `desktop:package` and
   `desktop:run`. They shell out to the packaging scripts rather than
   reimplementing them, and fail with a message naming the missing prerequisite.
@@ -26,6 +53,9 @@
 
 ### Fixed
 
+- `desktop:package` passed the shell only on macOS. Linux and Windows packages
+  now embed it too, as `pack-linux.sh --shell` and `pack-windows.ps1 -Shell`
+  already supported.
 - A packaged bundle booted `production` even when the app had a desktop
   environment, so none of the settings above reached the app that ships.
   `packaging/templates/boot.rb` now selects it, and `DESKTOP_RAILS_ENV` overrides.

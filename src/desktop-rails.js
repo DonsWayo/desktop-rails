@@ -40,7 +40,7 @@
   // ─── Core API ──────────────────────────────────────────────────────────────
 
   const DesktopRails = {
-    version: "0.2.1",
+    version: "0.3.0-pre.1",
     platform: "macos",
     isNative: true,
 

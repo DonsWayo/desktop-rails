@@ -113,7 +113,13 @@ test("the Ruby gem reports the same version as package.json", () => {
   const match = version.match(/VERSION\s*=\s*"([^"]+)"/);
 
   assert.ok(match, "version.rb should declare a VERSION");
-  assert.equal(match[1], packageVersion(), "the gem version drifted from package.json");
+  // RubyGems and SemVer spell a prerelease differently: gem 0.3.0.pre1 is npm
+  // 0.3.0-pre.1. This is DesktopRails::Packaging.semver — RubyGems' own
+  // segments, the first three as the core and the rest as the prerelease —
+  // and the release workflow refuses to publish when the two disagree.
+  const [major, minor = 0, patch = 0, ...pre] = match[1].match(/\d+|[a-z]+/gi);
+  const semver = [major, minor, patch].map(Number).join(".") + (pre.length ? `-${pre.join(".")}` : "");
+  assert.equal(semver, packageVersion(), "the gem version drifted from package.json");
 });
 
 test("the scaffold copies every Rust module main.rs declares", () => {
