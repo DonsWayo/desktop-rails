@@ -43,6 +43,52 @@ impl ServerAddress {
     }
 }
 
+/// Hands the server's announced address to the main window, whichever of the
+/// two turns up first.
+///
+/// The server is started before the window is built, and building a window is
+/// not quick everywhere: on a Windows runner WebView2 took 3 to 12 seconds,
+/// while the app's server announced itself in 4. An announcement that arrived
+/// while there was no window to move was dropped, and the window sat on the
+/// waiting page until the connection monitor's next probe noticed the server
+/// and sent it on. So an early announcement is kept until the window exists.
+///
+/// One lock around both facts, so an announcement racing the window's arrival
+/// is delivered exactly once rather than never or twice.
+#[derive(Default)]
+pub struct WindowArrival(std::sync::Mutex<ArrivalState>);
+
+#[derive(Default)]
+struct ArrivalState {
+    window_ready: bool,
+    pending: Option<url::Url>,
+}
+
+impl WindowArrival {
+    /// The server has said where it is. Returns the address to move the window
+    /// to now, or `None` when there is no window yet and it has been kept.
+    pub fn announced(&self, address: url::Url) -> Option<url::Url> {
+        let Ok(mut state) = self.0.lock() else {
+            return Some(address);
+        };
+        if state.window_ready {
+            return Some(address);
+        }
+        state.pending = Some(address);
+        None
+    }
+
+    /// The window exists. Returns an address announced before it did, which
+    /// the window should move to now.
+    pub fn window_ready(&self) -> Option<url::Url> {
+        let Ok(mut state) = self.0.lock() else {
+            return None;
+        };
+        state.window_ready = true;
+        state.pending.take()
+    }
+}
+
 /// The one line of handshake a bundled server writes before anything else.
 ///
 /// Parsed rather than matched loosely: a line that is not a handshake is
@@ -593,6 +639,47 @@ mod tests {
         let stopped = tokio::time::timeout(std::time::Duration::from_secs(5), supervisor).await;
         assert!(stopped.is_ok(), "supervision did not return after the kill");
         std::fs::remove_file(&marker).ok();
+    }
+
+    fn address() -> url::Url {
+        "http://127.0.0.1:51061".parse().unwrap()
+    }
+
+    /// The regression, seen on Windows: the server announced itself three
+    /// seconds before WebView2 had a window up, the move was dropped, and the
+    /// window waited on the error page for the connection monitor instead.
+    #[test]
+    fn an_announcement_before_the_window_exists_is_delivered_when_it_does() {
+        let arrival = WindowArrival::default();
+
+        assert_eq!(arrival.announced(address()), None, "there is no window to move yet");
+        assert_eq!(arrival.window_ready(), Some(address()));
+        assert_eq!(arrival.window_ready(), None, "delivered once, not on every call");
+    }
+
+    #[test]
+    fn an_announcement_after_the_window_exists_is_delivered_at_once() {
+        let arrival = WindowArrival::default();
+
+        assert_eq!(arrival.window_ready(), None, "nothing was announced yet");
+        assert_eq!(arrival.announced(address()), Some(address()));
+        assert_eq!(arrival.window_ready(), None, "and it is not delivered a second time");
+    }
+
+    /// Both orders at once, many times: whichever wins, the window is moved
+    /// exactly once.
+    #[test]
+    fn a_race_between_the_two_delivers_exactly_once() {
+        for _ in 0..500 {
+            let arrival = std::sync::Arc::new(WindowArrival::default());
+            let announcer = {
+                let arrival = arrival.clone();
+                std::thread::spawn(move || arrival.announced(address()).is_some() as u8)
+            };
+            let from_window = arrival.window_ready().is_some() as u8;
+            let from_announcement = announcer.join().unwrap();
+            assert_eq!(from_window + from_announcement, 1);
+        }
     }
 
     #[test]

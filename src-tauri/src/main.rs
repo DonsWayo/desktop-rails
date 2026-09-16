@@ -233,6 +233,8 @@ fn main() {
             // polls: the server says when it is ready.
             let waiting = app.handle().clone();
             let listening_on = app.handle().clone();
+            let arrival = Arc::new(server::WindowArrival::default());
+            let arrival_for_listener = arrival.clone();
             let ready_store = config_store_for_fetch.clone();
             let ready_config = shell_defaults.clone();
             let ready_user_agent = user_agent.clone();
@@ -256,11 +258,11 @@ fn main() {
                     log::warn!("{}", e);
                 }
                 if let Ok(target) = payload.parse::<url::Url>() {
-                    if let Some(window) = waiting.get_webview_window("main") {
-                        log::info!("The app server is up; moving the window to {}", target);
-                        if let Err(e) = window.navigate(target) {
-                            log::warn!("Could not move the window to the app: {}", e);
-                        }
+                    match arrival_for_listener.announced(target) {
+                        Some(target) => move_to_app(&waiting, target),
+                        None => log::info!(
+                            "The app server is up before its window; moving the window once it exists"
+                        ),
                     }
                 }
             });
@@ -276,6 +278,12 @@ fn main() {
             .min_inner_size(window_config.min_width, window_config.min_height)
             .resizable(window_config.resizable)
             .build()?;
+
+            // The server may have announced itself while the window was being
+            // built, with nothing yet to move. See server::WindowArrival.
+            if let Some(target) = arrival.window_ready() {
+                move_to_app(app.handle(), target);
+            }
 
             // Track the size as it changes. A handler registered on the builder
             // does not apply to windows created here, so it is attached directly.
@@ -415,6 +423,17 @@ fn on_focus_changed(
             "focus",
             &serde_json::json!({ "awaySeconds": away_seconds, "refreshing": refreshing }),
         );
+    }
+}
+
+/// Move the main window from the waiting page to the app its server serves.
+fn move_to_app(app: &tauri::AppHandle, target: url::Url) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    log::info!("The app server is up; moving the window to {}", target);
+    if let Err(e) = window.navigate(target) {
+        log::warn!("Could not move the window to the app: {}", e);
     }
 }
 
