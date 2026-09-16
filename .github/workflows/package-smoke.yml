@@ -67,12 +67,10 @@ jobs:
       # server half; this builds the GUI in and drives the whole chain.
       #
       # A clean runner matters here: this could not be made to run repeatably on
-      # a developer machine after a long session, and the check itself was the
-      # cause of some of that — see shell_check.sh on writing inside a signed
-      # bundle. continue-on-error until it has a track record, so a flake does
-      # not mask the rest.
+      # a developer machine after a long session, and the check itself caused
+      # some of that — see shell_check.sh on writing inside a signed bundle. It
+      # passed first time on a runner, so it gates rather than warns.
       - name: Pack again with the GUI shell embedded
-        continue-on-error: true
         id: gui
         run: |
           set -euo pipefail
@@ -84,8 +82,6 @@ jobs:
             --out "$PWD/dist-gui"
 
       - name: Drive the whole chain through the shell
-        continue-on-error: true
-        if: steps.gui.outcome == 'success'
         run: packaging/smoke/shell_check.sh dist-gui/SmokeGui.app/Contents/MacOS/turbo-desktop
 
       - name: Build the disk image
