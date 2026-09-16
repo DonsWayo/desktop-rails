@@ -264,6 +264,13 @@ pub struct LoadedConfig {
 /// Development builds are looser: they read the project you are running from, and
 /// tolerate its absence so a fresh clone still starts.
 pub struct ConfigLookup {
+    /// The directory holding the running executable.
+    ///
+    /// Not the same as `resource_dir`, and on Linux not close: Tauri resolves
+    /// that to /usr/lib/<ProductName>, which assumes the app was installed by a
+    /// package manager. A tree that unpacks anywhere — a tarball, a portable
+    /// zip — has its config beside the binary, so that has to be looked at too.
+    pub exe_dir: Option<PathBuf>,
     pub working_dir: Option<PathBuf>,
     pub resource_dir: Option<PathBuf>,
     pub development: bool,
@@ -276,6 +283,9 @@ impl ConfigLookup {
         Self {
             working_dir: std::env::current_dir().ok(),
             resource_dir: app.path().resource_dir().ok(),
+            exe_dir: std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(Path::to_path_buf)),
             development: cfg!(debug_assertions),
         }
     }
@@ -296,6 +306,13 @@ impl ConfigLookup {
         }
 
         if let Some(dir) = &self.resource_dir {
+            paths.push(dir.join(CONFIG_FILENAME));
+        }
+
+        // Last, because an installed app should prefer its resource directory.
+        // But a portable tree has nothing else, and on Linux resource_dir points
+        // at /usr/lib/<ProductName> whether or not anything was installed there.
+        if let Some(dir) = &self.exe_dir {
             paths.push(dir.join(CONFIG_FILENAME));
         }
 
@@ -756,10 +773,33 @@ mod tests {
     }
 
     #[test]
+    fn a_portable_tree_finds_its_config_beside_the_binary() {
+        // On Linux resource_dir is /usr/lib/<ProductName> whether or not
+        // anything was installed there, so a tarball unpacked into /opt or a
+        // home directory has only the binary to go on.
+        let lookup = ConfigLookup {
+            working_dir: None,
+            resource_dir: Some(PathBuf::from("/usr/lib/Turbo Desktop")),
+            exe_dir: Some(PathBuf::from("/opt/ledger")),
+            development: false,
+        };
+
+        assert_eq!(
+            lookup.search_paths(),
+            vec![
+                PathBuf::from("/usr/lib/Turbo Desktop").join(CONFIG_FILENAME),
+                PathBuf::from("/opt/ledger").join(CONFIG_FILENAME),
+            ],
+            "an installed resource directory wins, but the binary's own is still tried"
+        );
+    }
+
+    #[test]
     fn a_release_build_only_looks_in_the_bundle() {
         let lookup = ConfigLookup {
             working_dir: Some(PathBuf::from("/some/cwd")),
             resource_dir: Some(PathBuf::from("/app/Resources")),
+            exe_dir: None,
             development: false,
         };
 
@@ -775,6 +815,7 @@ mod tests {
         let lookup = ConfigLookup {
             working_dir: Some(PathBuf::from("/project/src-tauri")),
             resource_dir: Some(PathBuf::from("/app/Resources")),
+            exe_dir: None,
             development: true,
         };
 
@@ -794,6 +835,7 @@ mod tests {
         let lookup = ConfigLookup {
             working_dir: Some(dir.clone()),
             resource_dir: Some(dir.join("empty")),
+            exe_dir: None,
             development: false,
         };
 
@@ -811,6 +853,7 @@ mod tests {
         let lookup = ConfigLookup {
             working_dir: Some(dir.join("empty")),
             resource_dir: None,
+            exe_dir: None,
             development: true,
         };
 
@@ -829,6 +872,7 @@ mod tests {
         let lookup = ConfigLookup {
             working_dir: None,
             resource_dir: Some(dir.clone()),
+            exe_dir: None,
             development: false,
         };
 
@@ -852,6 +896,7 @@ mod tests {
         let lookup = ConfigLookup {
             working_dir: Some(project),
             resource_dir: Some(resources),
+            exe_dir: None,
             development: true,
         };
 
@@ -872,6 +917,7 @@ mod tests {
         let lookup = ConfigLookup {
             working_dir: Some(dir.clone()),
             resource_dir: None,
+            exe_dir: None,
             development: true,
         };
 

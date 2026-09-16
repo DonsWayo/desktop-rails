@@ -66,8 +66,10 @@ if [ -n "$SHELL_BIN" ]; then
   chmod +x "$DIR/$SLUG"
   echo "  shell embedded: $SLUG"
 
-  # Beside the binary, which is where Tauri's resource_dir resolves to for a
-  # plain executable. The command is relative to this file's directory.
+  # Beside the binary. Tauri's resource_dir does NOT resolve here on Linux — it
+  # points at /usr/lib/<ProductName> whether or not anything was installed
+  # there — so the shell looks next to its own executable as well. The command
+  # is relative to this file's directory.
   cat > "$DIR/turbo-desktop.config.json" <<CONFIG
 {
   "app_name": "$NAME",
