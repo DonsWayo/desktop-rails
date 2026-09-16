@@ -169,9 +169,26 @@ module AppCheck
     pid
   end
 
-  def window_of(pid)
-    output, = powershell("$p = Get-Process -Id #{Integer(pid)}; \"$($p.MainWindowHandle)`t$($p.MainWindowTitle)\"")
-    output.strip.split("\t", 2)
+  # Every process that has a top-level window, with when it started.
+  def windows
+    output, ok = powershell(<<~PS)
+      @(Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object {
+        $started = try { $_.StartTime.ToFileTimeUtc() } catch { 0 }
+        [pscustomobject]@{ Id = $_.Id; Name = $_.ProcessName; Title = $_.MainWindowTitle; Started = $started }
+      }) | ConvertTo-Json -Compress -AsArray
+    PS
+    raise "could not list windows: #{output}" unless ok
+
+    JSON.parse(output)
+  end
+
+  # Windows that appeared with the app but are not its own: a console window
+  # for the launcher, most likely, which Windows opens when a program with no
+  # console starts one that needs it. Recognised by starting after the shell,
+  # or by a console's title when an existing terminal took it as a tab.
+  def stray_windows(windows, shell_pid:, shell_started:)
+    windows.reject { |w| w["Id"] == shell_pid }
+           .select { |w| w["Started"].to_i >= shell_started.to_i || w["Title"].to_s.match?(/cmd\.exe|\.cmd\b/i) }
   end
 
   def screenshot(path)
@@ -374,8 +391,20 @@ module AppCheck
       tree = AppCheck.descendants([ shell ], processes)
       server = AppCheck.server_processes(tree)
 
-      handle, title = AppCheck.window_of(@pid)
-      puts "      shell pid #{@pid}, main window handle #{handle}, title '#{title}'"
+      windows = AppCheck.windows
+      own = windows.find { |w| w["Id"] == @pid }
+      if own
+        ok "the shell has a window: '#{own["Title"]}'"
+      else
+        problem "the shell (pid #{@pid}) has no top-level window"
+      end
+      stray = AppCheck.stray_windows(windows, shell_pid: @pid, shell_started: shell["Created"])
+      if stray.empty?
+        ok "no other window opened with it"
+      else
+        stray.each { |w| puts "      #{w["Name"]} (pid #{w["Id"]}): '#{w["Title"]}'" }
+        problem "#{stray.size} other window(s) opened with the app, such as a console for its launcher"
+      end
       puts "      what it started:"
       tree.each do |p|
         puts format("        pid %-6d parent %-6d %s", p["ProcessId"], p["ParentProcessId"], (p["CommandLine"] || p["Name"]).to_s[0, 140])

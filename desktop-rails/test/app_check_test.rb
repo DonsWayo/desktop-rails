@@ -68,6 +68,29 @@ class AppCheckTest < Minitest::Test
     assert_empty AppCheck.descendants([ shell ], [ shell, stale ])
   end
 
+  # What the screenshot of the first green Windows run showed: Windows Terminal
+  # hosting cmd.exe on top of the app's own window.
+  def test_a_console_that_opened_with_the_app_is_a_stray_window
+    windows = [
+      { "Id" => 100, "Name" => "notes", "Title" => "Notes", "Started" => 50 },
+      { "Id" => 200, "Name" => "WindowsTerminal", "Title" => 'C:\Windows\system32\cmd.exe', "Started" => 60 },
+      { "Id" => 300, "Name" => "explorer", "Title" => "Program Manager", "Started" => 1 }
+    ]
+
+    stray = AppCheck.stray_windows(windows, shell_pid: 100, shell_started: 50)
+    assert_equal [ 200 ], stray.map { |w| w["Id"] }
+  end
+
+  # A terminal that was already open takes the console as a new tab, so its
+  # start time says nothing; the console's title still does.
+  def test_a_console_in_a_terminal_that_was_already_open_is_still_found
+    windows = [ { "Id" => 200, "Name" => "WindowsTerminal", "Title" => 'C:\Windows\system32\cmd.exe', "Started" => 1 } ]
+
+    assert_equal 1, AppCheck.stray_windows(windows, shell_pid: 100, shell_started: 50).size
+    assert_empty AppCheck.stray_windows([ { "Id" => 7, "Title" => "Program Manager", "Started" => 1 } ],
+                                        shell_pid: 100, shell_started: 50)
+  end
+
   def test_changes_name_what_was_added_removed_and_modified
     Dir.mktmpdir do |dir|
       FileUtils.mkdir_p(File.join(dir, "lib"))
