@@ -1,7 +1,7 @@
 [package]
 name = "desktop-rails"
 version = "0.3.0-pre.2"
-description = "Turbo Native for Desktop — native shell for Rails/Turbo apps"
+description = "Native desktop shell for Rails and Hotwire apps, bundled or hosted"
 authors = ["Juan Carracedo", "aguspe"]
 license = "MIT"
 edition = "2021"

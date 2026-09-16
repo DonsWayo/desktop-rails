@@ -1,22 +1,47 @@
-# Distributing a Desktop Rails app
+# Distributing a desktop-rails app
 
-Desktop Rails apps are [Tauri](https://tauri.app) apps, so distribution means producing native
-installers per OS. This guide covers the easy path (a release workflow), local builds, and the
-optional-but-recommended signing/update setup.
+There are two things you might distribute, and they are built differently.
 
-## TL;DR — build installers from the Actions tab
+| You are shipping | Built by | Guide |
+|---|---|---|
+| A **bundled** app: your Rails app with its own Ruby | `bin/rails desktop:package` | [README quick start](../README.md#quick-start), [packaging/README.md](../packaging/README.md) |
+| The **shell alone**, opening a server you host | `cargo tauri build`, or the Release workflow | this page |
 
-This repo ships [`.github/workflows/release.yml`](../.github/workflows/release.yml). Run it from
-**Actions → Release → Run workflow**.
+## A bundled app
+
+`bin/rails desktop:package` writes the bundle to `.desktop-rails/dist/`: a `.app`
+on macOS, a directory tree on Linux, and a directory plus a zip of it on Windows.
+There is no installer step; the bundle is what you hand out.
+
+- **macOS.** The bundle is signed ad hoc, which Gatekeeper rejects on anyone
+  else's Mac. [packaging/DISTRIBUTION.md](../packaging/DISTRIBUTION.md) has the
+  measurements, what a Developer ID and notarisation involve, and
+  `packaging/dmg.sh` for a disk image.
+- **Updates.** An `updater` block in `desktop-rails.config.json` points the app at
+  a signed manifest. [packaging/AUTO_UPDATE.md](../packaging/AUTO_UPDATE.md)
+  covers the key and the manifest.
+
+## The shell alone, for hosted mode
+
+In hosted mode the app is a native window pointing at the `server_url` in
+`desktop-rails.config.json`, which is bundled with the shell at build time. You
+ship the window; your Rails app stays on your server. Set `server_url` to your
+production URL before building.
+
+### From the Actions tab
+
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) builds
+installers of the shell and attaches them to a **draft GitHub Release** for you
+to review and publish. It runs from **Actions → Release → Run workflow** only.
 
 It used to run on every `v*` tag. Those tags now belong to
-[`release-prebuilt.yml`](../.github/workflows/release-prebuilt.yml), which publishes the prebuilt
-interpreter and shell that `bin/rails desktop:runtime` and `desktop:shell` download (see
-[`packaging/README.md`](../packaging/README.md#prebuilt-releases)); two workflows creating a release
-for the same tag would race.
+[`release-prebuilt.yml`](../.github/workflows/release-prebuilt.yml), which
+publishes the prebuilt interpreter and shell that `bin/rails desktop:runtime`
+and `desktop:shell` download (see
+[`packaging/README.md`](../packaging/README.md#prebuilt-releases)); two workflows
+creating a release for the same tag would race.
 
-CI builds on three runners (Tauri can't cross-compile) and attaches installers to a **draft
-GitHub Release** for you to review and publish:
+Tauri cannot cross-compile, so each platform builds on its own runner:
 
 | Platform | You get |
 |----------|---------|
@@ -24,61 +49,58 @@ GitHub Release** for you to review and publish:
 | Windows | `.msi` + NSIS `.exe` |
 | Linux | `.deb` + `.AppImage` |
 
-## What ships inside the app
-
-Desktop Rails follows the Hotwire Native model: the shell loads `server_url` from
-`desktop-rails.config.json`, baked in at build time. So a distributed app is a **thin native shell
-pointing at your hosted Rails app** — you ship the binary, your Rails app is the product. Set
-`server_url` to your production URL before building for release.
-
-## Building locally (to test a bundle)
+### Locally
 
 ```bash
-npm run build                    # cargo tauri build — bundles for the current OS
+npm run build                    # cargo tauri build, for the current OS
 npm run build:apple-silicon      # arm64 macOS only
 ```
-Output: `src-tauri/target/release/bundle/`.
 
-## Using this in your own app
+Output: `src-tauri/target/release/bundle/`, or
+`src-tauri/target/<target>/release/bundle/` for a build with `--target`.
 
-`npx desktop-rails new myapp` scaffolds a `desktop/` project. To get the same one-tag releases,
-copy `release.yml` into your app's `.github/workflows/` and adjust `projectPath` if your Tauri
-project isn't at the repo root. Everything else (matrix, deps, draft release) works as-is.
+### In your own app
 
-## Signing & notarization (recommended before shipping to real users)
+The CLI scaffolds a `desktop/` shell project inside a Rails app. It is not on npm,
+so run it from GitHub:
 
-Unsigned builds trigger Gatekeeper (macOS) and SmartScreen (Windows) warnings. Builds are **unsigned
-by default** so a first release just works. To sign, **uncomment the signing block** in
-`release.yml` and set the matching repo **secrets** (don't leave the env set to empty secrets — an
-empty `APPLE_CERTIFICATE` makes Tauri try, and fail, to import an empty certificate).
+```bash
+npx github:DonsWayo/desktop-rails init .
+```
 
-- **macOS** (Apple Developer ID + notarization): `APPLE_CERTIFICATE`,
-  `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`,
-  `APPLE_TEAM_ID`.
-- **Windows** (Authenticode): configure `bundle.windows.certificateThumbprint` (or a signing
-  command) in `tauri.conf.json`.
+To build installers the same way, copy `release.yml` into your app's
+`.github/workflows/` and set tauri-action's `projectPath` to `desktop`.
+
+### Signing and notarisation
+
+Unsigned builds trigger Gatekeeper (macOS) and SmartScreen (Windows) warnings,
+and on current macOS Gatekeeper refuses them outright (see
+[packaging/DISTRIBUTION.md](../packaging/DISTRIBUTION.md)). Builds are **unsigned
+by default**. To sign, **uncomment the signing block** in `release.yml` and set
+the matching repository **secrets**. Do not leave the variables set to empty
+secrets: an empty `APPLE_CERTIFICATE` makes Tauri try, and fail, to import an
+empty certificate.
+
+- **macOS** (Developer ID + notarisation): `APPLE_CERTIFICATE`,
+  `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`,
+  `APPLE_PASSWORD`, `APPLE_TEAM_ID`.
+- **Windows** (Authenticode): configure `bundle.windows.certificateThumbprint`
+  (or a signing command) in `tauri.conf.json`.
 
 See the Tauri signing guides: [macOS](https://tauri.app/distribute/sign/macos/) ·
 [Windows](https://tauri.app/distribute/sign/windows/).
 
-## Auto-update (optional)
+### Auto-update
 
-`tauri.conf.json` includes the `updater` plugin, but `endpoints` and `pubkey` are empty — updates
-are **off** until you configure them:
-
-1. Generate a keypair: `npx tauri signer generate`.
-2. Put the public key in `tauri.conf.json` → `plugins.updater.pubkey` and add your update-server
-   `endpoints`.
-3. Add the private key + password as the `TAURI_SIGNING_PRIVATE_KEY` /
-   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets (the release workflow already passes them through).
-
-Details: [Tauri updater](https://tauri.app/plugin/updater/).
+The updater plugin is compiled in, and off until the app's
+`desktop-rails.config.json` has an `updater` block with `endpoints` and `pubkey`.
+They live there rather than in `tauri.conf.json` because one shell binary serves
+every app. The key, the manifest and signing an update with
+`packaging/sign-update.sh`: [packaging/AUTO_UPDATE.md](../packaging/AUTO_UPDATE.md).
 
 ## Status
 
-- ✅ Cross-OS installers via one tag (this workflow).
-- ⚙️ Signing / notarization — opt-in (uncomment the block + supply certs).
-- ⚙️ Auto-update — plugin present, endpoints/keys not yet configured.
-
----
-
+- Shell installers for all three platforms from the Release workflow, run by hand.
+- Signing and notarisation: opt-in, and not yet tested with a Developer ID.
+- Auto-update: works once an app configures `updater`; nothing is configured by
+  default.

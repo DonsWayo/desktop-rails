@@ -1,11 +1,21 @@
 # desktop-rails-bridge
 
-Typed ESM imports for the [Desktop Rails](https://github.com/DonsWayo/desktop-rails) JavaScript bridge API.
+Typed ESM imports for the [desktop-rails](https://github.com/DonsWayo/desktop-rails) JavaScript bridge API.
 
 ## Installation
 
-```bash
-npm install desktop-rails-bridge
+This package is not published to npm. You do not need it to use the bridge: the
+shell injects `window.DesktopRails` into every page of your app. It only adds
+module imports and TypeScript types over that global.
+
+To use it, copy `index.js` and `index.d.ts` from
+[`packages/bridge`](https://github.com/DonsWayo/desktop-rails/tree/main/packages/bridge)
+into your app. With importmap-rails, that is `vendor/javascript/desktop-rails-bridge.js`
+and a pin:
+
+```ruby
+# config/importmap.rb
+pin "desktop-rails-bridge"
 ```
 
 ## Usage
@@ -40,7 +50,7 @@ export default class extends stimulusBridge(Controller, "notification") {
 
 ## How it works
 
-The `desktop-rails.js` IIFE is automatically injected by the Tauri shell into every page. This package provides typed ESM exports that reference the same `window.DesktopRails` globals — no bundling or duplication required.
+The shell injects `desktop-rails.js` into every page, in bundled and hosted mode alike. This package re-exports the `window.DesktopRails` globals it defines as ESM, so there is nothing to bundle and no second copy of the bridge.
 
 ## License
 

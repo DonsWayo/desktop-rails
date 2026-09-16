@@ -22,14 +22,14 @@ labels: [bug]
 ## Environment
 
 - **OS + version:** <!-- e.g. macOS 15.1 (arm64), Windows 11, Ubuntu 24.04 -->
-- **Desktop Rails version / commit:**
-- **`desktop-rails` gem version:**
-- **Ruby + Rails version:**
-- **Tauri version:** <!-- from src-tauri/Cargo.toml, or `cargo tauri --version` -->
+- **Mode:** <!-- bundled (bin/rails desktop:package) or hosted (the shell opening a server you run) -->
+- **desktop-rails version or commit:** <!-- the gem's DesktopRails::VERSION, or the commit in Gemfile.lock -->
+- **Ruby + Rails version:** <!-- of the app; a bundled app runs on the Ruby desktop:runtime downloaded -->
+- **Shell:** <!-- downloaded by desktop:shell, or built from a checkout (which commit) -->
 
 ## `desktop-rails.config.json`
 
-<!-- Paste your config (redact anything private). -->
+<!-- Hosted mode: paste your config (redact anything private). A bundled app writes its own. -->
 
 ```json
 
@@ -37,7 +37,8 @@ labels: [bug]
 
 ## Logs / errors
 
-<!-- Console output, Rust panic, Rails log, or Dev Inspector "Messages" panel output. -->
+<!-- Output of the rake task, the Rails log in the app's data directory (log/desktop.log), a Rust panic, or the Dev Inspector "Messages" panel. -->
+
 
 ```
 

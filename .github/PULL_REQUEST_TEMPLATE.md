@@ -1,18 +1,15 @@
-<!-- Thanks for contributing to Desktop Rails! Keep PRs to one concern. -->
+<!-- Thanks for contributing to desktop-rails! Keep PRs to one concern. -->
 
 ## What & why
 
-<!-- What does this change and why? -->
-
-## Related issue
-
-<!-- e.g. Closes #12 -->
+<!-- What does this change and why? If it fixes something you hit, say how to reproduce it. -->
 
 ## Which part does this touch?
 
 - [ ] Tauri/Rust shell (`src-tauri/`)
 - [ ] JS bridge (`src/`, `packages/bridge/`)
 - [ ] Rails gem (`desktop-rails/`)
+- [ ] Packaging (`packaging/`)
 - [ ] CLI (`cli/`)
 - [ ] Docs
 
@@ -20,5 +17,5 @@
 
 - [ ] One concern per PR
 - [ ] Tests added/updated for behaviour changes
-- [ ] Relevant suite passes locally (`bundle exec rake test` / `npm test` / `cargo check`)
+- [ ] Relevant suite passes locally (`bundle exec rake test` / `npm test` / `cargo test`)
 - [ ] Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)

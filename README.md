@@ -19,7 +19,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Tauri-2-blue?logo=tauri" alt="Tauri 2" />
-  <img src="https://img.shields.io/badge/Rails-7+-red?logo=rubyonrails" alt="Rails 7+" />
+  <img src="https://img.shields.io/badge/Rails-7.0_to_8.1-red?logo=rubyonrails" alt="Rails 7.0 to 8.1" />
   <img src="https://img.shields.io/badge/Hotwire-Turbo_Streams_over_SSE-yellow" alt="Hotwire" />
   <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License" />
 </p>
@@ -40,10 +40,9 @@ as its own project.
 
 ## Quick start
 
-You need a Rails 8 app and a Ruby to run its generators. Rails 7 is allowed by
-the gemspec but not tested. No Rust or Node is needed. Your gems are installed
-for the bundled Ruby, so gems with native extensions need the same build tools
-they always do.
+You need a Rails app, 7.0 or newer, and a Ruby (3.2 or newer) to run its
+generators. No Rust or Node is needed. Your gems are installed for the bundled
+Ruby, so gems with native extensions need the same build tools they always do.
 
 ```bash
 bundle add desktop-rails --github DonsWayo/desktop-rails
@@ -69,7 +68,9 @@ pending migrations.
 
 This exact sequence runs on every push: a freshly generated Rails app is
 packaged on macOS, Linux and Windows, and its window is opened on macOS and
-Linux ([fresh-app.yml](.github/workflows/fresh-app.yml)).
+Linux ([fresh-app.yml](.github/workflows/fresh-app.yml)). On macOS and Linux
+that is done once for each of Rails 7.0, 7.1, 7.2 and 8.1, at their latest
+patch releases; on Windows with 8.1.
 
 [examples/notes](examples/notes) is a complete app built this way. It streams
 Turbo updates over server-sent events without Action Cable, and calls the shell
@@ -104,7 +105,7 @@ Known limits:
 
 - **macOS signing.** Bundles are signed ad hoc. Gatekeeper blocks them on other
   people's Macs until they are signed with a Developer ID and notarized; see
-  [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md).
+  [packaging/DISTRIBUTION.md](packaging/DISTRIBUTION.md).
 - **Linux.** The window needs WebKitGTK 4.1 on the user's machine. ARM and musl
   Linux have no prebuilt downloads, so `desktop:runtime` compiles Ruby from
   source there and packages have no window.
@@ -816,12 +817,25 @@ The `desktop-rails` gem gives your Rails app awareness of the desktop shell.
 | Bridge / native comms | Strada | Strada | BridgeComponent |
 | JS injection | WKUserScript | evaluateJavascript | on_page_load + eval |
 | Rails gem | turbo-rails | turbo-rails | desktop-rails |
-| Binary size | System WebKit | ~20 MB | ~5-10 MB |
+| Web engine | System WebKit | System WebView | System webview (WebKit, WebView2, WebKitGTK) |
+| Download size | — | — | Shell 21.6–31.6 MB; a bundled app adds Ruby and its gems |
 | Platforms | iOS, iPadOS | Android | macOS, Windows, Linux |
+
+The sizes are measured rather than estimated. The shells in the
+[v0.3.0.pre2 release](https://github.com/DonsWayo/desktop-rails/releases/tag/v0.3.0.pre2)
+are 21.6 MB (Windows), 22.6 MB (macOS Apple Silicon), 23.8 MB (macOS Intel) and
+31.6 MB (Linux). A bundled app also carries a relocatable Ruby and every gem the
+app needs, so it is far larger: after pruning, a freshly generated Rails 8.1 app
+packages to 167 MB on macOS and 200 MB on Linux in
+[fresh-app.yml](.github/workflows/fresh-app.yml). Hosted mode ships the shell
+alone.
 
 ## Custom App Icon
 
-Your app ships with the default Desktop Rails icon (in `src-tauri/icons/`). To use your own, run
+This applies to the shell you build with Tauri for hosted mode. A bundle from
+`bin/rails desktop:package` does not carry a custom icon yet.
+
+The shell ships with the default desktop-rails icon (in `src-tauri/icons/`). To use your own, run
 Tauri's icon generator on a single source image — it produces every size and format
 (`.png`, macOS `.icns`, Windows `.ico`, and mobile sets):
 
@@ -832,21 +846,25 @@ npm run tauri icon path/to/your-icon.png
 
 Use a **square PNG, 1024×1024, with a transparent background**. The generator overwrites
 `src-tauri/icons/`, and `tauri.conf.json`'s `bundle.icon` already points at those files — so the next
-`cargo tauri build` (or tagged release) uses your icon automatically. No config changes needed.
+`cargo tauri build` (or a run of the Release workflow) uses your icon automatically. No config changes needed.
 
 Prefer to do it by hand? Replace the files in `src-tauri/icons/` listed under `bundle.icon`.
 
-**Starting a new app?** Brand it from the start — the CLI generates your icon during scaffolding:
+**Starting a new app?** Brand it from the start — the CLI generates your icon during scaffolding.
+The CLI is not on npm, so run it from GitHub:
 
 ```bash
-npx desktop-rails new myapp --icon ./logo.png
+npx github:DonsWayo/desktop-rails new myapp --icon ./logo.png
 ```
 
 ## Distribution
 
-Build native installers for macOS, Windows, and Linux from **Actions → Release → Run workflow** —
-the [release workflow](.github/workflows/release.yml) builds each OS and attaches the installers
-to a draft GitHub Release.
+A bundled app is built by `bin/rails desktop:package` (see [Quick start](#quick-start)); the bundle
+in `.desktop-rails/dist/` is what you hand out.
+
+For hosted mode, build installers of the shell for macOS, Windows, and Linux from
+**Actions → Release → Run workflow** — the [release workflow](.github/workflows/release.yml) builds
+each OS and attaches the installers to a draft GitHub Release.
 
 Pushing a `v*` tag named after the gem version publishes something else: the prebuilt interpreter
 and shell that `bin/rails desktop:runtime` and `desktop:shell` download, built by

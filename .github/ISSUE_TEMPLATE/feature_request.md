@@ -1,13 +1,13 @@
 ---
 name: Feature request
-about: Suggest an idea or improvement for Desktop Rails
+about: Suggest an idea or improvement for desktop-rails
 title: "[Feature]: "
 labels: [enhancement]
 ---
 
 ## Problem / motivation
 
-<!-- What are you trying to do that Desktop Rails makes hard or impossible today? -->
+<!-- What are you trying to do that desktop-rails makes hard or impossible today? -->
 
 ## Proposed solution
 
@@ -20,6 +20,7 @@ labels: [enhancement]
 - [ ] Tauri/Rust shell (`src-tauri/`)
 - [ ] JS bridge (`src/`, `packages/bridge/`)
 - [ ] Rails gem (`desktop-rails/`)
+- [ ] Packaging (`packaging/`)
 - [ ] CLI (`cli/`)
 - [ ] Docs
 - [ ] Bridge component (e.g. notification, menu, tray)

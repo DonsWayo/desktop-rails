@@ -1,8 +1,13 @@
 # desktop-rails
 
-Server-side Rails integration for [Desktop Rails](https://github.com/DonsWayo/desktop-rails) — the Turbo Native pattern for desktop apps.
+The Rails half of [desktop-rails](https://github.com/DonsWayo/desktop-rails), which
+ships a Rails app as a desktop app.
 
-This gem gives your Rails app awareness of the Desktop Rails shell, exactly like `turbo-rails` does for Turbo Native mobile apps.
+This gem packages your app, with its own Ruby, into a native window
+(`bin/rails desktop:package`), and makes the app aware of that window: detection,
+view helpers, path configuration, native calls from Ruby, and Turbo Streams
+without Action Cable. The same helpers work for a server you host yourself and
+open in the window instead.
 
 ## Installation
 
@@ -17,7 +22,7 @@ bin/rails generate desktop_rails:install
 
 ### Detection
 
-The gem detects Desktop Rails requests via the User-Agent header (`Desktop Rails/0.0.1 (macOS; aarch64)`).
+The gem detects Desktop Rails requests via the User-Agent header (`Desktop Rails/0.3.0-pre.2 (macOS; aarch64)`, where the version is the shell's).
 
 ```ruby
 # In controllers
@@ -248,8 +253,11 @@ The app id defaults to `dev.desktop-rails.<your-app-name>`; set
 
 ## Requirements
 
-- Ruby >= 3.3
-- Rails >= 7.0
+- Ruby >= 3.2 to run the generator and the tasks. The packaged app runs on the
+  Ruby 3.4 that `desktop:runtime` downloads.
+- Rails >= 7.0. CI generates a new app with the latest 7.0, 7.1, 7.2 and 8.1
+  patch releases, packages it, and opens its window on macOS and Linux
+  ([fresh-app.yml](../.github/workflows/fresh-app.yml)).
 - turbo-rails >= 1.0
 
 ## License
