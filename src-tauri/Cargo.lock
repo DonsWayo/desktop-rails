@@ -924,7 +924,7 @@ dependencies = [
 
 [[package]]
 name = "desktop-rails"
-version = "0.3.0-pre.1"
+version = "0.3.0-pre.2"
 dependencies = [
  "base64 0.22.1",
  "cocoa",

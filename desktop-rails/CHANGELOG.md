@@ -9,7 +9,9 @@
   `desktop-rails`, and environment variables start with `DESKTOP_RAILS_`. This
   fork of aguspe/turbo_desktop continues as its own project; the MIT notices of
   the original author are kept.
-- Version 0.3.0.pre1 (Cargo and npm: 0.3.0-pre.1).
+- Version 0.3.0.pre2 (Cargo and npm: 0.3.0-pre.2). The 0.3.0.pre1 shell
+  panics on Linux without a tray library and fetches its path configuration
+  from port 0; pre2 is the first release carrying both fixes.
 - `release.yml`, which builds installers of the bare shell, runs from the
   Actions tab only. `v*` tags belong to `release-prebuilt.yml`, and two
   workflows creating a release for one tag would race.

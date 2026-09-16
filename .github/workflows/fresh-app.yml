@@ -49,15 +49,13 @@ jobs:
       - uses: actions/checkout@v4
 
       # What a Linux desktop has: a display to open a window on, and the webview
-      # the shell links against. Also a tray library, which the 0.3.0.pre1
-      # shell panics without; the shell built from this commit does not, and
-      # the example below runs with it removed to prove that.
+      # the shell links against. No tray library: the downloaded shell must
+      # start without one, as it will on a minimal desktop.
       - name: Linux desktop libraries
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb libwebkit2gtk-4.1-0 libgtk-3-0 rsync \
-            libayatana-appindicator3-1
+          sudo apt-get install -y -qq xvfb libwebkit2gtk-4.1-0 libgtk-3-0 rsync
 
       - uses: ruby/setup-ruby@v1
         with:
