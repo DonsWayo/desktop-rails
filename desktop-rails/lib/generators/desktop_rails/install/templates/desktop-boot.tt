@@ -44,6 +44,12 @@ $stdout.reopen($stderr)
 Dir.chdir(APP_ROOT)
 app, _ = Rack::Builder.parse_file(File.join(APP_ROOT, "config.ru"))
 
+# Bring the app's databases up to date before Puma accepts a request. A packaged
+# app on a fresh machine starts with an empty data directory, and after an update
+# with last version's schema. Guarded, because a bundle may carry an app that
+# does not use the gem. See DesktopRails::Database.
+DesktopRails::Database.prepare! if defined?(DesktopRails::Database)
+
 config = Puma::Configuration.new do |c|
   c.bind "tcp://127.0.0.1:0"     # the OS picks, which removes the pick-a-port race
   c.app app

@@ -64,6 +64,18 @@ Rails.application.configure do
   # writing inside a read-only, signed application.
   config.assets.compile = false if config.respond_to?(:assets)
 
+  # The app migrates its own databases as it starts (DesktopRails::Database), and
+  # dumping the schema afterwards would write db/schema.rb inside the bundle.
+  if config.respond_to?(:active_record)
+    config.active_record.dump_schema_after_migration = false
+  end
+
+  # Uploads go to the data directory too. The install generator writes this
+  # service into config/storage.yml whenever the app has one.
+  if config.respond_to?(:active_storage) && File.exist?(File.expand_path("../storage.yml", __dir__))
+    config.active_storage.service = :desktop
+  end
+
   # Logs go to the data directory. stdout is reserved: boot writes exactly one
   # line of handshake there and nothing else may ever touch it.
   config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info").to_sym

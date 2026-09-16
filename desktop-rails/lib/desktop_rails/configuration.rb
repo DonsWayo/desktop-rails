@@ -18,7 +18,7 @@ module DesktopRails
 
   class Configuration
     attr_accessor :path_configuration, :user_agent_pattern, :inspector_enabled,
-                  :inspector_mount_path, :variant
+                  :inspector_mount_path, :variant, :prepare_database
 
     # Packaging. Every one of these is nil by default and resolved at the point
     # of use, because the sensible answer depends on the Rails app and is not
@@ -37,6 +37,10 @@ module DesktopRails
       # Where the engine is mounted; the inspector meta tag advertises assets
       # under this prefix. Override if you mount the engine elsewhere.
       @inspector_mount_path = "/desktop-rails"
+      # Create, load and migrate the app's databases when the packaged app
+      # boots. See DesktopRails::Database. Turn it off only for an app that
+      # manages its own schema some other way.
+      @prepare_database = true
 
       @app_name = nil
       @app_id = nil

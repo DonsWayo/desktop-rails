@@ -3,6 +3,7 @@ require "desktop_rails/engine" if defined?(Rails)
 require "desktop_rails/configuration"
 require "desktop_rails/detection"
 require "desktop_rails/paths"
+require "desktop_rails/database"
 
 require "desktop_rails/native"
 
