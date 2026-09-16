@@ -79,6 +79,7 @@ fn main() {
         .manage(window::LastWindowSize::default())
         .manage(window::FocusTracker::default())
         .manage(security::UserGrants::default())
+        .manage(security::AdmittedOrigins::default())
         .manage(deep_link::PendingOpenedFiles::default())
         // Files dragged from the Finder/Explorer onto any window reach the web
         // layer as bridge events, with their paths granted for the session.
@@ -148,6 +149,13 @@ fn main() {
             }
             app.manage(config_store);
             app.manage(app_config);
+
+            // The configured origin, and only it, may call the app's commands.
+            // Granted before any window exists, so the first page load cannot
+            // race it.
+            if let Err(e) = security::admit_origin(app, &server_url) {
+                log::warn!("{}", e);
+            }
 
             let app_handle = app.handle().clone();
 
@@ -242,6 +250,11 @@ fn main() {
                     ready_user_agent.clone(),
                     ready_cache_dir.clone(),
                 );
+                // Trusted before the window goes there, or the app's first page
+                // would find every command refused.
+                if let Err(e) = security::admit_origin(&waiting, &payload) {
+                    log::warn!("{}", e);
+                }
                 if let Ok(target) = payload.parse::<url::Url>() {
                     if let Some(window) = waiting.get_webview_window("main") {
                         log::info!("The app server is up; moving the window to {}", target);
@@ -484,6 +497,12 @@ fn return_to_app_if_on_error_page(app: &tauri::AppHandle, url: &url::Url) {
 
     if !security::is_bundled_app_origin(&current) {
         return;
+    }
+
+    // Normally granted already, when the server announced itself. Repeating it
+    // is free and covers an announcement that arrived before anyone listened.
+    if let Err(e) = security::admit_origin(app, url.as_str()) {
+        log::warn!("{}", e);
     }
 
     log::info!("Returning to {}", url);

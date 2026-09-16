@@ -355,6 +355,8 @@ fn drag_drop_payload(
 /// The system clipboard, for the cases the webview cannot reach: reading what
 /// another application put there, and writing without a user gesture. The
 /// webview's own copy/paste keeps working for everything else.
+///
+/// Reading is off unless the config turns it on — see `ClipboardConfig`.
 async fn handle_clipboard(
     app: &tauri::AppHandle,
     message: &BridgeMessage,
@@ -362,11 +364,17 @@ async fn handle_clipboard(
     use tauri_plugin_clipboard_manager::ClipboardExt;
 
     match message.event.as_str() {
-        "read-text" | "read_text" => match app.clipboard().read_text() {
-            Ok(text) => Ok(serde_json::json!({ "status": "ok", "text": text })),
-            // An empty or non-text clipboard is a normal state, not a failure.
-            Err(_) => Ok(serde_json::json!({ "status": "ok", "text": null })),
-        },
+        "read-text" | "read_text" => {
+            use tauri::Manager;
+            let config = app.state::<crate::window::DesktopRailsConfig>();
+            crate::security::authorize_clipboard_read(&config.clipboard)
+                .inspect_err(|e| log::warn!("Clipboard: {}", e))?;
+            match app.clipboard().read_text() {
+                Ok(text) => Ok(serde_json::json!({ "status": "ok", "text": text })),
+                // An empty or non-text clipboard is a normal state, not a failure.
+                Err(_) => Ok(serde_json::json!({ "status": "ok", "text": null })),
+            }
+        }
         "write-text" | "write_text" => {
             let text = message.data["text"]
                 .as_str()

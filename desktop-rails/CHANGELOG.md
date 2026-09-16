@@ -2,6 +2,46 @@
 
 ## Unreleased
 
+### Security — breaking
+
+A page the window loads is code the shell does not control: in hosted mode it
+is a production website, and an XSS on it must not become code execution or
+file access on the machines running the app. So everything that reaches the
+machine is now off until `desktop-rails.config.json` turns it on, and only the
+configured origin can call the bridge at all. These need a shell built from
+this release; the prebuilt shell of 0.3.0.pre2 still has the old defaults.
+
+- **The `shell` component is off by default.** It used to run any command a
+  page sent, through a login shell. Enable it with
+  `"shell": { "enabled": true, "allowed_commands": ["git status"] }`. The
+  command line must be covered by an entry (whole, or as a prefix up to a word
+  boundary, like `sudo`), the command may carry no shell metacharacters,
+  environment variables a page sets must be listed in `allowed_env`, and a
+  `cwd` must be inside the filesystem scope. Apps that spawn processes from
+  JavaScript need this block, or every call now fails with "The shell bridge is
+  disabled".
+- **The `filesystem` component has no default root.** An empty
+  `allowed_roots` used to mean the app data directory, which on Linux is also
+  where the webview keeps the app's cookies and local storage. It now means
+  only what the user picked in a dialog or dropped on a window. Write
+  `"allowed_roots": ["$APP_DATA"]` to keep the old behaviour.
+- **Reading the clipboard is off by default.** A browser only hands a page the
+  clipboard on a paste the user makes. Enable `clipboard.readText()` with
+  `"clipboard": { "read": true }`. Writing is unchanged.
+- **Only the configured origin may call the shell's commands, judged by the
+  frame that sent the request.** `capabilities/main.json` used to admit every
+  `https://` origin and every loopback port, including to plugin commands, and
+  the origin check looked only at the page the webview was showing. The static
+  capability now covers the bundled pages alone; the app origin is granted at
+  runtime (and a bundled server's announced address when it announces it), so
+  an iframe of another origin, a page reached through `navigation.internal_hosts`,
+  an `http://` downgrade of an `https://` app and lookalike hosts are refused
+  before any command runs. Remote pages can no longer call plugin commands
+  (`plugin:dialog|…`, `plugin:notification|…`, `plugin:shell|open`, the updater's
+  JS API) directly. `desktop-rails.js` never did; code that called
+  `__TAURI_INTERNALS__.invoke("plugin:…")` from a page has to go through the
+  bridge instead.
+
 ### Changed
 
 - The default app id is `dev.desktop-rails.<app>` instead of

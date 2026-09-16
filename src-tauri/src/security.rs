@@ -1,12 +1,16 @@
 //! Trust boundary for the native bridge.
 //!
 //! Everything the web layer can reach — shell, filesystem, sudo — funnels through
-//! `bridge::handle_bridge_message`, and Tauri's ACL does not cover app-defined
-//! commands. These helpers are the enforcement point instead: they decide which
-//! origin may talk to the bridge, which paths the filesystem component may touch,
-//! and which commands may be run with administrator privileges.
+//! `bridge::handle_bridge_message`. Two layers decide who may call it. Tauri's
+//! ACL checks the origin of the frame that sent each IPC request, before any
+//! command runs; the app's own origin is granted at runtime, because it is only
+//! known once desktop-rails.config.json has been read (see [`admit_origin`]).
+//! Each command then checks the page its webview is showing as well
+//! ([`ensure_trusted_caller`]). The helpers below also decide which paths the
+//! filesystem component may touch and which commands the shell and sudo
+//! components may run.
 
-use crate::window::{FilesystemConfig, SudoConfig};
+use crate::window::{ClipboardConfig, FilesystemConfig, ShellConfig, SudoConfig};
 use std::ffi::OsString;
 use std::path::{Component, Path, PathBuf};
 use url::Url;
@@ -27,6 +31,106 @@ const DENIED_COMPONENTS: &[&str] = &[
 const SHELL_METACHARACTERS: &[char] = &[
     ';', '&', '|', '`', '$', '<', '>', '(', ')', '\\', '"', '\'', '\n', '\r',
 ];
+
+/// Every command a page from the app's origin may call.
+///
+/// Granted to that one origin at runtime rather than to a URL pattern in
+/// capabilities/main.json. A static capability has to be written before anyone
+/// knows where the app lives, so it used to admit every https origin and every
+/// port on loopback, and the origin check was left to each command, which can
+/// only see the page the webview shows. Tauri's ACL sees the frame that actually
+/// sent the request, so an embedded frame or a page that has just navigated
+/// away cannot borrow the app's standing.
+///
+/// Plugin commands (dialogs, notifications, the updater's JS API, opening URLs)
+/// are deliberately absent: nothing a remote page runs calls them directly, and
+/// the bridge reaches the same features under the policy in the config.
+pub const APP_ORIGIN_PERMISSIONS: &[&str] = &[
+    "allow-handle-visit-proposal",
+    "allow-update-window-title",
+    "allow-page-loaded",
+    "allow-page-loading",
+    "allow-close-modal",
+    "allow-dismiss-modal",
+    "allow-handle-bridge-message",
+    "allow-send-bridge-response",
+    "allow-retry-connection",
+    "allow-get-window-info",
+];
+
+/// Window labels the app's own pages are shown in.
+pub const APP_WINDOWS: &[&str] = &["main", "modal-*", "window-*"];
+
+/// The ACL pattern that admits exactly the origin of `server_url`: its scheme,
+/// its host and its port, any path.
+///
+/// `None` for anything that is not an http(s) URL with a host, which grants
+/// nothing rather than something broader.
+pub fn origin_pattern(server_url: &str) -> Option<String> {
+    let url = Url::parse(server_url).ok()?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return None;
+    }
+    let host = url.host_str().filter(|h| !h.is_empty())?;
+    // Url drops a port that is the scheme's default, which is also how the
+    // pattern has to spell it: the page's own URL never carries an explicit
+    // :443 either.
+    let port = url.port().map(|p| format!(":{p}")).unwrap_or_default();
+    Some(format!("{}://{}{}/*", url.scheme(), host, port))
+}
+
+/// The runtime capability for one app origin.
+pub fn app_origin_capability(server_url: &str) -> Option<tauri::ipc::CapabilityBuilder> {
+    let pattern = origin_pattern(server_url)?;
+    let capability = APP_ORIGIN_PERMISSIONS.iter().fold(
+        tauri::ipc::CapabilityBuilder::new(format!("app-origin {pattern}"))
+            .remote(pattern)
+            .local(false)
+            .windows(APP_WINDOWS.iter().copied()),
+        |capability, permission| capability.permission(*permission),
+    );
+    Some(capability)
+}
+
+/// Origins already granted, so an address announced again after a restart does
+/// not stack up identical capabilities.
+#[derive(Default)]
+pub struct AdmittedOrigins(std::sync::Mutex<Vec<String>>);
+
+/// Let pages from the origin of `server_url` call the app's commands.
+///
+/// Called once for the configured `server_url`, and again for the address a
+/// bundled app's server announces, since that is only known once it is up.
+pub fn admit_origin<R: tauri::Runtime, M: tauri::Manager<R>>(
+    manager: &M,
+    server_url: &str,
+) -> Result<(), String> {
+    let Some(pattern) = origin_pattern(server_url) else {
+        return Err(format!(
+            "'{}' is not an http or https URL, so no page may use the bridge",
+            server_url
+        ));
+    };
+
+    if let Some(admitted) = manager.try_state::<AdmittedOrigins>() {
+        let mut admitted = admitted
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if admitted.contains(&pattern) {
+            return Ok(());
+        }
+        admitted.push(pattern.clone());
+    }
+
+    let capability = app_origin_capability(server_url)
+        .ok_or_else(|| format!("No capability could be built for '{}'", server_url))?;
+    manager
+        .add_capability(capability)
+        .map_err(|e| format!("Could not trust {}: {}", pattern, e))?;
+    log::info!("Bridge: pages from {} may call the app's commands", pattern);
+    Ok(())
+}
 
 /// True when `candidate` shares scheme, host and port with the configured server.
 ///
@@ -57,11 +161,14 @@ pub fn is_bundled_app_origin(candidate: &Url) -> bool {
 
 /// Reject a command call coming from any page that is not the app origin.
 ///
-/// Tauri's ACL only covers plugin commands, so every app-defined command that
-/// can act on the host has to ask for this itself.
-pub fn ensure_trusted_caller(
-    app: &tauri::AppHandle,
-    webview: &tauri::Webview,
+/// Every app-defined command that can act on the host asks for this itself.
+/// It is the second layer. The ACL has already refused a request whose own
+/// frame is not the app origin; this refuses one whose webview is no longer
+/// showing the app, such as a request that was still on its way when the page
+/// navigated somewhere else.
+pub fn ensure_trusted_caller<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    webview: &tauri::Webview<R>,
 ) -> Result<(), String> {
     use tauri::Manager;
 
@@ -268,19 +375,30 @@ pub fn resolve_in_scope(raw: &str, roots: &[PathBuf]) -> Result<PathBuf, String>
     }
 }
 
+/// Names the app's own data directory in `allowed_roots`.
+pub const APP_DATA_TOKEN: &str = "$APP_DATA";
+
 /// Allowed filesystem roots for the current configuration.
 ///
-/// An empty `allowed_roots` means "app data directory only" — the bridge is
-/// closed by default and the app opts into wider access explicitly.
+/// An empty `allowed_roots` means no roots: the bridge reaches only what the
+/// user grants through a dialog or a drop. It used to mean the app data
+/// directory, which on Linux is also where the webview keeps its cookies and
+/// local storage, so any script on the app origin could read the session
+/// store. An app that wants that directory asks for it with `$APP_DATA`.
 pub fn allowed_roots(app_data_dir: Option<PathBuf>, config: &FilesystemConfig) -> Vec<PathBuf> {
-    if config.allowed_roots.is_empty() {
-        return app_data_dir.into_iter().collect();
-    }
-
     config
         .allowed_roots
         .iter()
-        .filter_map(|root| expand_tilde(root))
+        .filter_map(|root| {
+            let root = root.trim();
+            if root == APP_DATA_TOKEN {
+                return app_data_dir.clone();
+            }
+            if let Some(rest) = root.strip_prefix(&format!("{APP_DATA_TOKEN}/")) {
+                return app_data_dir.as_ref().map(|dir| dir.join(rest));
+            }
+            expand_tilde(root)
+        })
         .filter(|root| root.is_absolute())
         .collect()
 }
@@ -366,44 +484,138 @@ pub fn resolve_with_grants(
 /// Metacharacters are refused outright so an allowlisted prefix cannot be
 /// extended into a second command.
 pub fn authorize_sudo_command(config: &SudoConfig, command: &str) -> Result<(), String> {
-    if !config.enabled {
-        return Err(
-            "The sudo bridge is disabled. Enable it in desktop-rails.config.json with \
-             \"sudo\": { \"enabled\": true, \"allowed_commands\": [...] }"
-                .to_string(),
-        );
+    let command = command_gate("sudo", config.enabled, &config.allowed_commands, command)?;
+    allowlisted("sudo", &config.allowed_commands, command)
+}
+
+/// The checks the sudo and shell allowlists share, before any matching: the
+/// component is on, the command is not empty, it cannot be split into a second
+/// command, and there is an allowlist to match against at all.
+fn command_gate<'a>(
+    component: &str,
+    enabled: bool,
+    allowed_commands: &[String],
+    command: &'a str,
+) -> Result<&'a str, String> {
+    if !enabled {
+        return Err(format!(
+            "The {component} bridge is disabled. Enable it in desktop-rails.config.json with \
+             \"{component}\": {{ \"enabled\": true, \"allowed_commands\": [...] }}"
+        ));
     }
 
     let command = command.trim();
     if command.is_empty() {
-        return Err("Sudo command is empty".to_string());
+        return Err(format!("The {component} command is empty"));
     }
 
     if let Some(found) = command.chars().find(|c| SHELL_METACHARACTERS.contains(c)) {
         return Err(format!(
-            "Refused: sudo command contains the shell metacharacter '{}'",
-            found
+            "Refused: {component} command contains the shell metacharacter '{found}'"
         ));
     }
 
-    if config.allowed_commands.is_empty() {
-        return Err(
-            "Refused: no allowed_commands are configured for the sudo bridge".to_string(),
-        );
+    if allowed_commands.is_empty() {
+        return Err(format!(
+            "Refused: no allowed_commands are configured for the {component} bridge"
+        ));
     }
 
-    let allowed = config.allowed_commands.iter().any(|entry| {
+    Ok(command)
+}
+
+/// Whether an allowlist entry covers `line`, whole or up to a word boundary.
+fn allowlisted(component: &str, allowed_commands: &[String], line: &str) -> Result<(), String> {
+    let allowed = allowed_commands.iter().any(|entry| {
         let entry = entry.trim();
-        !entry.is_empty() && (command == entry || command.starts_with(&format!("{} ", entry)))
+        !entry.is_empty() && (line == entry || line.starts_with(&format!("{} ", entry)))
     });
 
     if allowed {
         Ok(())
     } else {
-        Err(format!(
-            "Refused: '{}' is not in the sudo allowlist",
-            command
-        ))
+        Err(format!("Refused: '{line}' is not in the {component} allowlist"))
+    }
+}
+
+/// Decide whether a page may run `command` with `args` as the user.
+///
+/// The command is held to the same rules as sudo: no metacharacters, and the
+/// command line must be covered by an allowlist entry. Arguments are quoted one
+/// by one before they reach the shell, so on Unix they may hold anything. `cmd`
+/// has no quoting that survives a double quote or a `%`, so on Windows an
+/// argument carrying one is refused instead.
+pub fn authorize_shell_command(
+    config: &ShellConfig,
+    command: &str,
+    args: &[String],
+) -> Result<(), String> {
+    authorize_shell_command_for(config, command, args, cfg!(windows))
+}
+
+fn authorize_shell_command_for(
+    config: &ShellConfig,
+    command: &str,
+    args: &[String],
+    through_cmd: bool,
+) -> Result<(), String> {
+    let command = command_gate("shell", config.enabled, &config.allowed_commands, command)?;
+
+    if through_cmd {
+        if let Some(arg) = args.iter().find(|arg| unsafe_for_cmd(arg)) {
+            return Err(format!(
+                "Refused: the argument '{arg}' cannot be passed through cmd safely"
+            ));
+        }
+    }
+
+    let line = std::iter::once(command)
+        .chain(args.iter().map(String::as_str))
+        .collect::<Vec<_>>()
+        .join(" ");
+    allowlisted("shell", &config.allowed_commands, &line)
+}
+
+/// Whether `cmd /C` could be talked out of its quoting by this argument.
+fn unsafe_for_cmd(arg: &str) -> bool {
+    arg.chars()
+        .any(|c| matches!(c, '"' | '%' | '!' | '^' | '\n' | '\r'))
+}
+
+/// Decide whether a page may set these environment variables for a command.
+///
+/// Only names the app listed. Anything else could change which program an
+/// allowlisted command really runs: `PATH` picks the binary, `BASH_ENV` and
+/// `ENV` run a script first, `LD_PRELOAD` and `DYLD_INSERT_LIBRARIES` load code
+/// into it.
+pub fn authorize_shell_env<'a>(
+    config: &ShellConfig,
+    names: impl IntoIterator<Item = &'a str>,
+) -> Result<(), String> {
+    for name in names {
+        let listed = config
+            .allowed_env
+            .iter()
+            .any(|allowed| allowed.trim().eq_ignore_ascii_case(name));
+        if !listed {
+            return Err(format!(
+                "Refused: the environment variable '{name}' is not in shell.allowed_env"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Decide whether a page may read the system clipboard.
+pub fn authorize_clipboard_read(config: &ClipboardConfig) -> Result<(), String> {
+    if config.read {
+        Ok(())
+    } else {
+        Err(
+            "Refused: reading the clipboard is off. Enable it in desktop-rails.config.json \
+             with \"clipboard\": { \"read\": true }"
+                .to_string(),
+        )
     }
 }
 
@@ -739,10 +951,32 @@ mod tests {
     }
 
     #[test]
-    fn filesystem_defaults_to_the_app_data_dir() {
+    fn filesystem_has_no_roots_unless_the_config_names_some() {
+        // It used to default to the app data directory, which on Linux is also
+        // where the webview keeps the app's cookies and local storage.
         let app_data = PathBuf::from("/tmp/app-data");
         let roots = allowed_roots(Some(app_data.clone()), &FilesystemConfig::default());
-        assert_eq!(roots, vec![app_data]);
+        assert!(roots.is_empty(), "no configured roots must mean none: {roots:?}");
+
+        let err = resolve_in_scope("/tmp/app-data/Cookies", &roots)
+            .expect_err("nothing is reachable without a root or a grant");
+        assert!(err.contains("no allowed roots"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn the_app_data_directory_is_a_root_when_asked_for_by_name() {
+        let app_data = PathBuf::from("/tmp/app-data");
+        let config = FilesystemConfig {
+            allowed_roots: vec!["$APP_DATA".into(), "$APP_DATA/exports".into()],
+        };
+
+        assert_eq!(
+            allowed_roots(Some(app_data.clone()), &config),
+            vec![app_data.clone(), app_data.join("exports")]
+        );
+        // Without a data directory to stand for, the token grants nothing
+        // rather than a relative path that would resolve somewhere else.
+        assert!(allowed_roots(None, &config).is_empty());
     }
 
     #[test]
@@ -826,5 +1060,369 @@ mod tests {
                 Err(e) => e,
             }
         }
+    }
+}
+
+/// What a page gets from a config that says nothing about policy, which is
+/// what a hosted app's minimal config looks like. Each of these used to be, or
+/// could easily become, a way for a script on the app's origin — an XSS, say —
+/// to run code or read files on the machine.
+#[cfg(test)]
+mod default_policy_tests {
+    use super::*;
+    use crate::window::{parse_config, DesktopRailsConfig};
+
+    fn minimal() -> DesktopRailsConfig {
+        parse_config(r#"{"server_url":"https://app.example.com"}"#).expect("a minimal config")
+    }
+
+    #[test]
+    fn the_shell_is_off() {
+        let config = minimal();
+        assert!(!config.shell.enabled);
+
+        let err = authorize_shell_command(&config.shell, "echo", &["hi".into()])
+            .expect_err("a config that does not enable the shell must not run commands");
+        assert!(err.contains("shell bridge is disabled"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn sudo_is_off() {
+        let err = authorize_sudo_command(&minimal().sudo, "softwareupdate -l")
+            .expect_err("a config that does not enable sudo must not elevate");
+        assert!(err.contains("disabled"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn the_filesystem_reaches_nothing_the_user_did_not_grant() {
+        let config = minimal();
+        let data_dir = std::env::temp_dir().join("desktop-rails-default-policy");
+        let roots = allowed_roots(Some(data_dir.clone()), &config.filesystem);
+
+        for path in [
+            data_dir.join("Cookies").to_string_lossy().to_string(),
+            "~/Documents/notes.txt".to_string(),
+            "/etc/hosts".to_string(),
+        ] {
+            assert!(
+                resolve_with_grants(&path, &roots, &UserGrants::default()).is_err(),
+                "{path} must be refused without a root or a grant"
+            );
+        }
+    }
+
+    #[test]
+    fn reading_the_clipboard_is_off() {
+        let err = authorize_clipboard_read(&minimal().clipboard)
+            .expect_err("a config that does not enable clipboard reads must refuse them");
+        assert!(err.contains("clipboard"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn only_the_configured_origin_is_admitted() {
+        assert_eq!(
+            origin_pattern(&minimal().server_url).as_deref(),
+            Some("https://app.example.com/*")
+        );
+    }
+}
+
+#[cfg(test)]
+mod shell_policy_tests {
+    use super::*;
+
+    fn allowing(commands: &[&str], env: &[&str]) -> ShellConfig {
+        ShellConfig {
+            enabled: true,
+            allowed_commands: commands.iter().map(|c| c.to_string()).collect(),
+            allowed_env: env.iter().map(|c| c.to_string()).collect(),
+        }
+    }
+
+    fn args(list: &[&str]) -> Vec<String> {
+        list.iter().map(|a| a.to_string()).collect()
+    }
+
+    #[test]
+    fn enabling_without_an_allowlist_still_runs_nothing() {
+        let err = authorize_shell_command(&allowing(&[], &[]), "echo", &[]).unwrap_err();
+        assert!(err.contains("no allowed_commands"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn a_listed_command_runs_with_its_arguments() {
+        let config = allowing(&["git status", "echo"], &[]);
+        assert!(authorize_shell_command(&config, "git", &args(&["status", "--short"])).is_ok());
+        assert!(authorize_shell_command(&config, "echo", &args(&["hello"])).is_ok());
+    }
+
+    #[test]
+    fn an_unlisted_command_is_refused() {
+        let config = allowing(&["git status"], &[]);
+        for (command, arguments) in [
+            ("git", args(&["push", "--force"])),
+            ("curl", args(&["https://evil.example.com/x.sh"])),
+            ("gitk", args(&[])),
+        ] {
+            let err = authorize_shell_command(&config, command, &arguments).unwrap_err();
+            assert!(err.contains("not in the shell allowlist"), "{command}: {err}");
+        }
+    }
+
+    #[test]
+    fn the_command_cannot_be_chained_into_another() {
+        let config = allowing(&["echo"], &[]);
+        for command in ["echo hi; rm -rf ~", "echo $(id)", "echo `id`", "echo hi | sh"] {
+            let err = authorize_shell_command(&config, command, &[]).unwrap_err();
+            assert!(err.contains("metacharacter"), "{command}: {err}");
+        }
+    }
+
+    #[test]
+    fn quoted_arguments_may_hold_anything_on_unix() {
+        // Each argument is single-quoted before it reaches the shell, so these
+        // are text, not syntax.
+        let config = allowing(&["echo"], &[]);
+        let arguments = args(&["a; b $(c) `d`"]);
+        assert!(authorize_shell_command_for(&config, "echo", &arguments, false).is_ok());
+    }
+
+    #[test]
+    fn arguments_that_escape_cmd_quoting_are_refused_on_windows() {
+        let config = allowing(&["echo"], &[]);
+        for arg in ["\"&calc&\"", "%COMSPEC%", "!x!", "a^&b", "line\r\nnext"] {
+            let err = authorize_shell_command_for(&config, "echo", &args(&[arg]), true).unwrap_err();
+            assert!(err.contains("through cmd"), "{arg:?}: {err}");
+        }
+        let plain = args(&["C:\\Users\\dev", "a b"]);
+        assert!(authorize_shell_command_for(&config, "echo", &plain, true).is_ok());
+    }
+
+    #[test]
+    fn only_listed_environment_variables_may_be_set() {
+        let config = allowing(&["echo"], &["GREETING"]);
+        assert!(authorize_shell_env(&config, ["GREETING"]).is_ok());
+
+        for name in ["PATH", "BASH_ENV", "ENV", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES"] {
+            let err = authorize_shell_env(&config, [name]).unwrap_err();
+            assert!(err.contains("allowed_env"), "{name}: {err}");
+        }
+    }
+}
+
+/// The origin check, driven through Tauri's own IPC path on the mock runtime.
+///
+/// Every request here carries the URL of the frame that sent it, which is what
+/// the ACL judges, and lands in a command that runs the same
+/// [`ensure_trusted_caller`] the real commands run against the page the webview
+/// is showing. The context is the app's real one, so the permissions granted at
+/// runtime are the ones build.rs generates.
+#[cfg(test)]
+mod origin_tests {
+    use super::*;
+    use tauri::test::MockRuntime;
+    use tauri::Manager;
+
+    /// Stands in for the real command, which needs the Wry runtime to run.
+    /// Same name, so the permission Tauri checks is the real one.
+    #[tauri::command]
+    fn handle_bridge_message<R: tauri::Runtime>(
+        app: tauri::AppHandle<R>,
+        webview: tauri::Webview<R>,
+    ) -> Result<&'static str, String> {
+        ensure_trusted_caller(&app, &webview)?;
+        Ok("reached the bridge")
+    }
+
+    struct Shell {
+        app: tauri::App<MockRuntime>,
+        window: tauri::WebviewWindow<MockRuntime>,
+    }
+
+    /// A shell configured with `server_url`, its main window showing `showing`.
+    fn shell(server_url: &str, showing: &str) -> Shell {
+        let app = tauri::test::mock_builder()
+            .manage(AdmittedOrigins::default())
+            .manage(crate::server::ServerAddress::default())
+            .invoke_handler(tauri::generate_handler![handle_bridge_message])
+            .build(tauri::generate_context!("tauri.conf.json", test = true))
+            .expect("the mock shell should build");
+        app.manage(
+            crate::window::parse_config(&format!(r#"{{"server_url":"{server_url}"}}"#))
+                .expect("a minimal config"),
+        );
+        admit_origin(&app, server_url).expect("the configured origin should be admitted");
+
+        let window = tauri::WebviewWindowBuilder::new(
+            &app,
+            "main",
+            tauri::WebviewUrl::External(showing.parse().unwrap()),
+        )
+        .build()
+        .expect("the mock shell should have a main window");
+        Shell { app, window }
+    }
+
+    /// Call the bridge the way a frame at `frame_url` would.
+    fn call_from(shell: &Shell, frame_url: &str) -> Result<String, String> {
+        tauri::test::get_ipc_response(
+            &shell.window,
+            tauri::webview::InvokeRequest {
+                cmd: "handle_bridge_message".into(),
+                callback: tauri::ipc::CallbackFn(0),
+                error: tauri::ipc::CallbackFn(1),
+                url: frame_url.parse().unwrap(),
+                body: tauri::ipc::InvokeBody::default(),
+                headers: Default::default(),
+                invoke_key: tauri::test::INVOKE_KEY.to_string(),
+            },
+        )
+        .map(|body| body.deserialize::<String>().unwrap())
+        .map_err(|error| error.to_string())
+    }
+
+    const APP: &str = "https://app.example.com";
+
+    #[test]
+    fn the_app_origin_reaches_the_bridge() {
+        let shell = shell(APP, "https://app.example.com/assistant");
+        assert_eq!(
+            call_from(&shell, "https://app.example.com/assistant").as_deref(),
+            Ok("reached the bridge")
+        );
+    }
+
+    #[test]
+    fn another_origin_is_refused() {
+        let shell = shell(APP, "https://evil.example.com/");
+        let refusal = call_from(&shell, "https://evil.example.com/").unwrap_err();
+        assert!(refusal.contains("not allowed"), "unexpected refusal: {refusal}");
+    }
+
+    #[test]
+    fn a_page_the_window_navigated_to_is_refused() {
+        // A host listed in navigation.internal_hosts loads in the window (an
+        // identity provider, say). It renders there; it does not inherit the
+        // app's bridge.
+        let shell = shell(APP, "https://app.example.com/");
+        shell
+            .window
+            .navigate("https://accounts.example.org/login".parse().unwrap())
+            .unwrap();
+
+        let refusal = call_from(&shell, "https://accounts.example.org/login").unwrap_err();
+        assert!(refusal.contains("not allowed"), "unexpected refusal: {refusal}");
+    }
+
+    #[test]
+    fn a_request_sent_just_before_navigating_away_is_refused() {
+        // The frame was the app when it sent the request, so the ACL admits it,
+        // but the window shows another site by the time the command runs.
+        let shell = shell(APP, "https://app.example.com/");
+        shell
+            .window
+            .navigate("https://evil.example.com/".parse().unwrap())
+            .unwrap();
+
+        let refusal = call_from(&shell, "https://app.example.com/").unwrap_err();
+        assert!(refusal.contains("Refused"), "unexpected refusal: {refusal}");
+    }
+
+    #[test]
+    fn a_frame_of_another_origin_inside_the_app_is_refused() {
+        // The window shows the app; the request comes from an iframe in it.
+        // Judging by the window's URL alone would have let it through.
+        let shell = shell(APP, "https://app.example.com/dashboard");
+        let refusal = call_from(&shell, "https://ads.example.net/frame").unwrap_err();
+        assert!(refusal.contains("not allowed"), "unexpected refusal: {refusal}");
+    }
+
+    #[test]
+    fn an_http_downgrade_of_an_https_app_is_refused() {
+        let shell = shell(APP, "http://app.example.com/");
+        let refusal = call_from(&shell, "http://app.example.com/").unwrap_err();
+        assert!(refusal.contains("not allowed"), "unexpected refusal: {refusal}");
+    }
+
+    #[test]
+    fn lookalike_hosts_are_refused() {
+        for lookalike in [
+            "https://app.example.com.evil.com/",
+            "https://app-example.com/",
+            "https://evilapp.example.com/",
+            "https://app.example.co/",
+            "https://app.example.com:8443/",
+            "https://app.example.com@evil.com/",
+            // A Cyrillic "а" in place of the Latin one: a different host once
+            // encoded, however alike the two look.
+            "https://\u{0430}pp.example.com/",
+        ] {
+            let shell = shell(APP, lookalike);
+            assert!(call_from(&shell, lookalike).is_err(), "{lookalike} reached the bridge");
+        }
+    }
+
+    #[test]
+    fn a_bundled_app_trusts_the_port_its_server_announced_and_no_other() {
+        let shell = shell("http://127.0.0.1:0", "http://127.0.0.1:61234/");
+        assert!(
+            call_from(&shell, "http://127.0.0.1:61234/").is_err(),
+            "nothing on loopback is trusted before the server announces itself"
+        );
+
+        shell
+            .app
+            .state::<crate::server::ServerAddress>()
+            .set("http://127.0.0.1:61234".into());
+        admit_origin(&shell.app, "http://127.0.0.1:61234").unwrap();
+
+        assert_eq!(
+            call_from(&shell, "http://127.0.0.1:61234/").as_deref(),
+            Ok("reached the bridge")
+        );
+        assert!(call_from(&shell, "http://127.0.0.1:61235/").is_err());
+    }
+
+    #[test]
+    fn admitting_the_same_origin_twice_is_harmless() {
+        let shell = shell(APP, "https://app.example.com/");
+        admit_origin(&shell.app, "https://app.example.com/").unwrap();
+        admit_origin(&shell.app, "https://app.example.com:443").unwrap();
+        assert!(call_from(&shell, "https://app.example.com/").is_ok());
+    }
+
+    #[test]
+    fn a_server_url_that_is_not_a_web_origin_admits_nothing() {
+        assert_eq!(origin_pattern("file:///etc/passwd"), None);
+        assert_eq!(origin_pattern("not a url"), None);
+        assert_eq!(origin_pattern("javascript:alert(1)"), None);
+    }
+
+    #[test]
+    fn the_pattern_is_the_exact_origin() {
+        assert_eq!(
+            origin_pattern("https://app.example.com:443/a/b?c").as_deref(),
+            Some("https://app.example.com/*")
+        );
+        assert_eq!(
+            origin_pattern("http://127.0.0.1:3000").as_deref(),
+            Some("http://127.0.0.1:3000/*")
+        );
+    }
+
+    #[test]
+    fn external_links_open_in_the_browser() {
+        let destination = |link: &str| destination_for(APP, &[], &Url::parse(link).unwrap());
+
+        for link in [
+            "https://evil.example.com/",
+            "http://app.example.com/",
+            "https://app.example.com.evil.com/",
+            "https://app.example.com@evil.com/",
+            "https://app.example.com:8443/",
+        ] {
+            assert_eq!(destination(link), LinkDestination::SystemBrowser, "{link}");
+        }
+        assert_eq!(destination("https://app.example.com/chat"), LinkDestination::App);
     }
 }

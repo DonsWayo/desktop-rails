@@ -1,5 +1,6 @@
 use crate::bridge::{BridgeMessage, BridgeResponse};
 use crate::process_manager::ProcessManager;
+use crate::window::DesktopRailsConfig;
 use std::collections::HashMap;
 use std::process::Stdio;
 use tauri::Manager;
@@ -9,10 +10,22 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 ///
 /// Supports spawning child processes with streaming stdout/stderr,
 /// killing running processes, and querying process status.
+///
+/// Off unless desktop-rails.config.json enables it, for every event and not
+/// only spawn: a page that is not allowed to run anything has no business
+/// listing or killing what the app runs either.
 pub async fn handle_shell(
     app: &tauri::AppHandle,
     message: &BridgeMessage,
 ) -> Result<serde_json::Value, String> {
+    let config = app.state::<DesktopRailsConfig>();
+    if !config.shell.enabled {
+        let refusal = crate::security::authorize_shell_command(&config.shell, "", &[])
+            .expect_err("a disabled shell refuses everything");
+        log::warn!("Shell: {}", refusal);
+        return Err(refusal);
+    }
+
     match message.event.as_str() {
         "spawn" => handle_spawn(app, message).await,
         "kill" => handle_kill(app, message).await,
@@ -47,6 +60,26 @@ async fn handle_spawn(
         })
         .unwrap_or_default();
     let cwd = message.data["cwd"].as_str().map(String::from);
+
+    // The whole policy before anything starts: the command line against the
+    // allowlist, the environment against the names the app listed, and the
+    // working directory against the filesystem scope, since an allowlisted
+    // relative command such as bin/setup is only the program the app meant
+    // when it runs where the app meant.
+    let config = app.state::<DesktopRailsConfig>();
+    crate::security::authorize_shell_command(&config.shell, &command, &args)
+        .and_then(|()| crate::security::authorize_shell_env(&config.shell, env.keys().map(String::as_str)))
+        .inspect_err(|e| log::warn!("Shell: {}", e))?;
+    let cwd = match cwd {
+        Some(dir) => {
+            let roots = crate::security::allowed_roots(app.path().app_data_dir().ok(), &config.filesystem);
+            let grants = app.state::<crate::security::UserGrants>();
+            let resolved = crate::security::resolve_with_grants(&dir, &roots, &grants)
+                .inspect_err(|e| log::warn!("Shell: working directory {}", e))?;
+            Some(resolved.to_string_lossy().to_string())
+        }
+        None => None,
+    };
 
     let pm = app.state::<ProcessManager>();
 

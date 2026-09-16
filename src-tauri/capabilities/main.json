@@ -1,10 +1,7 @@
 {
   "identifier": "main-capability",
-  "description": "Main window capabilities for Desktop Rails. The remote URL list has to stay broad because the app server is chosen at runtime in desktop-rails.config.json; the real caller check lives in src/security.rs (is_trusted_origin) and runs on every bridge message.",
+  "description": "Pages bundled with the shell (the waiting and error pages). No remote URL is listed on purpose: the app origin is only known at runtime, so src/security.rs (admit_origin) grants exactly that origin the app commands when the config is read, and nothing else loaded over the network can call a command or a plugin.",
   "windows": ["main", "modal-*", "window-*"],
-  "remote": {
-    "urls": ["http://localhost:*", "http://127.0.0.1:*", "https://*"]
-  },
   "permissions": [
     "allow-handle-visit-proposal",
     "allow-update-window-title",

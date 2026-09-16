@@ -6,7 +6,7 @@ use std::path::Path;
 /// refuses to start without it. The file is per-project and git-ignored, so a
 /// fresh clone or a CI checkout would otherwise fail to build. Writing a default
 /// keeps those builds working and gives the resulting app sensible settings:
-/// localhost, and both the filesystem and sudo bridges closed.
+/// localhost, and the filesystem, shell, sudo and clipboard-read bridges closed.
 const DEFAULT_CONFIG: &str = r#"{
   "server_url": "http://localhost:3000",
   "app_name": "Desktop Rails",
@@ -24,6 +24,13 @@ const DEFAULT_CONFIG: &str = r#"{
     "enabled": false,
     "allowed_commands": [],
     "confirm": true
+  },
+  "shell": {
+    "enabled": false,
+    "allowed_commands": []
+  },
+  "clipboard": {
+    "read": false
   },
   "navigation": {
     "internal_hosts": []

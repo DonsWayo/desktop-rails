@@ -27,6 +27,12 @@ pub struct DesktopRailsConfig {
     /// Whether — and which — commands may run with administrator privileges
     #[serde(default)]
     pub sudo: SudoConfig,
+    /// Whether — and which — commands pages may run as the user
+    #[serde(default)]
+    pub shell: ShellConfig,
+    /// What pages may do with the system clipboard beyond the webview's own
+    #[serde(default)]
+    pub clipboard: ClipboardConfig,
     /// Where links are allowed to open
     #[serde(default)]
     pub navigation: NavigationConfig,
@@ -129,13 +135,48 @@ pub struct NavigationConfig {
 
 /// Filesystem bridge policy.
 ///
-/// Defaults to the app data directory only; an app that needs wider access
-/// names the roots it needs.
+/// With nothing configured the bridge reaches only what the person using the
+/// app handed over — a file or folder picked in a native dialog, or dropped on
+/// a window. An app that needs more names the roots it needs, and `$APP_DATA`
+/// names the app's own data directory.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FilesystemConfig {
-    /// Absolute paths (or `~/...`) the bridge may read and write under.
+    /// Absolute paths (or `~/...`, or `$APP_DATA/...`) the bridge may read and
+    /// write under.
     #[serde(default)]
     pub allowed_roots: Vec<String>,
+}
+
+/// Shell bridge policy. Off unless the app opts in and lists commands.
+///
+/// A page that can spawn processes can do anything the user can, so an XSS in
+/// the app would otherwise be code execution on every machine it runs on. The
+/// allowlist is what keeps "the app runs `git status`" from meaning "any
+/// script on the page runs anything".
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ShellConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    /// Commands pages may run. Matched against the command line whole, or as a
+    /// prefix up to a word boundary, the same way as the sudo allowlist.
+    #[serde(default)]
+    pub allowed_commands: Vec<String>,
+    /// Environment variables a page may set for the command. Empty refuses
+    /// every one: `BASH_ENV`, `LD_PRELOAD` or `PATH` would each turn an
+    /// allowlisted command into a different program.
+    #[serde(default)]
+    pub allowed_env: Vec<String>,
+}
+
+/// Clipboard bridge policy.
+///
+/// Writing stays available, as it is to any web page after a click. Reading is
+/// off unless asked for: a browser only hands a page the clipboard on a paste
+/// the user makes, and the clipboard is where passwords and one-time codes sit.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ClipboardConfig {
+    #[serde(default)]
+    pub read: bool,
 }
 
 /// Sudo bridge policy. Disabled unless the app opts in and lists commands.
@@ -237,6 +278,8 @@ fn default_config() -> DesktopRailsConfig {
         window: WindowConfig::default(),
         filesystem: FilesystemConfig::default(),
         sudo: SudoConfig::default(),
+        shell: ShellConfig::default(),
+        clipboard: ClipboardConfig::default(),
         navigation: NavigationConfig::default(),
         server: ServerConfig::default(),
         updater: UpdaterConfig::default(),
@@ -1106,6 +1149,29 @@ mod tests {
         assert!(!config.sudo.enabled);
         assert!(config.sudo.allowed_commands.is_empty());
         assert!(config.filesystem.allowed_roots.is_empty());
+        assert!(!config.shell.enabled);
+        assert!(config.shell.allowed_commands.is_empty());
+        assert!(config.shell.allowed_env.is_empty());
+        assert!(!config.clipboard.read);
+    }
+
+    #[test]
+    fn a_hosted_config_that_opts_in_parses_as_written() {
+        let config = parse_config(
+            r#"{
+              "server_url": "https://app.example.com",
+              "shell": { "enabled": true, "allowed_commands": ["git status"], "allowed_env": ["GIT_DIR"] },
+              "clipboard": { "read": true },
+              "filesystem": { "allowed_roots": ["$APP_DATA"] }
+            }"#,
+        )
+        .unwrap();
+
+        assert!(config.shell.enabled);
+        assert_eq!(config.shell.allowed_commands, vec!["git status"]);
+        assert_eq!(config.shell.allowed_env, vec!["GIT_DIR"]);
+        assert!(config.clipboard.read);
+        assert_eq!(config.filesystem.allowed_roots, vec!["$APP_DATA"]);
     }
 }
 

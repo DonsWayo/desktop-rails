@@ -16,6 +16,13 @@
     "allowed_commands": [],
     "confirm": true
   },
+  "shell": {
+    "enabled": true,
+    "allowed_commands": ["echo"]
+  },
+  "clipboard": {
+    "read": true
+  },
   "navigation": {
     "internal_hosts": []
   }

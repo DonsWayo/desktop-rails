@@ -72,24 +72,55 @@ test("the capability grants no permission for a command that does not exist", ()
   }
 });
 
+/** The permissions src/security.rs grants the app's own origin at runtime. */
+function runtimeOriginPermissions() {
+  const security = read("src-tauri", "src", "security.rs");
+  const block = security.match(/const APP_ORIGIN_PERMISSIONS[^=]*=\s*&\[([\s\S]*?)\]/);
+
+  assert.ok(block, "security.rs should declare APP_ORIGIN_PERMISSIONS");
+
+  return [...block[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+}
+
 /**
- * A packaged app's server binds 127.0.0.1 on a port the OS picks, and the
- * window loads exactly that origin. The capability only listed localhost, so
- * Tauri refused every bridge call from every packaged app before it reached
- * the shell's own origin check: invoke existed and every call failed. Found by
- * launching examples/notes in CI and asking the shell for its window state.
+ * The app's pages are remote, so they reach the shell only through what
+ * admit_origin grants their origin once the config is read. A command left out
+ * of that list works on the bundled error page and fails silently in every app.
  */
-test("the capability admits the origin every packager configures", () => {
+test("every registered command is granted to the app origin at runtime", () => {
+  const granted = runtimeOriginPermissions();
+
+  for (const command of registeredCommands()) {
+    const permission = `allow-${command.replace(/_/g, "-")}`;
+    assert.ok(
+      granted.includes(permission),
+      `${command} is registered but ${permission} is not granted to the app origin`
+    );
+  }
+});
+
+/**
+ * The app origin is only known at runtime. A remote URL pattern in the static
+ * capability can only be a guess wider than that origin: it used to be every
+ * https site and every loopback port, which let any of them call plugin
+ * commands, and left the bridge's origin check to the page the webview shows
+ * rather than the frame that sent the request.
+ */
+test("the static capability admits no remote page", () => {
   const capability = JSON.parse(read("src-tauri", "capabilities", "main.json"));
 
-  for (const packer of ["pack.sh", "pack-linux.sh", "pack-windows.ps1"]) {
-    const source = read("packaging", packer);
-    const configured = source.match(/server_url["\s=:]+"?(http:\/\/[^:"]+):0"?/);
+  assert.strictEqual(
+    capability.remote,
+    undefined,
+    "main.json must not list remote URLs; admit_origin grants the app origin at runtime"
+  );
+});
 
-    assert.ok(configured, `${packer} should configure a loopback server_url with port 0`);
+test("the app origin is granted app commands and no plugin permission", () => {
+  for (const permission of runtimeOriginPermissions()) {
     assert.ok(
-      capability.remote.urls.includes(`${configured[1]}:*`),
-      `${packer} points the window at ${configured[1]}, which the capability does not admit`
+      !permission.includes(":"),
+      `${permission} is a plugin or core permission; remote pages reach native features through the bridge and its policy`
     );
   }
 });
