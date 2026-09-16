@@ -9,9 +9,10 @@
 #
 #   bin/rails desktop:package:hosted  # a window onto a server you run: shell + config, no Ruby
 #
-# The bundled tasks shell out to the scripts under packaging/ rather than
-# reimplementing them. See DesktopRails::Packaging for why, and for where the
-# scripts are looked for. desktop:package:hosted has nothing to relocate, prune
+# The runtime is built and checked by the gem's own tooling
+# (exe/desktop-rails-tool, DesktopRails::Tooling). The bundled packers are
+# still the scripts under packaging/; see DesktopRails::Packaging for where
+# they are looked for. desktop:package:hosted has nothing to relocate, prune
 # or vendor, and assembles its package in Ruby with DesktopRails::Packager, the
 # layouts the bundled packers are meant to move onto.
 
@@ -42,10 +43,10 @@ run = lambda do |argv|
   #
   # And outside this process's bundle. bin/rails runs with Bundler loaded, and
   # its RUBYOPT=-rbundler/setup and BUNDLE_* variables are inherited by every
-  # script launched from here — including any Ruby those scripts start, which
-  # then tries to set up this app's bundle with the wrong interpreter and fails
-  # with GemNotFound. The packaging scripts are standalone and must see a clean
-  # environment.
+  # process launched from here — including any Ruby those start, which then
+  # tries to set up this app's bundle with the wrong interpreter and fails with
+  # GemNotFound. The tooling and the packers are standalone and must see a
+  # clean environment.
   launch = -> { system(*argv.map(&:to_s)) }
   ok = defined?(Bundler) ? Bundler.with_unbundled_env(&launch) : launch.call
   abort "\n#{argv.first} failed (exit #{$?&.exitstatus})." unless ok
@@ -89,7 +90,7 @@ namespace :desktop do
       if downloaded
         # The same check every build passes in CI before it is published, run
         # again here, because what matters is that it works on this machine.
-        run.call(packaging.runtime_check_command(out, triple: triple))
+        run.call(packaging.runtime_check_command(out))
       else
         if packaging.platform == :windows
           puts "Fetching RubyInstaller's portable archive into #{out}"

@@ -5,31 +5,44 @@ download and open, on macOS, Linux or Windows.
 
 From a Rails app, `bin/rails desktop:runtime` and `bin/rails desktop:shell`
 download a prebuilt interpreter and shell for the machine they run on, verified
-against the release's `SHA256SUMS` (see `desktop-rails/README.md`). The scripts
-below are what those downloads were built with, and what to use by hand:
+against the release's `SHA256SUMS` (see `desktop-rails/README.md`). What those
+downloads were built with, and what to use by hand, is the gem's own tooling —
+Ruby, one code path for every platform, and shipped in the gem — plus the three
+packers here:
 
 ```bash
-packaging/build-runtime.sh --out out/ruby          # or download: see Prebuilt releases
-packaging/verify-runtime.sh out/ruby
+# From a checkout, with any Ruby >= 3.2 and no bundle; from an app, the same
+# commands work as `bundle exec desktop-rails-tool ...`.
+ruby desktop-rails/exe/desktop-rails-tool runtime build --out out/ruby   # or download: see Prebuilt releases
+ruby desktop-rails/exe/desktop-rails-tool runtime verify out/ruby
 
 packaging/pack.sh        --app ../my_app --runtime out/ruby --gems out/gems --name "Ledger"
 packaging/pack-linux.sh  --app ../my_app --runtime out/ruby --gems out/gems --name "Ledger"
 packaging\pack-windows.ps1 -App ..\my_app -Runtime out\ruby -Gems out\gems -Name "Ledger"
 ```
 
-| File | What it does |
+| `desktop-rails-tool` command | What it does |
 |---|---|
-| `build-runtime.sh` | Builds a relocatable Ruby. macOS and Linux; Windows is fetched. |
-| `verify-runtime.sh` | Proves one relocates before you trust it. |
-| `gem.sh` | Wraps a build in a platform gem, for local use. Not published. |
+| `runtime build` | Builds a relocatable Ruby. macOS and Linux; Windows is fetched. |
+| `runtime verify DIR` | Proves one relocates before you trust it, on every platform. |
+| `runtime fetch-windows` | RubyInstaller's portable Ruby, checked the same way. |
+| `prune DIR` | Removes what a user's machine never reads. The packers run it. |
+| `dmg APP` | Disk image. No certificate needed. |
+| `notarize` | Signs and notarises. Needs a Developer ID. |
+| `updater generate-key` | The minisign keypair that signs updates. Once, ever. |
+| `updater sign` | Signs a release and writes the updater's manifest. |
+| `smoke launch` / `shell` / `app` | The checks CI runs against a packaged app. |
+
+The classes behind each are under `desktop-rails/lib/desktop_rails/tooling/`,
+and `desktop-rails/test/tooling/` tests their decisions without a compiler, a
+certificate or a GUI.
+
+| File here | What it does |
+|---|---|
 | `pack.sh` | macOS `.app`, pruned and signed. |
 | `pack-linux.sh` | Linux directory, tarball and `.desktop` entry. |
 | `pack-windows.ps1` | Windows directory and zip. |
-| `prune.sh` / `prune.ps1` | Removes what a user's machine never reads. |
-| `dmg.sh` | Disk image. No certificate needed. |
-| `notarize.sh` | Signs and notarises. Needs a Developer ID. |
-| `generate-key.sh` | The minisign keypair that signs updates. Once, ever. |
-| `sign-update.sh` | Signs a release and writes the updater's manifest. |
+| `lib/updater-cli.mjs` | The minisign bytes behind `updater generate-key` and `updater sign`. |
 | `templates/boot.rb` | The boot sequence all three platforms share. |
 
 Longer notes: [CONTROL_CHANNEL.md](CONTROL_CHANNEL.md) for calling native from
@@ -41,8 +54,8 @@ already have the first.
 
 Pushing a tag named after the gem version — `v0.3.0.pre1` for desktop-rails
 `0.3.0.pre1` — runs `.github/workflows/release-prebuilt.yml`. It builds, on each
-platform's own runner, the interpreter with `build-runtime.sh` (Windows:
-`fetch-windows-runtime.ps1`) and the shell with `cargo build --release`, checks
+platform's own runner, the interpreter with `desktop-rails-tool runtime build`
+(Windows: `runtime fetch-windows`) and the shell with `cargo build --release`, checks
 the unpacked archive relocates, and publishes a GitHub prerelease:
 
 ```
@@ -76,8 +89,8 @@ Linux has the same problem and one of its own: OpenSSL installs to `lib64` while
 Ruby's configure looks in `lib`, so a build can silently link the *system*
 OpenSSL and then die at runtime on a missing symbol. `--libdir=lib` removes it.
 
-`verify-runtime.sh` catches that by doing real work with OpenSSL and comparing
-`OPENSSL_VERSION` against `OPENSSL_LIBRARY_VERSION`. An earlier version printed
+`desktop-rails-tool runtime verify` catches that by doing real work with OpenSSL
+and comparing `OPENSSL_VERSION` against `OPENSSL_LIBRARY_VERSION`. An earlier version printed
 the constant and reported a broken build as healthy, which is worse than no
 check at all.
 
@@ -162,10 +175,10 @@ Linux   357M -> 145M, GET /up 200 twice (packed and read-only), 52M tarball
 ## Updates
 
 Signing a release and signing an application are unrelated problems, and only
-the second one needs Apple. `generate-key.sh` makes a minisign keypair,
-`sign-update.sh` signs a bundle and writes the manifest, and the endpoint and
-public key live in `desktop-rails.config.json` so one shell binary can still
-serve every app. See [AUTO_UPDATE.md](AUTO_UPDATE.md).
+the second one needs Apple. `desktop-rails-tool updater generate-key` makes a
+minisign keypair, `updater sign` signs a bundle and writes the manifest, and the
+endpoint and public key live in `desktop-rails.config.json` so one shell binary
+can still serve every app. See [AUTO_UPDATE.md](AUTO_UPDATE.md).
 
 An update has not yet been watched to apply end to end; everything up to the
 install is covered by tests, including verification by the same crate the

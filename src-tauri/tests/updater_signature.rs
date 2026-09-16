@@ -1,4 +1,4 @@
-//! The signatures packaging/sign-update.sh produces must be the ones the
+//! The signatures `desktop-rails-tool updater sign` produces must be the ones the
 //! updater will accept.
 //!
 //! Everything about the signing side lives in Node (packaging/lib/minisign.mjs),
@@ -13,7 +13,8 @@
 //!     base64-decode the manifest signature -> Signature::decode
 //!     public_key.verify(bytes, &signature, true)
 //!
-//! The fixtures were produced by packaging/sign-update.sh with a throwaway key.
+//! The fixtures were produced by packaging/sign-update.sh, since ported to
+//! `desktop-rails-tool updater sign` over the same signer, with a throwaway key.
 //! Only the public half is committed; nothing is ever signed with that key
 //! outside this directory.
 
@@ -63,7 +64,7 @@ fn a_signature_from_the_packaging_scripts_verifies() {
     let artifact = std::fs::read(dir.join("artifact.bin")).unwrap();
 
     verify(&pubkey, &signature, &artifact)
-        .expect("minisign-verify should accept what sign-update.sh produced");
+        .expect("minisign-verify should accept what updater sign produced");
 }
 
 #[test]
@@ -115,7 +116,7 @@ fn a_signature_from_another_key_is_rejected() {
     );
 }
 
-/// The manifest `sign-update.sh` writes has to be the one the plugin reads.
+/// The manifest `updater sign` writes has to be the one the plugin reads.
 ///
 /// `RemoteRelease` has a hand-written `Deserialize` rather than a derived one —
 /// it accepts two different shapes, parses the version itself and insists on

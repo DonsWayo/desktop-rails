@@ -11,16 +11,19 @@ are unrelated: the key below proves *this build came from you*, and nothing
 about it involves Gatekeeper.
 
 ```bash
-packaging/generate-key.sh                       # once, ever
-packaging/sign-update.sh --artifact dist/Ledger.app.tar.gz \
+bundle exec desktop-rails-tool updater generate-key            # once, ever
+bundle exec desktop-rails-tool updater sign --artifact dist/Ledger.app.tar.gz \
   --version 1.2.0 --target darwin-aarch64 \
   --url https://downloads.example.com/1.2.0/Ledger.app.tar.gz
 ```
 
+From a checkout of this repository, `ruby desktop-rails/exe/desktop-rails-tool`
+is the same command. Both need `node`, which does the cryptography (below).
+
 ## The key
 
-`packaging/generate-key.sh` writes a minisign keypair to `.signing/`, which
-`.gitignore` already covers. The secret half is mode 0600 and never leaves that
+`updater generate-key` writes a minisign keypair to `.signing/` in the current
+directory, which `.gitignore` already covers. The secret half is mode 0600 and never leaves that
 directory; the public half is a string you paste into
 `desktop-rails.config.json`.
 
@@ -48,7 +51,7 @@ them, and a key made by either of those works here.
 
 ## The manifest
 
-`packaging/sign-update.sh` signs a bundle and merges it into `latest.json`. Run
+`updater sign` signs a bundle and merges it into `latest.json`. Run
 it once per platform against the same `--manifest` and you get one file covering
 all of them.
 
@@ -77,7 +80,7 @@ Four things about this are easy to get wrong, and all four fail quietly:
   `windows` — the plugin calls macOS "darwin", not "macos" — and arch is
   `x86_64`, `aarch64`, `i686` or `armv7`. A key the running app does not
   recognise reads as "no update available".
-- **`version` must be semver** and applies to the whole release. `sign-update.sh`
+- **`version` must be semver** and applies to the whole release. `updater sign`
   refuses to add a second version to a manifest that already has one, because a
   manifest carrying two would hand some users the wrong build.
 - **Everything must be https.** The plugin refuses plain http endpoints in a
@@ -141,7 +144,7 @@ A bundle that fails arrives as `{ status: "error" }` and nothing is written.
 
 ## In CI
 
-Give the signing job the key and its password as secrets. `sign-update.sh` picks
+Give the signing job the key and its password as secrets. `updater sign` picks
 the key up from the environment when it is there, writing it to a temporary file
 it removes on exit:
 

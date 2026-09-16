@@ -48,11 +48,12 @@ Once it exists:
 xcrun notarytool store-credentials notary \
   --apple-id you@example.com --team-id TEAMID --password <app-specific-password>
 
-packaging/notarize.sh --app dist/Ledger.app \
+bundle exec desktop-rails-tool notarize --app dist/Ledger.app \
   --identity "Developer ID Application: … (TEAMID)" --keychain-profile notary
 ```
 
-`notarize.sh` re-signs inside-out with a real timestamp, submits, staples, and
+`notarize` re-signs inside-out with a real timestamp — the nested binaries, the
+interpreter, everything in `Contents/MacOS`, then the bundle — submits, staples, and
 then checks with `spctl` rather than assuming success.
 
 ## The entitlements question this reopens
@@ -74,7 +75,7 @@ identity as an argument.
 
 ## The disk image
 
-`packaging/dmg.sh` builds one with no certificate involved. A 122 MB app
+`desktop-rails-tool dmg` builds one with no certificate involved. A 122 MB app
 compresses to a 66 MB image. The image itself is also assessed by Gatekeeper and
 is rejected today for the same reason.
 

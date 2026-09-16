@@ -112,10 +112,12 @@ bin/rails desktop:run                      # boot the app the way a bundle will
 bin/rails desktop:package                  # a .app, a Linux tree, or a Windows zip
 ```
 
-The tasks shell out to the packaging scripts in the desktop-rails repository
-rather than reimplementing them, and each one fails with a message naming what is
-missing and how to supply it. Installing the gem from GitHub brings the scripts
-with it, because Bundler checks out the whole repository:
+Getting, building and checking the interpreter is Ruby that ships in this gem,
+and so are disk images, notarisation and update signing:
+`bundle exec desktop-rails-tool --help` lists them. The packers themselves are
+still scripts in the desktop-rails repository, and each task fails with a message
+naming what is missing and how to supply it. Installing the gem from GitHub
+brings the packers with it, because Bundler checks out the whole repository:
 
 ```ruby
 gem "desktop-rails", github: "DonsWayo/desktop-rails"

@@ -3,6 +3,10 @@ name: Build relocatable runtimes
 # Builds the interpreter a packaged app ships, one per platform triple, and
 # proves each one relocates before publishing it.
 #
+# The build and the check are the gem's own tooling (desktop-rails-tool, see
+# DesktopRails::Tooling), run by whatever Ruby the runner has. That Ruby only
+# drives configure and make; the interpreter is compiled from source.
+#
 # Windows is fetched rather than built: RubyInstaller already ships a portable
 # archive that relocates correctly, so building a second one would be work for
 # its own sake. Its gems still compile on the build machine, which is where a
@@ -10,10 +14,19 @@ name: Build relocatable runtimes
 
 on:
   workflow_dispatch:
+    inputs:
+      vendor-cache:
+        description: "Reuse the cached OpenSSL and libyaml. Off builds every dependency from source."
+        type: boolean
+        default: true
   push:
     paths:
-      - "packaging/build-runtime.sh"
-      - "packaging/verify-runtime.sh"
+      - "desktop-rails/exe/desktop-rails-tool"
+      - "desktop-rails/lib/desktop_rails/tooling.rb"
+      - "desktop-rails/lib/desktop_rails/tooling/command.rb"
+      - "desktop-rails/lib/desktop_rails/tooling/runtime_build.rb"
+      - "desktop-rails/lib/desktop_rails/tooling/runtime_verification.rb"
+      - "desktop-rails/lib/desktop_rails/tooling/windows_runtime.rb"
       - ".github/workflows/build-runtime.yml"
 
 env:
@@ -39,24 +52,40 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update -qq && sudo apt-get install -y -qq build-essential zlib1g-dev
 
+      # The Ruby that runs the tooling, not the one being built.
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+
       # OpenSSL is ~20 minutes and changes only when its version does, so it is
       # cached on the versions rather than rebuilt every run.
       - name: Cache the vendored dependencies
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.vendor-cache }}
         uses: actions/cache@v4
         with:
           path: .runtime-build/vendor
           key: vendor-${{ matrix.triple }}-openssl3.5.4-libdir-yaml0.2.5
 
       - name: Build
-        run: packaging/build-runtime.sh --out "$PWD/out/ruby"
+        run: ruby desktop-rails/exe/desktop-rails-tool runtime build --ruby "$RUBY_VERSION" --out "$PWD/out/ruby"
 
       - name: Verify it relocates
-        run: packaging/verify-runtime.sh "$PWD/out/ruby"
+        run: ruby desktop-rails/exe/desktop-rails-tool runtime verify "$PWD/out/ruby"
 
       - name: Package
         run: |
           tar -C out -czf "ruby-$RUBY_VERSION-${{ matrix.triple }}.tar.gz" ruby
           ls -lh "ruby-$RUBY_VERSION-${{ matrix.triple }}.tar.gz"
+
+      # What release-prebuilt.yml checks before publishing: the archive,
+      # unpacked somewhere else under a path with a space, checked again.
+      - name: The archive works where it lands
+        run: |
+          set -euo pipefail
+          landed="$RUNNER_TEMP/landed here"
+          mkdir -p "$landed"
+          tar -xzf "ruby-$RUBY_VERSION-${{ matrix.triple }}.tar.gz" -C "$landed"
+          ruby desktop-rails/exe/desktop-rails-tool runtime verify "$landed/ruby"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -71,27 +100,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+
+      # The same step release-prebuilt.yml publishes from.
       - name: Fetch the portable archive and check it relocates
         shell: pwsh
         run: |
-          # RubyInstaller's portable build already resolves relative to itself.
-          # Spike 3 established that it relocates, survives a path containing a
-          # space, and boots Rails with no compiler present.
-          $v = "3.4.10"
-          curl.exe -fsSL -o ruby.7z `
-            "https://github.com/oneclick/rubyinstaller2/releases/download/RubyInstaller-$v-1/rubyinstaller-$v-1-x64.7z"
-          7z x ruby.7z -oC:\unpacked | Out-Null
-          $src = (Get-ChildItem C:\unpacked | Select-Object -First 1).FullName
+          ruby desktop-rails\exe\desktop-rails-tool runtime fetch-windows --out "$env:GITHUB_WORKSPACE\out\ruby"
+          if ($LASTEXITCODE -ne 0) { throw "the portable interpreter did not check out" }
 
-          New-Item -ItemType Directory -Force -Path C:\moved | Out-Null
-          Copy-Item -Recurse $src C:\moved\ruby
-          & C:\moved\ruby\bin\ruby.exe -e 'require "psych"; require "openssl"; puts "OK  #{RUBY_VERSION} #{RUBY_PLATFORM}"'
-          if ($LASTEXITCODE -ne 0) { throw "the portable archive did not relocate" }
-          & C:\moved\ruby\bin\ruby.exe -e 'exit(RbConfig::CONFIG["prefix"].include?("moved") ? 0 : 1)'
-          if ($LASTEXITCODE -ne 0) { throw "RbConfig did not follow the binary" }
-          Write-Host "OK  relocates and RbConfig follows the binary"
+      - name: Package
+        shell: pwsh
+        run: |
+          & "$env:SystemRoot\System32\tar.exe" -a -c -f ruby-3.4.10-x64-mingw-ucrt.zip -C out ruby
+          if ($LASTEXITCODE -ne 0) { throw "could not archive the interpreter" }
 
-          Compress-Archive -Path C:\moved\ruby -DestinationPath "ruby-$v-x64-mingw-ucrt.zip"
+      # Unpacked the way the gem unpacks it, and checked by that interpreter
+      # running the tool itself, as the release does.
+      - name: The archive works where it lands
+        shell: pwsh
+        run: |
+          $landed = "$env:RUNNER_TEMP\landed here"
+          Expand-Archive -LiteralPath ruby-3.4.10-x64-mingw-ucrt.zip -DestinationPath $landed -Force
+          & "$landed\ruby\bin\ruby.exe" desktop-rails\exe\desktop-rails-tool runtime verify "$landed\ruby"
+          if ($LASTEXITCODE -ne 0) { throw "the unpacked interpreter failed its check" }
 
       - uses: actions/upload-artifact@v4
         with:

@@ -143,7 +143,9 @@ Terminal=false
 DESKTOP
 
 step "Pruning"
-KEEP_DEV=$KEEP_DEV "$HERE/prune.sh" "$DIR/lib"
+# The gem's own pruning, run by the interpreter being shipped. See pack.sh.
+env -u RUBYOPT -u BUNDLE_GEMFILE -u BUNDLE_BIN_PATH -u BUNDLER_SETUP -u BUNDLER_VERSION KEEP_DEV=$KEEP_DEV \
+  "$RUNTIME/bin/ruby" "$HERE/../desktop-rails/exe/desktop-rails-tool" prune "$DIR/lib"
 
 step "Packaging"
 tar -C "$OUT" -czf "$OUT/$SLUG-linux-$(uname -m).tar.gz" "$SLUG"

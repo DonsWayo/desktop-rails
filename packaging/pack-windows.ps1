@@ -133,7 +133,10 @@ if "%~1"=="" (
 "@ | Set-Content -Encoding ASCII "$dir\$slug.cmd"
 
 Step "Pruning"
-& "$here\prune.ps1" "$dir\lib"
+# The gem's own pruning, the same code macOS and Linux run, by the interpreter
+# being shipped. The Bundler variables were cleared above.
+& (Join-Path $Runtime "bin\ruby.exe") (Join-Path $here "..\desktop-rails\exe\desktop-rails-tool") prune "$dir\lib"
+if ($LASTEXITCODE -ne 0) { throw "pruning failed" }
 
 Step "Packaging"
 $zip = Join-Path $Out "$slug-windows-x64.zip"

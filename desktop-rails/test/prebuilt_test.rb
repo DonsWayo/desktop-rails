@@ -185,29 +185,11 @@ class PrebuiltCommandTest < Minitest::Test
     refute_includes argv.last, "\\\\"
   end
 
-  def test_the_runtime_check_is_verify_runtime_on_unix
-    with_sandbox do |paths|
-      FileUtils.touch(File.join(paths[:packaging], "verify-runtime.sh"))
-      assert_equal [ File.join(paths[:packaging], "verify-runtime.sh"), "/r" ],
-                   P.runtime_check_command("/r", triple: "arm64-darwin")
-    end
-  end
-
-  def test_the_runtime_check_asks_the_interpreter_itself_on_windows
-    argv = P.runtime_check_command("C:/r", triple: "x64-mingw-ucrt")
-    assert_equal "C:/r/bin/ruby.exe", argv.first
-    assert_equal "-e", argv[1]
-    assert_match(/OPENSSL_LIBRARY_VERSION/, argv[2])
-    assert_match(/Psych\.load/, argv[2])
-  end
-
-  def test_the_windows_check_is_valid_ruby_that_passes_on_a_working_interpreter
-    # Running it here proves it parses and that its checks are not wrong in a
-    # way that would fail every Windows download. The prefix check holds for
-    # any interpreter RbConfig describes correctly.
-    ok = system(RbConfig.ruby, "-e", P::WINDOWS_RUNTIME_CHECK, out: File::NULL, err: File::NULL)
-    skip "this Ruby's OpenSSL was built against a different library version" if !ok && !openssl_agrees?
-    assert ok
+  def test_the_runtime_check_is_the_same_tool_on_every_platform
+    # Windows used to be asked a shorter list of questions from a string in
+    # this module, and fixes landed in one list and not the other.
+    tool = File.expand_path("../exe/desktop-rails-tool", __dir__)
+    assert_equal [ RbConfig.ruby, tool, "runtime", "verify", "C:/r dir" ], P.runtime_check_command("C:/r dir")
   end
 
   def test_from_source_switches
@@ -274,13 +256,6 @@ class PrebuiltCommandTest < Minitest::Test
                        File.join(paths[:root], "src-tauri", "Cargo.toml") ], argv
       end
     end
-  end
-
-  private
-
-  def openssl_agrees?
-    require "openssl"
-    OpenSSL::OPENSSL_VERSION == OpenSSL::OPENSSL_LIBRARY_VERSION
   end
 end
 

@@ -12,9 +12,7 @@ require "json"
 # assertions about *decisions* — which packer, which flags — and not about
 # whichever files happen to exist on the machine running the suite.
 module PackagingSandbox
-  SCRIPTS = %w[
-    pack.sh pack-linux.sh pack-windows.ps1 build-runtime.sh fetch-windows-runtime.ps1
-  ].freeze
+  SCRIPTS = %w[pack.sh pack-linux.sh pack-windows.ps1].freeze
 
   def with_sandbox(runtime: true, gems: false, shell: false, env: {})
     Dir.mktmpdir do |tmp|
@@ -143,11 +141,11 @@ class PackagingScriptResolutionTest < Minitest::Test
 
   def test_an_incomplete_packaging_directory_names_the_missing_script
     with_sandbox do |paths|
-      FileUtils.rm(File.join(paths[:packaging], "build-runtime.sh"))
+      FileUtils.rm(File.join(paths[:packaging], "pack-linux.sh"))
       error = assert_raises(DesktopRails::Packaging::MissingPrerequisite) do
-        DesktopRails::Packaging.script("build-runtime.sh")
+        DesktopRails::Packaging.script("pack-linux.sh")
       end
-      assert_match(/build-runtime\.sh/, error.message)
+      assert_match(/pack-linux\.sh/, error.message)
     end
   end
 end
@@ -183,19 +181,35 @@ class PackagingRuntimeTest < Minitest::Test
   end
 
   def test_unix_builds_the_runtime_and_windows_fetches_one
+    tool = File.expand_path("../exe/desktop-rails-tool", __dir__)
     with_sandbox do |paths|
       on_platform(:macos) do
         argv = DesktopRails::Packaging.runtime_command(out: "/tmp/out")
-        assert_equal File.join(paths[:packaging], "build-runtime.sh"), argv.first
+        # The gem's own tool, run by this Ruby: nothing outside the gem is
+        # needed to build an interpreter any more.
+        assert_equal [ RbConfig.ruby, tool, "runtime", "build" ], argv.first(4)
         assert_equal "/tmp/out", flag(argv, "--out")
+        # Never the app directory, which pack.sh copies into the bundle.
+        assert_equal File.join(paths[:root], "build", "runtime-build"), flag(argv, "--work")
       end
 
       on_platform(:windows) do
         argv = DesktopRails::Packaging.runtime_command(out: "/tmp/out")
         # RubyInstaller already publishes a portable archive; building on
         # Windows would be work for its own sake.
-        assert_includes argv.join(" "), "fetch-windows-runtime.ps1"
-        assert_equal "/tmp/out", flag(argv, "-Out")
+        assert_equal [ RbConfig.ruby, tool, "runtime", "fetch-windows" ], argv.first(4)
+        assert_equal "/tmp/out", flag(argv, "--out")
+      end
+    end
+  end
+
+  def test_the_runtime_needs_no_packaging_scripts
+    # The whole point of moving the tooling into the gem: an installed gem with
+    # no checkout anywhere can still build and check an interpreter.
+    with_env("DESKTOP_RAILS_PACKAGING" => "/nonexistent") do
+      DesktopRails::Packaging.stub(:packaging_candidates, [ "/nonexistent" ]) do
+        assert File.exist?(DesktopRails::Packaging.runtime_command(out: "/tmp/out")[1])
+        assert File.exist?(DesktopRails::Packaging.runtime_check_command("/tmp/out")[1])
       end
     end
   end

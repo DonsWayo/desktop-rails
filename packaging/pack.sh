@@ -207,7 +207,10 @@ BUNDLE_WITHOUT: "development:test"
 BUNDLECONFIG
 
 step "Pruning"
-KEEP_DEV=$KEEP_DEV "$HERE/prune.sh" "$RES"
+# The gem's own pruning, run by the interpreter being shipped, which is the
+# Ruby guaranteed to be here. It strips the copy under $RES, never $RUNTIME.
+env -u RUBYOPT -u BUNDLE_GEMFILE -u BUNDLE_BIN_PATH -u BUNDLER_SETUP -u BUNDLER_VERSION KEEP_DEV=$KEEP_DEV \
+  "$RUNTIME/bin/ruby" "$HERE/../desktop-rails/exe/desktop-rails-tool" prune "$RES"
 
 step "Signing (identity: $IDENTITY)"
 ENTS="$HERE/entitlements.plist"

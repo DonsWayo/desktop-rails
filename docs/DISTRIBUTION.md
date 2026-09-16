@@ -17,7 +17,7 @@ There is no installer step; the bundle is what you hand out.
 - **macOS.** The bundle is signed ad hoc, which Gatekeeper rejects on anyone
   else's Mac. [packaging/DISTRIBUTION.md](../packaging/DISTRIBUTION.md) has the
   measurements, what a Developer ID and notarisation involve, and
-  `packaging/dmg.sh` for a disk image.
+  `desktop-rails-tool dmg` for a disk image.
 - **Updates.** An `updater` block in `desktop-rails.config.json` points the app at
   a signed manifest. [packaging/AUTO_UPDATE.md](../packaging/AUTO_UPDATE.md)
   covers the key and the manifest.
@@ -102,7 +102,7 @@ The updater plugin is compiled in, and off until the app's
 `desktop-rails.config.json` has an `updater` block with `endpoints` and `pubkey`.
 They live there rather than in `tauri.conf.json` because one shell binary serves
 every app. The key, the manifest and signing an update with
-`packaging/sign-update.sh`: [packaging/AUTO_UPDATE.md](../packaging/AUTO_UPDATE.md).
+`desktop-rails-tool updater sign`: [packaging/AUTO_UPDATE.md](../packaging/AUTO_UPDATE.md).
 
 ## Status
 

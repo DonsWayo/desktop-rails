@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// The bytes-and-JSON half of packaging/generate-key.sh and
-// packaging/sign-update.sh. The shell scripts do the argument checking and the
-// talking; everything below only runs once its inputs are known good.
+// The bytes-and-JSON half of `desktop-rails-tool updater generate-key` and
+// `updater sign` (DesktopRails::Tooling::Updater). The Ruby side does the
+// argument checking and the talking; everything below only runs once its
+// inputs are known good.
 //
 // Subcommands:
 //   generate --secret <path> --public <path> [--password <pw>] [--comment <c>]
@@ -12,7 +13,7 @@
 //   verify   --public <path> --artifact <path> --sig <path>
 //   pubkey   --public <path>          # the value for desktop-rails.config.json
 //
-// Passwords arrive as arguments from the shell scripts, which read them from
+// Passwords arrive as arguments from the Ruby side, which reads them from
 // the environment rather than the command line so they stay out of `ps`.
 
 import { readFileSync, writeFileSync } from "node:fs";

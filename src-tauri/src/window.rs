@@ -65,7 +65,7 @@ pub struct UpdaterConfig {
     #[serde(default)]
     pub endpoints: Vec<String>,
     /// The minisign public key updates are verified against, as
-    /// `packaging/generate-key.sh` prints it: base64 of the whole `.pub` file.
+    /// `desktop-rails-tool updater generate-key` prints it: base64 of the whole `.pub` file.
     #[serde(default)]
     pub pubkey: String,
     /// The version this installation actually is.

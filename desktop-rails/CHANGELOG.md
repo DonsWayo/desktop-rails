@@ -44,6 +44,18 @@ this release; the prebuilt shell of 0.3.0.pre2 still has the old defaults.
 
 ### Changed
 
+- The build-machine tooling is Ruby and ships in the gem, as
+  `desktop-rails-tool` (`DesktopRails::Tooling`): `runtime build`,
+  `runtime verify`, `runtime fetch-windows`, `prune`, `dmg`, `notarize`,
+  `updater generate-key`, `updater sign` and the CI `smoke` checks. It replaces
+  `build-runtime.sh`, `verify-runtime.sh`, `fetch-windows-runtime.ps1`,
+  `prune.sh`, `prune.ps1`, `dmg.sh`, `notarize.sh`, `generate-key.sh`,
+  `sign-update.sh` and the `packaging/smoke` scripts, whose bash and PowerShell
+  copies had drifted apart. `desktop:runtime` no longer needs a checkout of the
+  repository, and Windows downloads get the same relocation check as macOS and
+  Linux. `gem.sh` and the unpublished `desktop-rails-runtime` gem are gone.
+  `notarize` now also re-signs everything in `Contents/MacOS`.
+
 - The default app id is `dev.desktop-rails.<app>` instead of
   `dev.turbodesktop.<app>`. The app id names the data directory, so an app
   that relied on the default and already has users should set `config.app_id`

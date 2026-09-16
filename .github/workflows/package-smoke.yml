@@ -7,12 +7,18 @@ name: Package a Rails app end to end
 # Ad-hoc signing is used because CI has no Developer ID. That is enough to
 # exercise the hardened runtime, which is where Ruby and macOS actually
 # disagree — see packaging/DISTRIBUTION.md for what it cannot tell us.
+#
+# Every step that is not the packer itself is the gem's own tooling,
+# desktop-rails-tool, run by the runner's Ruby.
 
 on:
   workflow_dispatch:
   push:
     paths:
       - "packaging/**"
+      - "desktop-rails/exe/**"
+      - "desktop-rails/lib/desktop_rails/tooling.rb"
+      - "desktop-rails/lib/desktop_rails/tooling/**"
       - ".github/workflows/package-smoke.yml"
 
 jobs:
@@ -22,6 +28,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The Ruby that runs the tooling, not the one being built.
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+
       - name: Cache the vendored dependencies
         uses: actions/cache@v4
         with:
@@ -29,10 +40,10 @@ jobs:
           key: vendor-arm64-darwin-openssl3.5.4-libdir-yaml0.2.5
 
       - name: Build the interpreter
-        run: packaging/build-runtime.sh --out "$PWD/out/ruby"
+        run: ruby desktop-rails/exe/desktop-rails-tool runtime build --out "$PWD/out/ruby"
 
       - name: It relocates
-        run: packaging/verify-runtime.sh "$PWD/out/ruby"
+        run: ruby desktop-rails/exe/desktop-rails-tool runtime verify "$PWD/out/ruby"
 
       - name: Generate a Rails app with the interpreter we just built
         run: |
@@ -61,14 +72,14 @@ jobs:
             --out "$PWD/dist"
 
       - name: Launch the bundle and talk to it
-        run: python3 packaging/smoke/launch_check.py dist/Smoke.app/Contents/MacOS/launch
+        run: ruby desktop-rails/exe/desktop-rails-tool smoke launch dist/Smoke.app/Contents/MacOS/launch
 
       # The shell is what a person double-clicks. Everything above proves the
       # server half; this builds the GUI in and drives the whole chain.
       #
       # A clean runner matters here: this could not be made to run repeatably on
       # a developer machine after a long session, and the check itself caused
-      # some of that — see shell_check.sh on writing inside a signed bundle. It
+      # some of that — see Tooling::Smoke on writing inside a signed bundle. It
       # passed first time on a runner, so it gates rather than warns.
       - name: Pack again with the GUI shell embedded
         id: gui
@@ -82,10 +93,10 @@ jobs:
             --out "$PWD/dist-gui"
 
       - name: Drive the whole chain through the shell
-        run: packaging/smoke/shell_check.sh dist-gui/SmokeGui.app/Contents/MacOS/desktop-rails
+        run: ruby desktop-rails/exe/desktop-rails-tool smoke shell dist-gui/SmokeGui.app/Contents/MacOS/desktop-rails
 
       - name: Build the disk image
-        run: packaging/dmg.sh dist/Smoke.app
+        run: ruby desktop-rails/exe/desktop-rails-tool dmg dist/Smoke.app
 
       - name: What Gatekeeper makes of it
         run: |
@@ -113,6 +124,10 @@ jobs:
       - name: Build dependencies
         run: sudo apt-get update -qq && sudo apt-get install -y -qq build-essential zlib1g-dev rsync
 
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+
       - name: Cache the vendored dependencies
         uses: actions/cache@v4
         with:
@@ -120,10 +135,10 @@ jobs:
           key: vendor-x86_64-linux-openssl3.5.4-libdir-yaml0.2.5
 
       - name: Build the interpreter
-        run: packaging/build-runtime.sh --out "$PWD/out/ruby"
+        run: ruby desktop-rails/exe/desktop-rails-tool runtime build --out "$PWD/out/ruby"
 
       - name: It relocates
-        run: packaging/verify-runtime.sh "$PWD/out/ruby"
+        run: ruby desktop-rails/exe/desktop-rails-tool runtime verify "$PWD/out/ruby"
 
       - name: Generate a Rails app with the interpreter we just built
         run: |
@@ -147,7 +162,7 @@ jobs:
             --out "$PWD/dist"
 
       - name: Launch it and talk to it
-        run: python3 packaging/smoke/launch_check.py dist/smoke/bin/smoke
+        run: ruby desktop-rails/exe/desktop-rails-tool smoke launch dist/smoke/bin/smoke
 
       - name: It runs from somewhere else entirely, and read-only
         run: |
@@ -156,7 +171,7 @@ jobs:
           # somewhere they cannot write. Both need to work.
           mkdir -p /tmp/elsewhere && tar -C /tmp/elsewhere -xzf dist/smoke-linux-*.tar.gz
           chmod -R a-w /tmp/elsewhere/smoke
-          python3 packaging/smoke/launch_check.py /tmp/elsewhere/smoke/bin/smoke
+          ruby desktop-rails/exe/desktop-rails-tool smoke launch /tmp/elsewhere/smoke/bin/smoke
           chmod -R u+w /tmp/elsewhere/smoke
 
       # The GUI half, which the tarball above does not carry. Linux needs the
@@ -181,7 +196,7 @@ jobs:
         # A GUI process needs a display even to start; xvfb provides one.
         run: |
           sudo apt-get install -y -qq xvfb
-          xvfb-run -a packaging/smoke/shell_check.sh dist-gui/smokegui/smokegui
+          xvfb-run -a ruby desktop-rails/exe/desktop-rails-tool smoke shell dist-gui/smokegui/smokegui
 
       - name: Sizes
         run: du -sh out/ruby dist/smoke dist/smoke-linux-*.tar.gz | sed 's/^/  /'
@@ -255,7 +270,9 @@ jobs:
             if (Test-Path $d) { Rename-Item $d "$d-hidden" }
           }
           try {
-            python packaging\smoke\launch_check.py "$env:GITHUB_WORKSPACE\dist\smoke\smoke.cmd"
+            # Checked by the portable interpreter, which needs no toolchain
+            # either, rather than by a Ruby whose devkit was just hidden.
+            & "$env:GITHUB_WORKSPACE\out\ruby\bin\ruby.exe" desktop-rails\exe\desktop-rails-tool smoke launch "$env:GITHUB_WORKSPACE\dist\smoke\smoke.cmd"
             if ($LASTEXITCODE -ne 0) { throw "the packaged app did not hold to its contract" }
           } finally {
             foreach ($d in @("C:\msys64-hidden", "C:\mingw64-hidden")) {

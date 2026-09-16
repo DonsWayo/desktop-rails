@@ -43,7 +43,7 @@ $stdout.flush
 system(clean, ruby, "-ropenssl", "-ryaml", "-e", "puts OpenSSL::OPENSSL_LIBRARY_VERSION") ||
   abort("the downloaded interpreter did not run")
 system(clean, ruby, "-e", "puts RUBY_DESCRIPTION") || abort("the downloaded interpreter did not run")
-system(clean, *packaging.runtime_check_command(runtime, triple: triple)) ||
+system(clean, *packaging.runtime_check_command(runtime)) ||
   abort("the downloaded interpreter failed the runtime check")
 
 abort "the shell is not executable: #{shell}" unless File.file?(shell) && File.executable?(shell)

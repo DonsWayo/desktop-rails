@@ -13,12 +13,12 @@ require "desktop_rails/version"
 module DesktopRails
   # The Rails side of packaging.
   #
-  # The shell scripts under packaging/ are the implementation and stay the
-  # implementation: they encode measured facts about relocatable interpreters,
-  # entitlements and inside-out signing, and reimplementing any of that in Ruby
-  # would mean two things to keep correct. This module only answers the
-  # questions a Rails app can answer better than a shell script — where the app
+  # This module answers the questions a Rails app can answer — where the app
   # is, what it is called, which packer this platform wants — and builds argv.
+  # Building and checking the interpreter is DesktopRails::Tooling, run through
+  # exe/desktop-rails-tool, which ships in this gem. The packers themselves are
+  # still the scripts under packaging/, found by packaging_dir, until they move
+  # onto those classes too.
   #
   # Nothing here runs a command. `package_command` and friends return argv
   # arrays, so the decisions can be tested without a compiler, a runtime or a
@@ -48,7 +48,7 @@ module DesktopRails
 
     # ─── Locating the packaging scripts ──────────────────────────────────────
 
-    # The gem cannot ship packaging/: those scripts live at the root of the
+    # The gem cannot ship packaging/: the packers live at the root of the
     # desktop-rails repository, above this gem's own directory, and RubyGems
     # will not package files from outside a gem root. So they are located
     # instead, and when they cannot be found the error says how to point at them.
@@ -165,21 +165,8 @@ module DesktopRails
       [
         Paths.presence(ENV["DESKTOP_RAILS_RUNTIME"]),
         Paths.presence(DesktopRails.configuration.runtime_dir)&.to_s,
-        gem_runtime_path,
         build_dir.join("runtime").to_s
       ].compact
-    end
-
-    # A desktop-rails-runtime gem, built locally with packaging/gem.sh, carries
-    # an interpreter. It is not published anywhere — desktop:runtime downloads
-    # the same interpreter from a GitHub release instead — but a gem somebody
-    # built and installed is still honoured rather than ignored.
-    def gem_runtime_path
-      return nil unless defined?(DesktopRails::Runtime)
-
-      DesktopRails::Runtime.available? ? DesktopRails::Runtime.path : nil
-    rescue StandardError
-      nil
     end
 
     def runtime_dir
@@ -220,15 +207,27 @@ module DesktopRails
 
     # ─── argv ────────────────────────────────────────────────────────────────
 
+    # The gem's own command line, run by the Ruby running this code. A separate
+    # process rather than a method call, because the rake tasks run under
+    # Bundler and the interpreter being built or checked must not inherit it.
+    def tool_command(*args, ruby: RbConfig.ruby)
+      [ ruby, File.expand_path("../../exe/desktop-rails-tool", __dir__), *args.map(&:to_s) ]
+    end
+
     # Build the interpreter, or fetch it on Windows, where RubyInstaller already
     # publishes a portable archive that relocates and building would be work for
     # its own sake.
+    #
+    # The sources and the vendored OpenSSL go under the build directory, which
+    # the packers leave out of the bundle. The tool's default is the current
+    # directory, which here is the app, and pack.sh would have copied a
+    # half-gigabyte build tree into it.
     def runtime_command(out: nil)
       out ||= runtime_build_dir
       if platform == :windows
-        [ "pwsh", "-File", script("fetch-windows-runtime.ps1").to_s, "-Out", out.to_s ]
+        tool_command("runtime", "fetch-windows", "--out", out)
       else
-        [ script("build-runtime.sh").to_s, "--out", out.to_s ]
+        tool_command("runtime", "build", "--out", out, "--work", build_dir.join("runtime-build"))
       end
     end
 
@@ -591,27 +590,12 @@ module DesktopRails
       "'#{value.to_s.gsub("'", "''")}'"
     end
 
-    # What proves a downloaded interpreter works on this machine. On macOS and
-    # Linux that is verify-runtime.sh, the check every build passes in CI
-    # before it is published. Windows has no such script, so the interpreter is
-    # asked the questions fetch-windows-runtime.ps1 asks.
-    def runtime_check_command(dir, triple: release_triple)
-      if windows_triple?(triple)
-        [ File.join(dir.to_s, "bin", "ruby.exe"), "-e", WINDOWS_RUNTIME_CHECK ]
-      else
-        [ script("verify-runtime.sh").to_s, dir.to_s ]
-      end
+    # What proves a downloaded interpreter works on this machine: the check
+    # every build passes in CI before it is published, the same on every
+    # platform. See DesktopRails::Tooling::RuntimeVerification.
+    def runtime_check_command(dir)
+      tool_command("runtime", "verify", dir)
     end
-
-    WINDOWS_RUNTIME_CHECK = <<~'RUBY'
-      require "psych"
-      require "openssl"
-      abort "psych broken" unless Psych.load("- 1") == [1]
-      abort "openssl mismatch" unless OpenSSL::OPENSSL_VERSION == OpenSSL::OPENSSL_LIBRARY_VERSION
-      prefix = File.expand_path(RbConfig::CONFIG["prefix"])
-      abort "RbConfig points at #{prefix}, not the extracted interpreter" unless File.expand_path(RbConfig.ruby).start_with?(prefix)
-      puts "OK  ruby #{RUBY_VERSION} #{RUBY_PLATFORM}, psych #{Psych::VERSION}, #{OpenSSL::OPENSSL_VERSION}"
-    RUBY
 
     # Opting out of downloads. Unset, empty, "0", "false", "no" and "off" all
     # mean no, because a variable set to "false" that meant yes would be a trap.

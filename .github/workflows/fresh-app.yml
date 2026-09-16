@@ -131,7 +131,7 @@ jobs:
             bin="$FRESH/.desktop-rails/dist/fresh/fresh"
             tree="$FRESH/.desktop-rails/dist/fresh/lib/app"
           fi
-          DESKTOP_DATA_DIR="$(mktemp -d)" ${{ matrix.platform.gui }} packaging/smoke/app_check.sh "$bin" \
+          DESKTOP_DATA_DIR="$(mktemp -d)" ${{ matrix.platform.gui }} ruby desktop-rails/exe/desktop-rails-tool smoke app "$bin" \
             "text=Welcome#index" "unchanged=$tree"
 
       - name: The signature still verifies after running
@@ -190,7 +190,7 @@ jobs:
           rm -rf "$data" && mkdir -p "$data"
           # A model-backed page on an empty data directory proves the schema and
           # seeds were loaded; the reports prove the bridge worked in the window.
-          DESKTOP_DATA_DIR="$data" ${{ matrix.platform.gui }} packaging/smoke/app_check.sh "$bin" \
+          DESKTOP_DATA_DIR="$data" ${{ matrix.platform.gui }} ruby desktop-rails/exe/desktop-rails-tool smoke app "$bin" \
             "text=Welcome to Notes" \
             "marker=javascript" \
             "marker=stream" \
@@ -224,7 +224,7 @@ jobs:
             bin="$PWD/examples/notes/.desktop-rails/dist/notes/notes"
           fi
           rm -rf "$data/native-reports" "$data/log"
-          DESKTOP_DATA_DIR="$data" ${{ matrix.platform.gui }} packaging/smoke/app_check.sh "$bin" \
+          DESKTOP_DATA_DIR="$data" ${{ matrix.platform.gui }} ruby desktop-rails/exe/desktop-rails-tool smoke app "$bin" \
             "text=Kept across the update"
           python3 - "$data/app.sqlite3" <<'PY'
           import sqlite3, sys
@@ -303,5 +303,5 @@ jobs:
         shell: pwsh
         run: |
           $env:DESKTOP_DATA_DIR = Join-Path $env:RUNNER_TEMP "fresh-data"
-          python packaging\smoke\launch_check.py "$env:FRESH\.desktop-rails\dist\fresh\fresh.cmd"
+          ruby desktop-rails\exe\desktop-rails-tool smoke launch "$env:FRESH\.desktop-rails\dist\fresh\fresh.cmd"
           if ($LASTEXITCODE -ne 0) { throw "the packaged app did not hold to its contract" }

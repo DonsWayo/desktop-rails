@@ -74,16 +74,21 @@ jobs:
           sudo apt-get install -y -qq build-essential zlib1g-dev \
             libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
+      # The Ruby that runs the tooling, not the one being built.
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+
       - uses: actions/cache@v4
         with:
           path: .runtime-build/vendor
           key: vendor-${{ matrix.triple }}-openssl3.5.4-libdir-yaml0.2.5
 
       - name: Build the interpreter
-        run: packaging/build-runtime.sh --out "$PWD/out/ruby"
+        run: ruby desktop-rails/exe/desktop-rails-tool runtime build --ruby 3.4.8 --out "$PWD/out/ruby"
 
       - name: It relocates
-        run: packaging/verify-runtime.sh "$PWD/out/ruby"
+        run: ruby desktop-rails/exe/desktop-rails-tool runtime verify "$PWD/out/ruby"
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
@@ -118,7 +123,7 @@ jobs:
           landed="$RUNNER_TEMP/landed here"
           mkdir -p "$landed"
           tar -xzf "dist/$RUNTIME_ASSET" -C "$landed"
-          packaging/verify-runtime.sh "$landed/ruby"
+          ruby desktop-rails/exe/desktop-rails-tool runtime verify "$landed/ruby"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -137,9 +142,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+
       - name: Fetch and check the portable interpreter
         shell: pwsh
-        run: packaging/fetch-windows-runtime.ps1 -Out "$env:GITHUB_WORKSPACE\out\ruby"
+        run: |
+          ruby desktop-rails\exe\desktop-rails-tool runtime fetch-windows --out "$env:GITHUB_WORKSPACE\out\ruby"
+          if ($LASTEXITCODE -ne 0) { throw "the portable interpreter did not check out" }
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
@@ -165,14 +176,14 @@ jobs:
           Get-ChildItem dist | Format-Table Name, Length
 
       # Unpacked the way the gem unpacks it, Expand-Archive, somewhere else and
-      # under a path with a space, then asked the gem's own Windows check.
+      # under a path with a space, then checked by that interpreter running the
+      # same tool as every other platform.
       - name: The archive works where it lands
         shell: pwsh
         run: |
           $landed = "$env:RUNNER_TEMP\landed here"
           Expand-Archive -LiteralPath "dist\$env:RUNTIME_ASSET" -DestinationPath $landed -Force
-          & "$landed\ruby\bin\ruby.exe" -Idesktop-rails/lib -rdesktop_rails/packaging `
-            -e 'eval DesktopRails::Packaging::WINDOWS_RUNTIME_CHECK'
+          & "$landed\ruby\bin\ruby.exe" desktop-rails\exe\desktop-rails-tool runtime verify "$landed\ruby"
           if ($LASTEXITCODE -ne 0) { throw "the unpacked interpreter failed its check" }
 
       - uses: actions/upload-artifact@v4

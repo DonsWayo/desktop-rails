@@ -402,7 +402,7 @@ binary serves every app built with this fork:
 }
 ```
 
-- `pubkey` is the minisign public key `packaging/generate-key.sh` prints.
+- `pubkey` is the minisign public key `desktop-rails-tool updater generate-key` prints.
   Downloads that are not signed by its private half are refused, so the key is
   what makes an update server safe to trust.
 - `endpoints` must be https. The plugin allows plain http in development and
