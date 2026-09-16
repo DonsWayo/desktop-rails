@@ -51,6 +51,11 @@ export default [
       "test_raider_project/**",
       "turbo_desktop_example_app/**",
       "graphify-out/**",
+      // Build output and vendored code inside an example app, not source.
+      "examples/*/public/**",
+      "examples/*/vendor/**",
+      "examples/*/tmp/**",
+      "examples/*/.desktop-rails/**",
     ],
   },
   js.configs.recommended,
@@ -72,6 +77,16 @@ export default [
       ecmaVersion: 2023,
       sourceType: "module",
       globals: browserGlobals,
+    },
+  },
+  {
+    // An example app's own JavaScript runs in its pages, loaded through an
+    // importmap, and waits on the server-sent events it subscribes to.
+    files: ["examples/**/*.js"],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: "module",
+      globals: { ...browserGlobals, EventSource: "readonly", self: "readonly" },
     },
   },
   {
