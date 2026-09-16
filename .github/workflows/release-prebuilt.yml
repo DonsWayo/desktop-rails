@@ -234,12 +234,17 @@ jobs:
           if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             # A re-run replaces the assets rather than failing on them.
             gh release upload "$TAG" release/* --clobber -R "$GITHUB_REPOSITORY"
-            gh release edit "$TAG" --draft=false --prerelease="$PRERELEASE" -R "$GITHUB_REPOSITORY"
+            gh release edit "$TAG" --draft=false --prerelease="$PRERELEASE" -R "$GITHUB_REPOSITORY" \
+              --title "desktop-rails $VERSION" --notes-file notes.md
           else
             flags=()
             if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+            # --verify-tag, not --target: the tag already exists, and naming a
+            # commit makes GitHub treat this as creating a ref. When that commit
+            # edits a workflow file, the token is refused with a 403, which is
+            # how 0.3.0.pre2 failed to publish.
             gh release create "$TAG" release/* -R "$GITHUB_REPOSITORY" \
-              --target "$GITHUB_SHA" --title "desktop-rails $VERSION" \
+              --verify-tag --title "desktop-rails $VERSION" \
               --notes-file notes.md "${flags[@]}"
           fi
           gh release view "$TAG" -R "$GITHUB_REPOSITORY"
