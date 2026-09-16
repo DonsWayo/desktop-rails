@@ -34,7 +34,7 @@ group :development do
   gem "web-console"
 end
 
-gem "desktop-rails", "~> 0.2.1", path: "../../desktop-rails"
+gem "desktop-rails", path: "../../desktop-rails"
 
 # Added by desktop_rails:install. json 3 removed the positional options
 # hash that ActiveSupport::JSON.decode still passes, so decoding raises
