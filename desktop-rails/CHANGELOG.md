@@ -82,6 +82,23 @@ this release; the prebuilt shell of 0.3.0.pre2 still has the old defaults.
 
 ### Added
 
+- `bin/rails desktop:package:hosted` packages a window onto a server you
+  already run: the prebuilt shell (`desktop:shell`) and
+  `config/desktop-rails.config.json` (or `DESKTOP_RAILS_CONFIG`, with
+  `DESKTOP_RAILS_SERVER_URL` replacing `server_url`), laid out as a signed
+  macOS `.app`, a Linux tree plus tarball, or a Windows directory plus zip. No
+  Rust and no Ruby inside. The config is refused for plain http off loopback, a
+  `server.command`, half an updater block, or an unknown key, and what it opens
+  is printed before building. `DESKTOP_RAILS_ICON` sets the icon on macOS and
+  Linux.
+- `DesktopRails::Packager`: the package layouts (macOS `.app`, Linux tree,
+  Windows tree) and a zip and tar.gz writer in plain Ruby, which the hosted task
+  uses and the bundled packers are meant to move onto.
+- `.github/workflows/hosted-app.yml` packages a hosted app on macOS and Linux
+  with that command, opens it against a Rails server, and asserts from the
+  servers' side that the app origin reaches the bridge while another origin in
+  the same window, a frame of another origin and an unlisted link do not.
+
 - Prebuilt downloads. `bin/rails desktop:runtime` now downloads the relocatable
   interpreter for this machine from the GitHub release matching the gem version
   (gem `0.3.0.pre1`, tag `v0.3.0.pre1`), verifies it against the release's

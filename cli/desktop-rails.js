@@ -300,8 +300,10 @@ function cmdInit(args) {
     JSON.stringify(desktopPackage(appName), null, 2) + "\n"
   );
 
-  // Create the app config file. The filesystem and sudo bridges start closed —
-  // an app widens them by naming the roots and commands it actually needs.
+  // Create the app config file. The filesystem, shell, sudo and clipboard-read
+  // bridges start closed — an app widens them by naming the roots and commands
+  // it actually needs. The shell treats a missing block as closed too; these
+  // are written out so the choice is visible in the file.
   const config = {
     server_url: "http://localhost:3000",
     app_name: guessAppName(projectDir),
@@ -320,6 +322,13 @@ function cmdInit(args) {
       enabled: false,
       allowed_commands: [],
       confirm: true,
+    },
+    shell: {
+      enabled: false,
+      allowed_commands: [],
+    },
+    clipboard: {
+      read: false,
     },
     // Off-origin links open in the system browser. List a host here to keep it
     // in the app window instead — an identity provider, say.
@@ -478,6 +487,11 @@ Examples:
   desktop-rails dev                            # Start dev mode
   desktop-rails build                          # Build for this machine
   desktop-rails build --target universal-apple-darwin  # Universal binary
+
+These commands build the shell from source, which needs Rust. To package an
+app without Rust, from the Rails app itself:
+  bin/rails desktop:package          # bundled: your app and its own Ruby inside
+  bin/rails desktop:package:hosted   # hosted: a window onto a server you run
 `);
 }
 

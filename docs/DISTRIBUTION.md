@@ -5,7 +5,8 @@ There are two things you might distribute, and they are built differently.
 | You are shipping | Built by | Guide |
 |---|---|---|
 | A **bundled** app: your Rails app with its own Ruby | `bin/rails desktop:package` | [README quick start](../README.md#quick-start), [packaging/README.md](../packaging/README.md) |
-| The **shell alone**, opening a server you host | `cargo tauri build`, or the Release workflow | this page |
+| A **hosted** app: the prebuilt shell and a config, opening a server you run | `bin/rails desktop:package:hosted` | [README hosted mode](../README.md#wrapping-a-server-you-run-yourself) |
+| The **shell alone**, built from source | `cargo tauri build`, or the Release workflow | this page |
 
 ## A bundled app
 
@@ -27,6 +28,11 @@ In hosted mode the app is a native window pointing at the `server_url` in
 `desktop-rails.config.json`, which is bundled with the shell at build time. You
 ship the window; your Rails app stays on your server. Set `server_url` to your
 production URL before building.
+
+Most apps do not need to build the shell for this: `bin/rails desktop:package:hosted`
+puts the prebuilt shell and your config into a signed `.app`, a Linux tree and
+tarball, or a Windows directory and zip, with no Rust involved. The rest of this
+section is for building installers of the shell itself.
 
 ### From the Actions tab
 

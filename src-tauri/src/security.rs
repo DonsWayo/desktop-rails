@@ -965,7 +965,9 @@ mod tests {
 
     #[test]
     fn the_app_data_directory_is_a_root_when_asked_for_by_name() {
-        let app_data = PathBuf::from("/tmp/app-data");
+        // A real absolute path on every platform: "/tmp" has no drive letter,
+        // so Windows does not count it as absolute and the root is dropped.
+        let app_data = std::env::temp_dir().join("app-data");
         let config = FilesystemConfig {
             allowed_roots: vec!["$APP_DATA".into(), "$APP_DATA/exports".into()],
         };

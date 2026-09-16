@@ -109,7 +109,11 @@ Known limits:
 - **Linux.** The window needs WebKitGTK 4.1 on the user's machine. ARM and musl
   Linux have no prebuilt downloads, so `desktop:runtime` compiles Ruby from
   source there and packages have no window.
-- **Hosted mode** has less CI coverage than bundled mode.
+- **Hosted mode** is packaged and opened in CI on macOS and Linux, with the
+  bridge's origin checks driven from inside the window
+  ([hosted-app.yml](.github/workflows/hosted-app.yml)). Its Windows package is
+  built only in the test suite, and its secure defaults need a shell released
+  after 0.3.0.pre2.
 
 ## How it fits together
 
@@ -135,33 +139,148 @@ app writes goes to the operating system's data directory.
 
 ## Wrapping a server you run yourself
 
-Hosted mode: the shell opens a Rails server you run, locally in development or
-on the internet in production. This section builds the shell from a checkout,
-which needs Rust and Node.
+Hosted mode: the window opens a Rails app you already run on a server, the way a
+Hotwire Native app wraps your site on a phone. The package is the prebuilt shell
+and one config file. Building it needs neither Rust nor a relocatable Ruby, and
+nothing but the shell runs on the user's machine.
 
-### 1. Clone and install dependencies
+This path is run on every push against a real Rails server on macOS and Linux
+([hosted-app.yml](.github/workflows/hosted-app.yml)): the package is built with
+the command below, the window loads the server's page, the page reaches the
+bridge, and a second origin in the same window is refused.
+
+### 1. Add the gem
 
 ```bash
-git clone https://github.com/DonsWayo/desktop-rails.git
-cd desktop-rails
-cargo install tauri-cli
-npm install
+bundle add desktop-rails --github DonsWayo/desktop-rails
 ```
 
-### 2. Configure your Rails server URL
+Your server does not need the `desktop_rails:install` generator; that sets up
+the desktop environment a bundled app runs in.
 
-Edit `desktop-rails.config.json`:
+### 2. Write the config
+
+`config/desktop-rails.config.json`:
 
 ```json
 {
-  "server_url": "http://localhost:3000",
-  "app_name": "My App",
-  "path_configuration_url": "http://localhost:3000/desktop-rails/path-configuration.json"
+  "server_url": "https://app.example.com",
+  "app_name": "Acme Assistant",
+  "window": { "width": 1100, "height": 800 }
 }
 ```
 
+That is a complete, closed config: the window opens `server_url`, pages from that
+origin can use the notification, window, badge, clipboard-write and file-picker
+components, and nothing that reaches the machine beyond a file the user picks is
+open. Widen it only where the app needs to — see
+[Capabilities](#capabilities-and-what-a-compromised-page-can-do).
+
 > `path_configuration_url` is optional — it defaults to
 > `{server_url}/desktop-rails/path-configuration.json`.
+
+### 3. Package it
+
+```bash
+bin/rails desktop:package:hosted
+```
+
+It downloads the shell for this platform (`desktop:shell`), checks the config,
+prints what a page from `server_url` will be able to reach, and writes to
+`.desktop-rails/dist/`:
+
+| Platform | Result |
+|---|---|
+| macOS | `Acme Assistant.app`, signed ad hoc (or with `config.signing_identity`) |
+| Linux | `acme-assistant/` (the shell, its config, a `.desktop` entry) and `acme-assistant-linux-x86_64.tar.gz` |
+| Windows | `acme-assistant/` (`acme-assistant.exe` and its config) and `acme-assistant-windows-x64.zip` |
+
+| Variable | Meaning |
+|---|---|
+| `DESKTOP_RAILS_CONFIG` | The config file, if not `config/desktop-rails.config.json` |
+| `DESKTOP_RAILS_SERVER_URL` | Replaces `server_url`, so one config builds staging and production |
+| `DESKTOP_RAILS_APP_ID` | Bundle identifier; also names the data directory |
+| `DESKTOP_RAILS_ICON` | A `.png` (or `.icns` on macOS). A Windows executable keeps the shell's icon |
+| `DESKTOP_RAILS_SHELL` | A shell binary to use instead of downloading one |
+
+The config is refused, before anything is built, when `server_url` is plain
+`http` anywhere but this machine, when it has a `server.command` (a hosted app
+starts nothing on the user's machine), when an `updater` block is half filled,
+or when it has a key the shell does not read, since the shell silently ignores
+a misspelt `"shel"`.
+
+> The secure defaults below are in the shell, so they need a shell released
+> after 0.3.0.pre2. Until then, build the shell from source (below) and point
+> `DESKTOP_RAILS_SHELL` at it.
+
+### Capabilities, and what a compromised page can do
+
+Treat every page in the window as code you do not fully control. A hosted app
+shows a production website, and an XSS on it, a compromised script from a CDN,
+or a page the window was talked into loading all run with whatever the bridge
+allows. The config is therefore closed by default and opened per capability:
+
+| Capability | With no config | To open it |
+|---|---|---|
+| Which pages may call the bridge | Only `server_url`'s origin: same scheme, host and port | Nothing widens this |
+| `shell` (run processes) | Refused | `"shell": { "enabled": true, "allowed_commands": ["git status"], "allowed_env": [] }` |
+| `sudo` (run as administrator) | Refused | `"sudo": { "enabled": true, "allowed_commands": [...] }` |
+| `filesystem` | Only files and folders the user picked in a dialog or dropped on a window, for the session | `"filesystem": { "allowed_roots": ["~/Projects", "$APP_DATA"] }` |
+| `clipboard` | Write only | `"clipboard": { "read": true }` |
+| Other sites | Open in the browser | `"navigation": { "internal_hosts": ["accounts.google.com"] }` loads them in the window, still without the bridge |
+| `updater` | Off | `endpoints` and `pubkey` together; only signed updates install |
+| `notification`, `badge`, `window`, `shortcut`, `menu-item`, `file-picker`, `autostart` | Available to `server_url` | — |
+
+What stops a page that is *not* the app:
+
+- **Other origins.** Tauri checks the origin of the frame that sent each call
+  against `server_url`'s exact origin before any command runs, and the command
+  checks the page the window shows as well. A different host, a lookalike
+  (`app.example.com.evil.com`, `app.example.com@evil.com`), another port, or an
+  `http://` downgrade of an `https://` app is refused.
+- **Links and redirects.** A link to another site opens in the system browser
+  and the window stays on the app. A host in `internal_hosts` loads in the
+  window, and is still refused by the bridge.
+- **Frames.** An `<iframe>` of another origin gets neither Tauri's invoke
+  function nor the key it needs, and the ACL judges the frame, not the page
+  around it.
+
+What it does not stop: a script running *on* `server_url`'s origin is the app as
+far as the shell can tell. Whatever the config opens, an XSS on your site can
+use. Open `shell`, `sudo` and filesystem roots only if the app cannot work
+without them, name the narrowest commands and roots it needs, and keep your
+site's Content Security Policy tight.
+
+### 4. Serve path configuration from Rails
+
+```ruby
+# config/routes.rb
+get "/desktop-rails/path-configuration", to: "desktop_rails#path_configuration"
+```
+
+### 5. Develop against it
+
+To try a config against a local server before packaging, point `server_url` at
+`http://localhost:3000` (plain http is allowed on loopback) and package as above,
+or run a shell you built from source with the config in the working directory.
+
+#### Building the shell from source
+
+For working on the shell itself. Needs Rust (and the WebKitGTK development
+packages on Linux):
+
+```bash
+git clone https://github.com/DonsWayo/desktop-rails.git
+cd desktop-rails/src-tauri
+cargo build --release   # target/release/desktop-rails
+```
+
+`bin/rails desktop:shell` uses a build in a checkout automatically when the gem
+comes from that checkout, and `DESKTOP_RAILS_SHELL` points at one anywhere else.
+A debug build (`cargo build`, or `cargo tauri dev` with `tauri-cli`) reads
+`desktop-rails.config.json` from the directory it runs in.
+
+### The config in detail
 
 #### Where the rules come from
 
@@ -262,7 +381,9 @@ If something is already listening on `server_url` — a server you started by
 hand, say — the app leaves it alone: it neither starts a second one nor kills
 yours on quit. A server the app did start is stopped when the app quits.
 
-Omit `command` (or the whole block) to manage the server yourself.
+Omit `command` (or the whole block) to manage the server yourself. A hosted
+package refuses a `command`: it would run on every machine the app is installed
+on.
 
 #### Updating a shipped app
 
@@ -294,30 +415,6 @@ Omit the block, or either required field, and the app does not check for updates
 at all — `DesktopRails.updater.check()` answers `{ status: "not_configured" }`.
 
 Making the key and signing a release: [packaging/AUTO_UPDATE.md](packaging/AUTO_UPDATE.md).
-
-### 3. Add the Rails gem
-
-```bash
-bundle add desktop-rails --github DonsWayo/desktop-rails
-bin/rails generate desktop_rails:install
-```
-
-### 4. Serve path configuration from Rails
-
-```ruby
-# config/routes.rb
-get "/desktop-rails/path-configuration", to: "desktop_rails#path_configuration"
-```
-
-### 5. Run the desktop app
-
-```bash
-cargo tauri dev
-```
-
-With a `server.command` configured, this also starts your Rails server; without
-one, run `bin/rails server` in another terminal first.
-
 ## Path Configuration
 
 The path configuration is a JSON file that maps URL patterns to presentation rules — the same concept from turbo-ios and turbo-android.
@@ -552,22 +649,48 @@ reported.
 
 ### Bridge security
 
-The bridge reaches the shell, the filesystem and (on macOS) administrator
-privileges, so it is closed by default and opened deliberately.
+The bridge reaches the shell, the filesystem and administrator privileges, so it
+is closed by default and opened deliberately. The table of defaults and the
+threat model are under
+[Capabilities](#capabilities-and-what-a-compromised-page-can-do); this is how
+each piece works.
 
-**Origin.** Every bridge message is checked against `server_url` before it is
-dispatched. Only pages served from that origin can use the bridge.
+**Origin.** Only pages from `server_url`'s origin (or, in a bundled app, the
+address its own server announced) can call the shell's commands. Tauri checks
+the origin of the frame that sent each call before the command runs, and every
+command checks the page its window is showing as well, so neither an embedded
+frame of another origin nor a request that races a navigation gets through.
+Remote pages cannot call Tauri plugin commands directly at all.
+
+**Shell.** The `shell` component is off unless you enable it and list the
+commands it may run, matched like `sudo` below against the command and its
+arguments. Arguments are quoted before they reach the login shell; the command
+itself may not contain shell metacharacters. A page may only set environment
+variables named in `allowed_env` (`PATH`, `BASH_ENV` or `LD_PRELOAD` would turn
+an allowed command into a different program), and a `cwd` must be inside the
+filesystem scope.
+
+```json
+{
+  "shell": {
+    "enabled": true,
+    "allowed_commands": ["git status", "bin/setup"],
+    "allowed_env": ["GIT_DIR"]
+  }
+}
+```
 
 **Filesystem.** The `filesystem` component can only read and write under the
-roots you declare. With no configuration it is limited to the app's own data
-directory. Paths are resolved before the check, so `..` and symlinks cannot walk
-out of a root, and locations like `.ssh`, `.aws`, `.gnupg` and Rails
-`master.key` / `credentials.yml.enc` are refused even inside one.
+roots you declare, plus what the user grants (below). With no configuration
+there are no roots. `$APP_DATA` names the app's own data directory. Paths are
+resolved before the check, so `..` and symlinks cannot walk out of a root, and
+locations like `.ssh`, `.aws`, `.gnupg` and Rails `master.key` /
+`credentials.yml.enc` are refused even inside one.
 
 ```json
 {
   "filesystem": {
-    "allowed_roots": ["~/Projects", "~/.rbenv"]
+    "allowed_roots": ["~/Projects", "$APP_DATA/exports"]
   }
 }
 ```
@@ -670,6 +793,14 @@ await DesktopRails.clipboard.writeText("INV-2024-001");
 
 Ordinary copy and paste inside the page keeps working through the webview as
 in any browser.
+
+`readText()` is refused unless the config allows it — the clipboard is where
+passwords and one-time codes sit, and a browser only gives a page the clipboard
+on a paste the user makes:
+
+```json
+{ "clipboard": { "read": true } }
+```
 
 ### Launch at login
 
