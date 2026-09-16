@@ -1,0 +1,16 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# The build-machine tooling of desktop-rails: building and verifying the
+# relocatable runtime, pruning, disk images, notarisation, update signing, and
+# the smoke checks CI runs against packaged apps. See DesktopRails::Tooling.
+#
+# Standard library only, so it runs under any Ruby >= 3.2 without a bundle:
+#
+#   ruby desktop-rails/exe/desktop-rails-tool runtime build --out out/ruby
+
+$LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
+require "desktop_rails/tooling/cli"
+
+$stdout.sync = true
+exit DesktopRails::Tooling::CLI.start(ARGV)

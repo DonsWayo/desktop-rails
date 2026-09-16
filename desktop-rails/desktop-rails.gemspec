@@ -18,8 +18,13 @@ Gem::Specification.new do |spec|
   spec.metadata["changelog_uri"]     = "#{spec.homepage}/blob/main/desktop-rails/CHANGELOG.md"
   spec.metadata["rubygems_mfa_required"] = "true"
 
-  spec.files = Dir["lib/**/*", "app/**/*", "config/**/*", "LICENSE", "README.md", "CHANGELOG.md"]
+  spec.files = Dir["lib/**/*", "app/**/*", "config/**/*", "exe/*", "LICENSE", "README.md", "CHANGELOG.md"]
   spec.require_paths = [ "lib" ]
+  # Building and verifying the runtime, pruning, disk images, notarisation,
+  # update signing and CI's smoke checks. Shipped as an executable so an app
+  # can run them with `bundle exec desktop-rails-tool` and no checkout.
+  spec.bindir = "exe"
+  spec.executables = [ "desktop-rails-tool" ]
 
   spec.add_dependency "rails", ">= 7.0"
   spec.add_dependency "turbo-rails", ">= 1.0"
