@@ -176,6 +176,11 @@ pub async fn start(
     let (program, args) = server_invocation(command, directory.as_deref());
     let mut spawner = tokio::process::Command::new(&program);
     spawner
+        // Tells the child a handshake is coming on stdin. Without this the
+        // child cannot tell a shell that will write from any other process
+        // holding a silent pipe, and waiting for a line that never arrives
+        // hangs it forever.
+        .env("TURBO_DESKTOP_HANDSHAKE", "stdin")
         .args(&args)
         .stdin(Stdio::piped()) // the handshake goes in here, and EOF reaps the child
         .stdout(Stdio::piped())

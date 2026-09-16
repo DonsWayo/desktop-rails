@@ -353,7 +353,7 @@ class PackagingHandshakeTest < Minitest::Test
 
   def test_the_engine_dismisses_it_without_opening_a_channel
     io = StringIO.new("#{TurboDesktop::Packaging.no_shell_handshake}\n")
-    assert_nil TurboDesktop::Native.read_handshake!(io)
+    assert_nil TurboDesktop::Native.read_handshake!(io, env: { "TURBO_DESKTOP_HANDSHAKE" => "stdin" })
     refute TurboDesktop::Native.available?,
            "desktop:run offers no control channel, and must not appear to"
   end
@@ -362,7 +362,7 @@ class PackagingHandshakeTest < Minitest::Test
     # The parent keeps the pipe open afterwards so that closing it is the exit
     # signal. Consuming more than the handshake would eat that.
     io = StringIO.new("#{TurboDesktop::Packaging.no_shell_handshake}\nstill here\n")
-    TurboDesktop::Native.read_handshake!(io)
+    TurboDesktop::Native.read_handshake!(io, env: { "TURBO_DESKTOP_HANDSHAKE" => "stdin" })
     assert_equal "still here\n", io.read
   end
 
@@ -370,7 +370,7 @@ class PackagingHandshakeTest < Minitest::Test
     # The counterpart: proof the dismissal above is about this line's content
     # and not about read_handshake! having been broken.
     io = StringIO.new(JSON.generate(control: "http://127.0.0.1:9", token: "t") + "\n")
-    refute_nil TurboDesktop::Native.read_handshake!(io)
+    refute_nil TurboDesktop::Native.read_handshake!(io, env: { "TURBO_DESKTOP_HANDSHAKE" => "stdin" })
     assert TurboDesktop::Native.available?
   end
 

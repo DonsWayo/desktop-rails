@@ -34,9 +34,21 @@ module TurboDesktop
       # it is the signal to exit, which is the only thing that survives the
       # shell being force-quit. So this consumes exactly one line and leaves the
       # rest of the stream alone.
-      def read_handshake!(io = $stdin)
+      # Set in the child's environment by the shell that spawns it, and only
+      # there. It is what distinguishes "a shell is about to write a handshake to
+      # my stdin" from every other process that merely has a non-tty stdin.
+      HANDSHAKE_ENV = "TURBO_DESKTOP_HANDSHAKE"
+
+      def read_handshake!(io = $stdin, env: ENV)
         return channel if channel
-        return nil unless io && !io.tty?
+
+        # Only read when the shell said it would write. Checking "stdin is not a
+        # tty" instead is not enough: a CI job, cron, Docker without -t, foreman
+        # and most IDE run configurations all hand a process an open pipe that
+        # never sends a line, and `gets` then blocks forever. Every `rails
+        # db:migrate` in the desktop environment hung that way.
+        return nil unless env[HANDSHAKE_ENV] == "stdin"
+        return nil unless io
 
         line = begin
           io.gets

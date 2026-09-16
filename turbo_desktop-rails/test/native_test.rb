@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "socket"
+require "timeout"
 require "json"
 
 # Exercises the control channel from the Ruby side against a stub shell, so the
@@ -52,7 +53,7 @@ class NativeTest < Minitest::Test
     writer.puts "reserved for the exit watchdog"
     writer.close
 
-    TurboDesktop::Native.read_handshake!(reader)
+    TurboDesktop::Native.read_handshake!(reader, env: { "TURBO_DESKTOP_HANDSHAKE" => "stdin" })
 
     assert_equal "reserved for the exit watchdog", reader.gets.strip
   end
@@ -62,8 +63,33 @@ class NativeTest < Minitest::Test
     writer.puts "Puma starting in single mode..."
     writer.close
 
-    assert_nil TurboDesktop::Native.read_handshake!(reader)
+    assert_nil TurboDesktop::Native.read_handshake!(reader, env: { "TURBO_DESKTOP_HANDSHAKE" => "stdin" })
     refute_predicate TurboDesktop::Native, :available?
+  end
+
+  def test_does_not_touch_stdin_unless_a_shell_said_it_would_write
+    # The regression. A CI job, cron, Docker without -t and foreman all give a
+    # process an open pipe that never sends a line. Reading it blocked forever,
+    # so every `rails db:migrate` in the desktop environment hung.
+    reader, _writer = IO.pipe # writer held open and silent: gets would block
+
+    result = Timeout.timeout(2) { TurboDesktop::Native.read_handshake!(reader, env: {}) }
+
+    assert_nil result
+    refute_predicate TurboDesktop::Native, :available?
+  ensure
+    reader&.close
+    _writer&.close
+  end
+
+  def test_reads_the_handshake_when_the_shell_signals_it
+    reader, writer = IO.pipe
+    writer.puts handshake_line
+    writer.close
+
+    TurboDesktop::Native.read_handshake!(reader, env: { "TURBO_DESKTOP_HANDSHAKE" => "stdin" })
+
+    assert_predicate TurboDesktop::Native, :available?
   end
 
   # ─── calls ──────────────────────────────────────────────────────────────
@@ -152,7 +178,7 @@ class NativeTest < Minitest::Test
   def with_handshake(token: TOKEN)
     reader, writer = IO.pipe
     writer.puts handshake_line(token: token)
-    TurboDesktop::Native.read_handshake!(reader)
+    TurboDesktop::Native.read_handshake!(reader, env: { "TURBO_DESKTOP_HANDSHAKE" => "stdin" })
   end
 
   # A stand-in for the shell's control listener, matching control.rs.
