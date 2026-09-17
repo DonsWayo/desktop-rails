@@ -171,9 +171,9 @@ the desktop environment a bundled app runs in.
 ```
 
 That is a complete, closed config: the window opens `server_url`, pages from that
-origin can use the notification, window, badge, clipboard-write and file-picker
-components, and nothing that reaches the machine beyond a file the user picks is
-open. Widen it only where the app needs to — see
+origin can use the notification, window, badge, global shortcut, menu item,
+clipboard-write and file-picker components, and nothing that reaches the machine
+beyond a file the user picks is open. Widen it only where the app needs to — see
 [Capabilities](#capabilities-and-what-a-compromised-page-can-do).
 
 > `path_configuration_url` is optional — it defaults to
@@ -228,7 +228,9 @@ allows. The config is therefore closed by default and opened per capability:
 | `clipboard` | Write only | `"clipboard": { "read": true }` |
 | Other sites | Open in the browser | `"navigation": { "internal_hosts": ["accounts.google.com"] }` loads them in the window, still without the bridge |
 | `updater` | Off | `endpoints` and `pubkey` together; only signed updates install |
-| `notification`, `badge`, `window`, `shortcut`, `menu-item`, `file-picker`, `autostart` | Available to `server_url` | — |
+| `notification` | Available to `server_url` and the app's Ruby | `"notifications": { "enabled": false }` turns it off |
+| `shortcut` (global shortcuts) | Available to `server_url` and Ruby: combinations with a Control, Alt/Option or Command/Super modifier, at most 20 | `"shortcuts": { "enabled": false }` turns it off; `"summon": "CmdOrCtrl+Shift+Space"` adds a window-summoning shortcut with no page code |
+| `badge`, `window`, `menu-item`, `file-picker`, `autostart` | Available to `server_url` | — |
 
 What stops a page that is *not* the app:
 
@@ -462,11 +464,137 @@ The Bridge is the desktop equivalent of **Strada**. It lets your web components 
 
 | Component | Description |
 |---|---|
-| `notification` | Show native OS notifications |
-| `menu-item` | Register items in the native menu bar |
+| `notification` | OS notifications; a click brings the window forward — see [Notifications](#notifications) |
+| `menu-item` | Items in the app's menu bar that trigger page actions — see [Menu items](#menu-items) |
 | `file-picker` | Open native file-open/save dialogs |
-| `badge` | Set the dock/taskbar badge count |
-| `shortcut` | Register global keyboard shortcuts |
+| `badge` | The Dock or launcher badge count — see [Badge](#badge) |
+| `shortcut` | Global keyboard shortcuts, and a config-only one that summons the window — see [Global shortcuts](#global-shortcuts) |
+
+What each platform does, and what CI proves of it
+(`.github/workflows/native-features.yml`):
+
+| | macOS | Linux | Windows |
+|---|---|---|---|
+| Notification | `NSUserNotificationCenter`, sent under the app's bundle id. No click event | `org.freedesktop.Notifications` on the session bus; a click is reported | A toast; a click is reported |
+| Badge | Dock count, or a short label | Count through the Unity `LauncherEntry` signal (Ubuntu dock, Dash to Dock, Plasma, Plank); no labels | None: resolves with `supported: false` |
+| Global shortcut | Yes | X11, and XWayland under Wayland, where it only fires while an X11 window has focus (the reply carries a `warning`) | Yes |
+| Menu item | App menu bar | Window menu bar | Window menu bar |
+| CI asserts | Each call's answer, Ruby's notification accepted by the OS; key presses and the Notification Center are reported only where the runner allows | The notification service received each `Notify`, the badge signal went out, keys pressed with `xdotool` fire the page's shortcut and summon the window, a taken combination is refused, a menu accelerator and a notification click reach the page | Not run |
+
+### Notifications
+
+```js
+await DesktopRails.notifications.show({ title: "Export finished", body: "invoice.pdf", id: "export-42" })
+DesktopRails.notifications.onClick(({ id }) => Turbo.visit(`/exports/${id.split("-")[1]}`))
+```
+
+`show()` resolves with `{ status: "shown", id, clickable }` once the platform's
+notification service has taken the notification, and rejects with the reason
+when it cannot: no notification service (a Linux session without a daemon), a
+macOS process that is not running from its `.app`, or the config turning
+notifications off. A notification with the same `id` as an earlier one replaces
+it where the platform can (Linux).
+
+Clicking a notification shows and focuses the main window and dispatches
+`desktop-rails:notification-click` with `{ id }` on every open page (and calls
+`onClick`). macOS activates the app on a click itself and reports nothing back,
+so `clickable` is `false` there.
+
+Permission: desktop platforms do not prompt. `notifications.permission()` (and
+`requestPermission()`, which is the same) is `"granted"` when a Linux
+notification service answers, `"unavailable"` when there is none, `"denied"`
+when the config turned notifications off, and `"unknown"` on macOS and Windows,
+which cannot say without a prompt or a signed bundle. The person using the app
+can still silence it in the system settings.
+
+From Ruby, with no page open:
+
+```ruby
+DesktopRails::Native.notify(title: "Export finished", body: "invoice.pdf", id: "export-42")
+DesktopRails::Native.notification_permission # => "granted"
+```
+
+`notify` returns the shell's reply and raises `DesktopRails::Native::CallFailed`
+when the notification could not be shown. Outside the shell it is `nil`.
+
+Notifications are on for `server_url` by default; `"notifications": { "enabled": false }` turns them off.
+
+### Badge
+
+```js
+await DesktopRails.badge.set(3)          // { supported: true, count: 3 } on macOS and Linux
+await DesktopRails.badge.setLabel("new") // macOS only; elsewhere { supported: false }
+await DesktopRails.badge.clear()
+```
+
+A count of 0 clears. Windows has no badge for a desktop app, so the call is a
+no-op that says `supported: false` rather than an error. Ruby:
+`DesktopRails::Native.badge(3)`, `.badge_label("new")`, `.clear_badge`.
+
+### Global shortcuts
+
+Combinations that reach the app while another application has focus: the
+"summon the assistant from anywhere" key.
+
+```js
+await DesktopRails.shortcuts.register("palette", "CmdOrCtrl+Shift+K", { focus: true })
+DesktopRails.shortcuts.on("palette", () => this.openPalette())
+// or: data-action="desktop-rails:shortcut@document->palette#open"  (detail: { id, accelerator })
+await DesktopRails.shortcuts.unregister("palette")
+```
+
+The contract:
+
+- **Ids.** Each shortcut has an id of your choosing (letters, digits, `-_.:`),
+  which is what the event carries. `focus: true` shows and focuses the main
+  window before the page hears about it.
+- **Reloads.** Shortcuts belong to the app, not the page, and survive
+  navigation. Registering the same id and combination again resolves with
+  `alreadyRegistered: true` and grabs nothing twice, so a controller can simply
+  register in `connect()`. The same id with a new combination replaces the old
+  one (`replaced: true`). Every open page hears a shortcut fire.
+- **Conflicts reject.** A combination another id holds, the config's summon
+  combination, or a combination another application or the OS already grabbed
+  rejects with the reason ("another application or the system already uses
+  it"), rather than resolving as if it worked. The OS cannot always tell: macOS
+  lets two apps register the same hot key, so a clash there is not detectable.
+- **Limits.** A combination needs a Control, Alt/Option or Command/Super
+  modifier — Shift alone is still typing — and pages hold at most 20 shortcuts,
+  so a page cannot capture typing meant for other applications.
+- `unregisterAll()` releases everything pages registered; `list()` shows it.
+
+**Summon without page code.** A hosted app can bring its window forward with a
+config entry alone. The shell registers it at startup, shows and focuses the
+main window when it fires, and dispatches `desktop-rails:summon`:
+
+```json
+{ "shortcuts": { "summon": "CmdOrCtrl+Shift+Space" } }
+```
+
+`desktop:package:hosted` refuses a summon combination the shell would not
+accept. Page registration is on by default; `"shortcuts": { "enabled": false }`
+turns it off and leaves `summon` working.
+
+### Menu items
+
+```js
+await DesktopRails.menu.add({ id: "export", title: "Export PDF", accelerator: "CmdOrCtrl+Shift+E", menu: "File" })
+DesktopRails.menu.onClick("export", () => this.export())
+// or: data-action="desktop-rails:menu-item@document->report#export"  (detail: { id })
+await DesktopRails.menu.remove("export")
+```
+
+`menu` names a top-level menu: an existing one ("File", "View") or a new one,
+created before "Window" and removed with its last item. Like shortcuts, items
+belong to the app and adding the same item again is `alreadyRegistered`. An
+accelerator the app menu already uses (Quit, Reload, Copy, …) or another item
+holds is refused. A menu accelerator only fires while the app's window has
+focus; use a global shortcut for anything else.
+
+The notification, badge, shortcut and menu APIs reject with the shell's reason
+on a refusal. `sendBridgeMessage()` still resolves to `null` on any error, as it
+always has; `DesktopRails.invokeBridge()` is the rejecting form for your own
+components.
 
 ### Modal and secondary windows
 
@@ -882,20 +1010,17 @@ Or flip it on against any build without a rebuild:
 import { Controller } from "@hotwired/stimulus"
 
 export default class extends DesktopRails.stimulusBridge(Controller, "notification") {
-  connect() {
-    super.connect()
-    this.sendBridge("connect", { title: "My App" })
-  }
-
   notify(event) {
-    this.sendBridge("connect", {
+    this.sendBridge("show", {
       title: "New Message",
-      body: event.target.dataset.body
+      body: event.target.dataset.body,
+      id: "message"
     })
   }
 
+  // Everything the shell reports for this component, e.g. { event: "click", data: { id } }
   receiveBridge(message) {
-    console.log("Native says:", message)
+    if (message.event === "click") Turbo.visit("/messages")
   }
 }
 ```
@@ -924,6 +1049,10 @@ Rename it with `config.variant`, or set it to `nil` to leave variants alone.
       shortcut: "Cmd+E"
     ) %>
 ```
+
+The helper only writes `data-desktop-rails-bridge-*` attributes for your own
+Stimulus controller to read; nothing registers a menu item until that
+controller calls `DesktopRails.menu.add` (or `sendBridge("register", …)`).
 
 ## Rails Gem
 

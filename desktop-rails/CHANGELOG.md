@@ -101,6 +101,50 @@ later; the prebuilt shells of pre1 and pre2 still have the old defaults.
 
 ### Added
 
+- **Notifications, the badge, global shortcuts and menu items actually work.**
+  Before this, the `notification`, `badge`, `shortcut` and `menu-item`
+  components emitted Rust events nothing listened to and answered "shown" or
+  "registered" anyway. Now:
+  - `notification` goes to the platform's notification service
+    (`org.freedesktop.Notifications` on Linux, a toast on Windows,
+    `NSUserNotificationCenter` on macOS under the running bundle's id). With no
+    service, or from a macOS process not running from its `.app`, it is an
+    error rather than success. A click (Linux, Windows) focuses the window and
+    dispatches `desktop-rails:notification-click`. `DesktopRails::Native.notify`
+    takes an `id:` and raises `CallFailed` when nothing was shown;
+    `Native.notification_permission` is new.
+  - `badge` sets the Dock count or label on macOS and the launcher count on
+    Linux (the Unity `LauncherEntry` signal), and answers `supported: false` on
+    Windows, which has none. `Native.badge_label` and `Native.clear_badge` are
+    new.
+  - `shortcut` registers real global shortcuts by id. Re-registering after a
+    reload is `alreadyRegistered`, not a second grab; a combination another id,
+    the summon shortcut or another application holds is refused with the
+    reason; combinations need a non-Shift modifier and pages hold at most 20.
+    Firing dispatches `desktop-rails:shortcut`.
+  - `"shortcuts": { "summon": "CmdOrCtrl+Shift+Space" }` in the config brings
+    the window forward from anywhere with no page code, for hosted apps.
+    `desktop:package:hosted` accepts the new `notifications` and `shortcuts`
+    keys, checks the summon combination, and lists both in its capability
+    summary.
+  - `menu-item` adds items to the menu bar, idempotent by id, refusing
+    accelerators the app menu or another item uses. Clicks dispatch
+    `desktop-rails:menu-item`.
+  - `DesktopRails.notifications`, `.notify`, `.badge`, `.shortcuts`, `.menu`
+    and `.invokeBridge` in the page API; these reject with the shell's reason
+    instead of resolving to `null`.
+  - Notifications and page shortcuts are on for the app origin and its Ruby by
+    default, and `"notifications": { "enabled": false }` or
+    `"shortcuts": { "enabled": false }` turns them off. The plugins' own
+    commands (`plugin:global-shortcut|…`, `plugin:notification|…`) stay
+    unreachable from every remote page, the app's included.
+  - `native-features.yml` proves it from outside the app: on Linux a
+    notification service on a session bus records what arrived, xdotool presses
+    the keys, and focus is read back from the X server; on macOS what a runner
+    can observe.
+- Older payloads keep working: `notification` events `connect`/`notify`,
+  `shortcut` data `keys`/`shortcut`, `menu-item` data `shortcut`. A `shortcut`
+  or `menu-item` registration now needs an `id`.
 - `bin/rails desktop:package:hosted` packages a window onto a server you
   already run: the prebuilt shell (`desktop:shell`) and
   `config/desktop-rails.config.json` (or `DESKTOP_RAILS_CONFIG`, with
