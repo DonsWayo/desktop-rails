@@ -31,8 +31,14 @@ module DesktopRails
           Zlib::GzipWriter.wrap(file) do |gzip|
             Gem::Package::TarWriter.new(gzip) do |tar|
               entries(dir).each do |path, name|
-                mode = File.stat(path).mode & 0o7777
-                if File.directory?(path)
+                stat = File.lstat(path)
+                mode = stat.mode & 0o7777
+                if stat.symlink?
+                  # Kept as links, as tar does: a relocatable interpreter's
+                  # libruby.so names its versioned library through one, and
+                  # following it would put the library in twice.
+                  tar.add_symlink(name, File.readlink(path), mode)
+                elsif stat.directory?
                   tar.mkdir(name, mode)
                 else
                   tar.add_file_simple(name, mode, File.size(path)) do |io|

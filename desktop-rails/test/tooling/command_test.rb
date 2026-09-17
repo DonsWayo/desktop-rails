@@ -106,6 +106,15 @@ class ToolingCommandTest < Minitest::Test
     assert_match(/Could not run desktop-rails-no-such-program/, @out.string)
   end
 
+  def test_a_quiet_call_shows_output_only_when_the_program_failed
+    # codesign's "replacing existing signature", once per binary in a bundle.
+    assert_equal true, @command.call([ RbConfig.ruby, "-e", "puts 'replacing existing signature'" ], quiet: true)
+    refute_includes @out.string, "replacing existing signature"
+
+    assert_equal false, @command.call([ RbConfig.ruby, "-e", "puts 'code object is not signed at all'; exit 1" ], quiet: true)
+    assert_includes @out.string, "code object is not signed at all"
+  end
+
   def test_invalid_utf8_output_is_not_an_encoding_error
     error = assert_raises(DesktopRails::Tooling::CommandFailed) do
       @command.run([ RbConfig.ruby, "-e", "$stdout.write(\"\\xff\\xfe bad bytes\\n\"); exit 1" ], quiet: true)

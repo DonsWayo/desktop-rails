@@ -86,8 +86,17 @@ module DesktopRails
       # start programs one way. Output passes through, and a program that could
       # not be started is a false with its reason printed, as `system` would
       # answer nil.
-      def call(argv)
-        stream(argv, env: {}, chdir: nil, clean_ruby: true) { |line| out.print(line) }.success?
+      #
+      # `quiet: true` holds the output back and prints it only if the program
+      # failed, for commands whose success is chatter: codesign says "replacing
+      # existing signature" once for each of a bundle's hundred-odd binaries.
+      def call(argv, quiet: false)
+        held = []
+        status = stream(argv, env: {}, chdir: nil, clean_ruby: true) do |line|
+          quiet ? held << line : out.print(line)
+        end
+        out.print(held.last(TAIL_LINES).join) if quiet && !status.success?
+        status.success?
       rescue CommandFailed => e
         out.puts(e.message)
         false

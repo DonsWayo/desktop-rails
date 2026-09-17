@@ -1154,7 +1154,7 @@ desktop-rails/
 │       └── window.rs       # Window management & app config
 ├── desktop-rails/          # Rails gem
 ├── examples/notes/         # Example app, packaged in CI
-├── packaging/              # Runtime build and pack scripts
+├── packaging/              # Packaging notes and the smoke app's Gemfile
 ├── cli/                    # CLI scaffolding tool
 ├── templates/              # Project templates
 ├── test/                   # Tests

@@ -1,0 +1,19 @@
+#!/bin/bash
+# A signed .app is read-only while Rails expects tmp, log and storage to be
+# writable, so everything it writes goes to the OS data directory instead.
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$here/Info.plist" 2>/dev/null || echo <%= app_id %>)"
+
+export DESKTOP_DATA_DIR="${DESKTOP_DATA_DIR:-$HOME/Library/Application Support/$id}"
+mkdir -p "$DESKTOP_DATA_DIR"/{tmp,log,storage}
+
+export GEM_HOME="$here/Resources/gems"
+export GEM_PATH="$GEM_HOME:$here/Resources/ruby/lib/ruby/gems/<%= abi %>"
+export RAILS_ENV="${RAILS_ENV:-production}"
+export BUNDLE_GEMFILE="$here/Resources/app/Gemfile"
+cd "$here/Resources/app"
+
+# Never `rails server`: railties creates tmp dirs under Rails.root regardless of
+# config.paths, which fails in a read-only bundle.
+exec "$here/Resources/ruby/bin/ruby" "${@:-boot.rb}"

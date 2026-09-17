@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "digest"
+require "fileutils"
 require "json"
 require "pathname"
 require "rbconfig"
@@ -14,18 +15,18 @@ module DesktopRails
   # The Rails side of packaging.
   #
   # This module answers the questions a Rails app can answer — where the app
-  # is, what it is called, which packer this platform wants — and builds argv.
-  # Building and checking the interpreter is DesktopRails::Tooling, run through
-  # exe/desktop-rails-tool, which ships in this gem. The packers themselves are
-  # still the scripts under packaging/, found by packaging_dir, until they move
-  # onto those classes too.
+  # is, what it is called, where its runtime, gems and shell are — and builds
+  # argv. Building and checking the interpreter is DesktopRails::Tooling, run
+  # through exe/desktop-rails-tool; assembling a package is
+  # DesktopRails::BundledPackage and HostedPackage. All of it ships in this
+  # gem, so nothing needs a checkout of the repository.
   #
-  # Nothing here runs a command. `package_command` and friends return argv
-  # arrays, so the decisions can be tested without a compiler, a runtime or a
-  # code-signing identity on the machine; the rake tasks are the thin layer that
-  # executes them.
+  # Nothing here runs a command. `runtime_command` and friends return argv
+  # arrays, and `bundled_package` an object not yet built, so the decisions can
+  # be tested without a compiler, a runtime or a code-signing identity on the
+  # machine; the rake tasks are the thin layer that executes them.
   module Packaging
-    # Raised when something the packers need is absent. The message always says
+    # Raised when something packaging needs is absent. The message always says
     # what was looked for and what to do about it, because the alternative is a
     # developer staring at "No such file or directory".
     class MissingPrerequisite < StandardError; end
@@ -46,62 +47,15 @@ module DesktopRails
       Paths.platform
     end
 
-    # ─── Locating the packaging scripts ──────────────────────────────────────
+    # ─── A checkout of this repository ───────────────────────────────────────
 
-    # The gem cannot ship packaging/: the packers live at the root of the
-    # desktop-rails repository, above this gem's own directory, and RubyGems
-    # will not package files from outside a gem root. So they are located
-    # instead, and when they cannot be found the error says how to point at them.
-    def packaging_dir
-      candidates = packaging_candidates
-      found = candidates.find { |dir| File.exist?(File.join(dir, "pack.sh")) }
-      return Pathname.new(found) if found
-
-      raise MissingPrerequisite, <<~MSG
-        Could not find the desktop-rails packaging scripts.
-
-        Looked in:
-        #{candidates.map { |c| "  #{c}" }.join("\n")}
-
-        They live in the desktop-rails repository, not in this gem — RubyGems
-        cannot package files from above a gem's own root. Installing the gem
-        from GitHub brings them along:
-
-          bundle add desktop-rails --github DonsWayo/desktop-rails
-
-        Or clone https://github.com/DonsWayo/desktop-rails and point at the
-        directory with an environment variable:
-
-          DESKTOP_RAILS_PACKAGING=/path/to/desktop-rails/packaging bin/rails desktop:package
-
-        or in config/initializers/desktop_rails.rb:
-
-          config.packaging_dir = "/path/to/desktop-rails/packaging"
-      MSG
-    end
-
-    def packaging_candidates
-      [
-        Paths.presence(ENV["DESKTOP_RAILS_PACKAGING"]),
-        Paths.presence(DesktopRails.configuration.packaging_dir)&.to_s,
-        # A checkout of this repository, with the gem in desktop-rails/.
-        File.expand_path("../../../packaging", __dir__),
-        # A Rails app sitting inside, or beside, a checkout. `git clone` names
-        # the checkout desktop-rails; desktop_rails is the name from before the
-        # rename, still looked for so an existing layout keeps working.
-        (app_root && File.expand_path("packaging", app_root.to_s)),
-        (app_root && File.expand_path("../desktop-rails/packaging", app_root.to_s)),
-        (app_root && File.expand_path("../desktop_rails/packaging", app_root.to_s))
-      ].compact
-    end
-
-    def script(name)
-      path = packaging_dir.join(name)
-      unless path.exist?
-        raise MissingPrerequisite,
-              "#{path} does not exist — the packaging directory at #{packaging_dir} looks incomplete."
-      end
-      path
+    # The repository root when this gem sits in a checkout of desktop-rails —
+    # which is also where Bundler puts a gem installed from GitHub — or nil for
+    # a gem installed from RubyGems. Packaging needs nothing from it: it is
+    # only where a shell built from source is found, and built.
+    def checkout_root
+      root = File.expand_path("../../..", __dir__)
+      File.file?(File.join(root, "src-tauri", "Cargo.toml")) ? Pathname.new(root) : nil
     end
 
     # ─── What is being packaged ──────────────────────────────────────────────
@@ -219,8 +173,8 @@ module DesktopRails
     # its own sake.
     #
     # The sources and the vendored OpenSSL go under the build directory, which
-    # the packers leave out of the bundle. The tool's default is the current
-    # directory, which here is the app, and pack.sh would have copied a
+    # packaging leaves out of the bundle. The tool's default is the current
+    # directory, which here is the app, and packaging would have copied a
     # half-gigabyte build tree into it.
     def runtime_command(out: nil)
       out ||= runtime_build_dir
@@ -231,44 +185,31 @@ module DesktopRails
       end
     end
 
-    def package_command(name: nil, app_id: nil, app: nil, runtime: nil, gems: nil,
-                        shell: nil, out: nil, identity: nil)
-      name    ||= DesktopRails.app_name
-      app_id  ||= DesktopRails.app_id
-      app     ||= app_root!.to_s
-      runtime ||= runtime_dir!.to_s
-      out     ||= dist_dir
-      gems    ||= gems_dir!
-      shell   ||= shell_binary
+    # The package desktop:package builds, with every input resolved the way the
+    # task resolves it: explicit arguments first, then the environment, the
+    # initializer, and what earlier tasks left in .desktop-rails/.
+    def bundled_package(name: nil, app_id: nil, app: nil, runtime: nil, gems: nil,
+                        shell: nil, out: nil, identity: nil, **options)
+      require "desktop_rails/bundled_package"
 
-      case platform
-      when :macos
-        argv = [ script("pack.sh").to_s, "--app", app, "--runtime", runtime,
-                 "--name", name, "--bundle-id", app_id, "--out", out.to_s ]
-        argv += [ "--gems", gems.to_s ] if gems
-        argv += [ "--shell", shell.to_s ] if shell
-        identity ||= DesktopRails.configuration.signing_identity
-        argv += [ "--identity", identity.to_s ] if identity
-        argv
-      when :linux
-        argv = [ script("pack-linux.sh").to_s, "--app", app, "--runtime", runtime,
-                 "--name", name, "--app-id", app_id, "--out", out.to_s ]
-        argv += [ "--gems", gems.to_s ] if gems
-        argv += [ "--shell", shell.to_s ] if shell
-        argv
-      else
-        argv = [ "pwsh", "-File", script("pack-windows.ps1").to_s, "-App", app,
-                 "-Runtime", runtime, "-Name", name, "-AppId", app_id, "-Out", out.to_s ]
-        argv += [ "-Gems", gems.to_s ] if gems
-        argv += [ "-Shell", shell.to_s ] if shell
-        argv
-      end
+      DesktopRails::BundledPackage.new(
+        name: name || DesktopRails.app_name,
+        app_id: app_id || DesktopRails.app_id,
+        app: app || app_root!.to_s,
+        runtime: runtime || runtime_dir!.to_s,
+        out: out || dist_dir,
+        gems: gems || gems_dir!,
+        shell: shell || shell_binary,
+        platform: platform,
+        identity: identity || DesktopRails.configuration.signing_identity,
+        **options
+      )
     end
 
     # The app's own gems, so the bundle does not depend on the developer's
-    # GEM_HOME. Only passed when the directory is really there: --gems is
-    # optional and the packers skip a missing one silently, which would hide the
-    # mistake until the bundle failed to boot on somebody else's machine.
+    # GEM_HOME. Only a directory that is really there and not empty counts, so
+    # that a missing one is refused by gems_dir! rather than packaged into an
+    # app that fails to boot on somebody else's machine.
     def gems_dir
       [
         Paths.presence(ENV["DESKTOP_RAILS_GEMS"]),
@@ -297,18 +238,55 @@ module DesktopRails
     # directly. bin/bundle is a Ruby script with no extension, which Windows
     # cannot execute at all, and on Unix its shebang names whatever path the
     # interpreter was built at rather than where it sits now.
-    def gems_command
+    #
+    # `gemfile` is the app's own unless gems_gemfile! staged a copy.
+    def gems_command(gemfile: nil)
       runtime = runtime_dir!
       root = app_root!
       env = {
         "GEM_HOME" => bundled_gems_dir.to_s,
         "GEM_PATH" => bundled_gems_dir.to_s,
-        "BUNDLE_GEMFILE" => File.join(root.to_s, "Gemfile"),
+        "BUNDLE_GEMFILE" => (gemfile || File.join(root.to_s, "Gemfile")).to_s,
         "BUNDLE_WITHOUT" => "development:test",
         "BUNDLE_PATH" => nil,
         "PATH" => [ File.join(runtime.to_s, "bin"), ENV["PATH"] ].join(File::PATH_SEPARATOR)
       }
       [ env, ruby_in(runtime), File.join(runtime.to_s, "bin", "bundle"), "install" ]
+    end
+
+    # The Gemfile the shipped interpreter installs from.
+    #
+    # Usually the app's own. When it pins a Ruby that differs from the
+    # runtime's only in the patch release — `ruby "4.0.6"` from `rails new`, a
+    # .ruby-version — Bundler in the runtime would refuse it before installing
+    # anything, so a copy is staged under the build directory with the same
+    # repairs the package gets: the Ruby requirement set to the runtime's, and
+    # path gems vendored beside it so their relative paths still resolve. A
+    # requirement the runtime cannot meet at all raises here, before a long
+    # install, with both versions named. The developer's Gemfile and lock are
+    # never written.
+    def gems_gemfile!(runtime: runtime_dir!, root: app_root!, log: ->(message) { puts message })
+      require "desktop_rails/packager/path_gems"
+      require "desktop_rails/packager/ruby_requirement"
+      require "desktop_rails/packager/runtime"
+
+      runtime = Packager::Runtime.new(runtime)
+      gemfile = File.join(root.to_s, "Gemfile")
+      check = Packager::RubyRequirement.new(packed: root, runtime_version: runtime.version, log: log)
+      return gemfile unless File.file?(gemfile) && check.rewrite_needed?
+
+      stage = build_dir.join("gemfile")
+      FileUtils.rm_rf(stage)
+      FileUtils.mkdir_p(stage)
+      staged = %w[Gemfile Gemfile.lock .ruby-version .tool-versions] + Dir.glob("*.gemspec", base: root.to_s)
+      staged.each do |name|
+        source = File.join(root.to_s, name)
+        FileUtils.cp(source, stage.join(name)) if File.file?(source)
+      end
+      Packager::PathGems.new(original: root, packed: stage, log: log).vendor!
+      Packager::RubyRequirement.new(packed: stage, runtime_version: runtime.version,
+                                    runtime_patchlevel: runtime.patchlevel, log: log).apply!
+      stage.join("Gemfile").to_s
     end
 
     def ruby_in(runtime)
@@ -330,7 +308,7 @@ module DesktopRails
       MSG
     end
 
-    # The Tauri shell. Without one the packers still produce a bundle, but it is
+    # The Tauri shell. Without one packaging still produces a bundle, but it is
     # a server with no window — useful for testing the packaging, not something
     # to hand a person.
     #
@@ -355,9 +333,7 @@ module DesktopRails
     end
 
     def shell_binary_in_checkout
-      packaging_dir.dirname.join("src-tauri", "target", "release", shell_executable_name).to_s
-    rescue MissingPrerequisite
-      nil
+      checkout_root&.join("src-tauri", "target", "release", shell_executable_name)&.to_s
     end
 
     # Under the version, because the shell and the gem speak a handshake to each
@@ -373,16 +349,12 @@ module DesktopRails
     # the output still lands in src-tauri/target/release where
     # shell_binary_in_checkout looks.
     def shell_build_command(env: ENV)
-      manifest = begin
-        packaging_dir.dirname.join("src-tauri", "Cargo.toml")
-      rescue MissingPrerequisite
-        nil
-      end
+      manifest = checkout_root&.join("src-tauri", "Cargo.toml")
 
       unless manifest&.exist?
         raise MissingPrerequisite, <<~MSG
-          DESKTOP_RAILS_SHELL_FROM_SOURCE is set, but there is no src-tauri/Cargo.toml
-          beside the packaging scripts to build from.
+          DESKTOP_RAILS_SHELL_FROM_SOURCE is set, but this gem is not in a checkout of
+          desktop-rails, so there is no src-tauri/Cargo.toml to build from.
 
           Building the shell needs a checkout of the desktop-rails repository. Unset
           DESKTOP_RAILS_SHELL_FROM_SOURCE to download the prebuilt shell instead.

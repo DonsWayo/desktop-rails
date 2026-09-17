@@ -6,20 +6,15 @@ require "fileutils"
 require "stringio"
 require "json"
 
-# A sandbox that looks like the two directories the packaging workflow needs: a
-# checkout of desktop-rails's packaging/ scripts, and a Rails app to package.
-# Building them here rather than pointing at the real repository keeps the
-# assertions about *decisions* — which packer, which flags — and not about
-# whichever files happen to exist on the machine running the suite.
+# A sandbox that looks like what the packaging workflow reads: a Rails app to
+# package, a runtime, gems, a shell, and a checkout of desktop-rails that is not
+# the one the suite runs in. Building them here rather than pointing at the real
+# repository keeps the assertions about *decisions* — which inputs, which
+# layout — and not about whichever files happen to exist on the machine running
+# the suite, such as a shell someone built with cargo.
 module PackagingSandbox
-  SCRIPTS = %w[pack.sh pack-linux.sh pack-windows.ps1].freeze
-
   def with_sandbox(runtime: true, gems: false, shell: false, env: {})
     Dir.mktmpdir do |tmp|
-      packaging = File.join(tmp, "packaging")
-      FileUtils.mkdir_p(packaging)
-      SCRIPTS.each { |s| File.write(File.join(packaging, s), "#!/bin/sh\n") }
-
       app = File.join(tmp, "app")
       FileUtils.mkdir_p(File.join(app, "bin"))
       File.write(File.join(app, "config.ru"), "run ->(_) {}\n")
@@ -46,7 +41,6 @@ module PackagingSandbox
       end
 
       base = {
-        "DESKTOP_RAILS_PACKAGING" => packaging,
         "DESKTOP_RAILS_APP" => app,
         "DESKTOP_RAILS_RUNTIME" => (runtime ? runtime_dir : nil),
         "DESKTOP_RAILS_GEMS" => (gems ? gems_dir : nil),
@@ -56,8 +50,13 @@ module PackagingSandbox
       }.merge(env)
 
       with_env(base) do
-        yield({ root: tmp, packaging: packaging, app: app, runtime: runtime_dir,
-                gems: gems_dir, shell: shell_bin, dist: File.join(tmp, "dist") })
+        # A checkout exactly when the sandbox has a src-tauri/Cargo.toml, as
+        # the real method decides.
+        checkout = -> { File.file?(File.join(tmp, "src-tauri", "Cargo.toml")) ? Pathname.new(tmp) : nil }
+        DesktopRails::Packaging.stub(:checkout_root, checkout) do
+          yield({ root: tmp, app: app, runtime: runtime_dir,
+                  gems: gems_dir, shell: shell_bin, dist: File.join(tmp, "dist") })
+        end
       end
     end
   end
@@ -82,71 +81,34 @@ module PackagingSandbox
   end
 end
 
-class PackagingScriptResolutionTest < Minitest::Test
-  include PackagingSandbox
-
-  def test_environment_variable_points_at_the_scripts
-    with_sandbox do |paths|
-      assert_equal paths[:packaging], DesktopRails::Packaging.packaging_dir.to_s
-    end
+class PackagingCheckoutTest < Minitest::Test
+  # Packaging needs nothing from a checkout any more; the only thing looked
+  # for in one is a shell built from source. The suite runs in a checkout, so
+  # it finds this one, and nothing named packaging/ is involved.
+  def test_the_checkout_is_the_repository_the_gem_sits_in
+    root = DesktopRails::Packaging.checkout_root
+    skip "not in a checkout" unless root
+    assert_equal File.expand_path("../..", __dir__), root.to_s
+    assert File.file?(root.join("src-tauri", "Cargo.toml"))
   end
 
-  def test_configuration_points_at_the_scripts
-    with_sandbox do |paths|
-      with_env("DESKTOP_RAILS_PACKAGING" => nil) do
-        DesktopRails.configure { |c| c.packaging_dir = paths[:packaging] }
-        assert_equal paths[:packaging], DesktopRails::Packaging.packaging_dir.to_s
+  def test_nothing_the_gem_packages_with_lives_outside_it
+    gem_root = File.expand_path("..", __dir__)
+    require "desktop_rails/bundled_package"
+    require "desktop_rails/tooling/updater"
+    [
+      DesktopRails::BundledPackage::BOOT_TEMPLATE,
+      DesktopRails::Packager::MacApp::ENTITLEMENTS,
+      DesktopRails::Tooling::Updater::CLI_SCRIPT,
+      *%w[launch-macos.sh.erb launch-linux.sh.erb launch-windows.cmd.erb].map do |name|
+        File.expand_path("lib/desktop_rails/packager/templates/#{name}", gem_root)
       end
+    ].each do |path|
+      assert File.file?(path), "#{path} is missing"
+      assert path.start_with?("#{gem_root}/lib/"), "#{path} is not under the gem's lib/, so the gem would not ship it"
     end
-  end
-
-  def test_a_checkout_beside_the_gem_is_found_without_configuration
-    # The common case: somebody working in the desktop-rails repository itself.
-    with_env("DESKTOP_RAILS_PACKAGING" => nil, "DESKTOP_RAILS_APP" => nil) do
-      expected = File.expand_path("../../packaging", __dir__)
-      skip "no checkout at #{expected}" unless File.exist?(File.join(expected, "pack.sh"))
-      assert_equal expected, DesktopRails::Packaging.packaging_dir.to_s
-    end
-  end
-
-  # The error used to tell people to clone the repository, and then only looked
-  # for a checkout named desktop_rails beside the app, which is not what
-  # `git clone https://github.com/DonsWayo/desktop-rails` creates.
-  def test_a_clone_beside_the_app_is_found_under_the_name_git_gives_it
-    Dir.mktmpdir do |tmp|
-      app = File.join(tmp, "app")
-      clone = File.join(tmp, "desktop-rails", "packaging")
-      FileUtils.mkdir_p([ app, clone ])
-      with_env("DESKTOP_RAILS_PACKAGING" => nil, "DESKTOP_RAILS_APP" => app) do
-        assert_includes DesktopRails::Packaging.packaging_candidates, clone
-      end
-    end
-  end
-
-  def test_missing_packaging_directory_says_where_it_looked_and_what_to_do
-    Dir.mktmpdir do |tmp|
-      with_env("DESKTOP_RAILS_PACKAGING" => File.join(tmp, "nope"),
-               "DESKTOP_RAILS_APP" => tmp) do
-        DesktopRails::Packaging.stub(:packaging_candidates, [ File.join(tmp, "nope") ]) do
-          error = assert_raises(DesktopRails::Packaging::MissingPrerequisite) do
-            DesktopRails::Packaging.packaging_dir
-          end
-          assert_match(/nope/, error.message, "must name the directories it tried")
-          assert_match(/DESKTOP_RAILS_PACKAGING=/, error.message, "must say how to fix it")
-          assert_match(/config\.packaging_dir/, error.message)
-        end
-      end
-    end
-  end
-
-  def test_an_incomplete_packaging_directory_names_the_missing_script
-    with_sandbox do |paths|
-      FileUtils.rm(File.join(paths[:packaging], "pack-linux.sh"))
-      error = assert_raises(DesktopRails::Packaging::MissingPrerequisite) do
-        DesktopRails::Packaging.script("pack-linux.sh")
-      end
-      assert_match(/pack-linux\.sh/, error.message)
-    end
+    refute DesktopRails::Packaging.respond_to?(:packaging_dir), "nothing looks for packaging scripts any more"
+    refute DesktopRails.configuration.respond_to?(:packaging_dir)
   end
 end
 
@@ -189,7 +151,7 @@ class PackagingRuntimeTest < Minitest::Test
         # needed to build an interpreter any more.
         assert_equal [ RbConfig.ruby, tool, "runtime", "build" ], argv.first(4)
         assert_equal "/tmp/out", flag(argv, "--out")
-        # Never the app directory, which pack.sh copies into the bundle.
+        # Never the app directory, which packaging copies into the bundle.
         assert_equal File.join(paths[:root], "build", "runtime-build"), flag(argv, "--work")
       end
 
@@ -206,11 +168,9 @@ class PackagingRuntimeTest < Minitest::Test
   def test_the_runtime_needs_no_packaging_scripts
     # The whole point of moving the tooling into the gem: an installed gem with
     # no checkout anywhere can still build and check an interpreter.
-    with_env("DESKTOP_RAILS_PACKAGING" => "/nonexistent") do
-      DesktopRails::Packaging.stub(:packaging_candidates, [ "/nonexistent" ]) do
-        assert File.exist?(DesktopRails::Packaging.runtime_command(out: "/tmp/out")[1])
-        assert File.exist?(DesktopRails::Packaging.runtime_check_command("/tmp/out")[1])
-      end
+    DesktopRails::Packaging.stub(:checkout_root, nil) do
+      assert File.exist?(DesktopRails::Packaging.runtime_command(out: "/tmp/out")[1])
+      assert File.exist?(DesktopRails::Packaging.runtime_check_command("/tmp/out")[1])
     end
   end
 
@@ -270,73 +230,35 @@ end
 class PackagingCommandTest < Minitest::Test
   include PackagingSandbox
 
-  def test_macos_calls_pack_sh_with_a_bundle_id
+  def test_the_package_takes_every_input_the_workflow_resolved
     with_sandbox(gems: true, shell: true) do |paths|
       DesktopRails.configure { |c| c.app_name = "Ledger"; c.app_id = "dev.example.ledger" }
       on_platform(:macos) do
-        argv = DesktopRails::Packaging.package_command
+        package = DesktopRails::Packaging.bundled_package
 
-        assert_equal File.join(paths[:packaging], "pack.sh"), argv.first
-        assert_equal paths[:app], flag(argv, "--app")
-        assert_equal paths[:runtime], flag(argv, "--runtime")
-        assert_equal paths[:gems], flag(argv, "--gems")
-        assert_equal paths[:shell], flag(argv, "--shell")
-        assert_equal "Ledger", flag(argv, "--name")
-        assert_equal "dev.example.ledger", flag(argv, "--bundle-id")
-        assert_equal paths[:dist], flag(argv, "--out")
+        assert_equal paths[:app], package.app
+        assert_equal paths[:runtime], package.runtime.dir
+        assert_equal paths[:gems], package.gems
+        assert_equal paths[:shell], package.shell
+        assert_equal "Ledger", package.name
+        assert_equal "dev.example.ledger", package.app_id
+        assert_equal paths[:dist], package.out.to_s
+        assert_equal :macos, package.platform
+        assert_instance_of DesktopRails::Packager::MacApp, package.layout
       end
     end
   end
 
-  def test_linux_calls_pack_linux_with_app_id_not_bundle_id
-    with_sandbox(gems: true) do |paths|
-      DesktopRails.configure { |c| c.app_name = "Ledger"; c.app_id = "dev.example.ledger" }
-      on_platform(:linux) do
-        argv = DesktopRails::Packaging.package_command
-
-        assert_equal File.join(paths[:packaging], "pack-linux.sh"), argv.first
-        assert_equal "dev.example.ledger", flag(argv, "--app-id")
-        refute_includes argv, "--bundle-id", "pack-linux.sh has no --bundle-id"
-        refute_includes argv, "--shell", "no shell was found, so none may be passed"
-      end
-    end
-  end
-
-  def test_linux_and_windows_embed_the_shell_too
-    # pack-linux.sh and pack-windows.ps1 both take a shell now. Leaving it out
-    # here is how every Linux and Windows package came out with no window even
-    # when a shell was sitting right there.
+  def test_each_platform_gets_its_own_layout_and_embeds_the_shell
+    # Leaving the shell out on Linux and Windows is how every package there
+    # once came out with no window even when a shell was sitting right there.
     with_sandbox(gems: true, shell: true) do |paths|
-      on_platform(:linux) do
-        assert_equal paths[:shell], flag(DesktopRails::Packaging.package_command, "--shell")
-      end
-      on_platform(:windows) do
-        assert_equal paths[:shell], flag(DesktopRails::Packaging.package_command, "-Shell")
-      end
-    end
-  end
-
-  def test_linux_and_windows_packers_accept_the_shell_flag
-    # The other half of the contract: the flag passed above has to exist in the
-    # real scripts, or the packer rejects it as an unknown option.
-    packaging = File.expand_path("../../packaging", __dir__)
-    skip "no checkout at #{packaging}" unless File.directory?(packaging)
-
-    assert_match(/--shell\)/, File.read(File.join(packaging, "pack-linux.sh")))
-    assert_match(/\[string\]\$Shell/, File.read(File.join(packaging, "pack-windows.ps1")))
-  end
-
-  def test_windows_calls_the_powershell_packer_through_pwsh
-    with_sandbox(gems: true) do |paths|
-      DesktopRails.configure { |c| c.app_name = "Ledger"; c.app_id = "dev.example.ledger" }
-      on_platform(:windows) do
-        argv = DesktopRails::Packaging.package_command
-
-        assert_equal "pwsh", argv.first
-        assert_equal "-File", argv[1]
-        assert_equal File.join(paths[:packaging], "pack-windows.ps1"), argv[2]
-        assert_equal "Ledger", flag(argv, "-Name")
-        assert_equal "dev.example.ledger", flag(argv, "-AppId")
+      { linux: DesktopRails::Packager::LinuxTree, windows: DesktopRails::Packager::WindowsTree }.each do |platform, layout|
+        on_platform(platform) do
+          package = DesktopRails::Packaging.bundled_package
+          assert_instance_of layout, package.layout
+          assert_equal paths[:shell], package.shell
+        end
       end
     end
   end
@@ -346,8 +268,7 @@ class PackagingCommandTest < Minitest::Test
     # packaging itself is tested — so the shell stays optional.
     with_sandbox(gems: true, shell: false) do
       on_platform(:macos) do
-        argv = DesktopRails::Packaging.package_command
-        refute_includes argv, "--shell"
+        assert_nil DesktopRails::Packaging.bundled_package.shell
       end
     end
   end
@@ -359,7 +280,7 @@ class PackagingCommandTest < Minitest::Test
     with_sandbox(gems: false, shell: false) do
       on_platform(:macos) do
         error = assert_raises(DesktopRails::Packaging::MissingPrerequisite) do
-          DesktopRails::Packaging.package_command
+          DesktopRails::Packaging.bundled_package
         end
         assert_match(/No gems to package/, error.message)
         assert_match(/desktop:gems/, error.message)
@@ -367,14 +288,13 @@ class PackagingCommandTest < Minitest::Test
     end
   end
 
-  def test_a_signing_identity_is_passed_only_when_configured
+  def test_a_signing_identity_comes_from_the_initializer
     with_sandbox(gems: true) do
       on_platform(:macos) do
-        refute_includes DesktopRails::Packaging.package_command, "--identity"
+        assert_equal "-", DesktopRails::Packaging.bundled_package.layout.identity
 
         DesktopRails.configure { |c| c.signing_identity = "Developer ID Application: Ada" }
-        argv = DesktopRails::Packaging.package_command
-        assert_equal "Developer ID Application: Ada", flag(argv, "--identity")
+        assert_equal "Developer ID Application: Ada", DesktopRails::Packaging.bundled_package.layout.identity
       end
     end
   end
@@ -391,17 +311,14 @@ class PackagingCommandTest < Minitest::Test
     end
   end
 
-  def test_argv_is_a_list_so_a_path_with_a_space_cannot_split
-    # "~/Library/Application Support" is on every Mac. Building a string and
-    # letting a shell re-split it is how that becomes two arguments.
-    with_sandbox(gems: true) do
-      on_platform(:macos) do
-        DesktopRails.configure { |c| c.app_name = "My Ledger" }
-        argv = DesktopRails::Packaging.package_command
-        assert_equal "My Ledger", flag(argv, "--name")
-        assert_includes DesktopRails::Packaging.to_shell(argv), "My\\ Ledger"
-      end
-    end
+  def test_desktop_package_builds_in_ruby_and_runs_no_packer_script
+    source = File.read(File.expand_path("../lib/desktop_rails/tasks/desktop.rake", __dir__))
+    package_task = source[/task package: .*?\n  end\n/m]
+    assert_includes package_task, "bundled_package"
+    assert_includes package_task, ".build"
+    refute_match(/pack\.sh|pack-linux|pack-windows|pwsh|run\.call/, package_task)
+    # fresh-app.yml checks which shell was packaged from this line.
+    assert_includes package_task, %(puts "  shell:   )
   end
 end
 

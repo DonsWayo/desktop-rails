@@ -62,7 +62,7 @@ export default [
   {
     // The CLI, the packaging helpers, the config itself and the test suite all
     // run in Node.
-    files: ["cli/**/*.js", "packaging/**/*.mjs", "test/**/*.js", "eslint.config.js"],
+    files: ["cli/**/*.js", "desktop-rails/lib/**/*.mjs", "test/**/*.js", "eslint.config.js"],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: "module",

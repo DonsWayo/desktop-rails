@@ -13,7 +13,7 @@ name: Release prebuilt runtimes and shells
 # macOS artifacts are signed ad-hoc and not notarised. Without a Developer ID
 # Gatekeeper rejects them when downloaded by a browser (see
 # packaging/DISTRIBUTION.md); the gem downloads without a quarantine attribute,
-# and pack.sh re-signs everything it bundles.
+# and desktop:package re-signs everything it bundles.
 #
 # A release is a prerelease when the gem version is one (0.3.0.pre1), and never
 # a draft: drafts need a token to download, and the gem has none.

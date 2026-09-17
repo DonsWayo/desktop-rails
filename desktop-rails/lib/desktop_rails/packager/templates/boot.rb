@@ -1,6 +1,12 @@
 # Boot Puma from config.ru on a port the OS picks, and write one line of
-# handshake where the shell can read it. See pack.sh for why `rails server` is
-# avoided.
+# handshake where the shell can read it.
+#
+# Never `rails server`. railties creates tmp/cache, tmp/pids and tmp/sockets
+# under Rails.root ignoring config.paths, which is EACCES in a read-only bundle.
+#
+# DesktopRails::BundledPackage copies this to the root of the app inside every
+# bundle. The install generator writes the same program to bin/desktop-boot, so
+# desktop:run and a packaged app boot the same way.
 require "json"
 require "rack"
 require "puma"

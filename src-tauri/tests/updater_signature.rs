@@ -1,7 +1,8 @@
 //! The signatures `desktop-rails-tool updater sign` produces must be the ones the
 //! updater will accept.
 //!
-//! Everything about the signing side lives in Node (packaging/lib/minisign.mjs),
+//! Everything about the signing side lives in Node (minisign.mjs, shipped in the
+//! gem under desktop-rails/lib/desktop_rails/tooling/updater/),
 //! because no minisign binary is installed anywhere this project builds. That
 //! leaves a seam: a signer and a verifier written from the same reading of the
 //! format will agree with each other whether or not the reading was right. This
@@ -163,16 +164,22 @@ fn the_manifest_the_packaging_scripts_write_is_the_one_the_plugin_reads() {
 }
 
 /// The fixtures above pin the format, but they were signed once. This signs
-/// something now, with whatever `packaging/lib` currently does, and checks that
-/// too — so a change to the signer that breaks the format fails here rather
+/// something now, with whatever the gem's updater-cli.mjs currently does, and checks
+/// that too — so a change to the signer that breaks the format fails here rather
 /// than in a shipped app.
 ///
 /// Skipped rather than failed where Node is not on PATH: this crate builds
-/// without it, and the packaging scripts are not part of the shell.
+/// without it, and the signer is not part of the shell.
 #[test]
 fn what_the_signer_produces_today_still_verifies() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    let cli = root.join("packaging").join("lib").join("updater-cli.mjs");
+    let cli = root
+        .join("desktop-rails")
+        .join("lib")
+        .join("desktop_rails")
+        .join("tooling")
+        .join("updater")
+        .join("updater-cli.mjs");
 
     if Command::new("node").arg("--version").output().is_err() {
         eprintln!("skipping: node is not available");

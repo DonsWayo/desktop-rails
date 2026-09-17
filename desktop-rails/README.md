@@ -112,19 +112,20 @@ bin/rails desktop:run                      # boot the app the way a bundle will
 bin/rails desktop:package                  # a .app, a Linux tree, or a Windows zip
 ```
 
-Getting, building and checking the interpreter is Ruby that ships in this gem,
-and so are disk images, notarisation and update signing:
-`bundle exec desktop-rails-tool --help` lists them. The packers themselves are
-still scripts in the desktop-rails repository, and each task fails with a message
-naming what is missing and how to supply it. Installing the gem from GitHub
-brings the packers with it, because Bundler checks out the whole repository:
+Everything behind those tasks is Ruby that ships in this gem: getting,
+building and checking the interpreter, assembling, pruning and signing the
+package, disk images, notarisation and update signing.
+`bundle exec desktop-rails-tool --help` lists them. Nothing needs a checkout of
+the repository, and each task fails with a message naming what is missing and
+how to supply it.
 
-```ruby
-gem "desktop-rails", github: "DonsWayo/desktop-rails"
-```
-
-Otherwise point the tasks at a checkout with `DESKTOP_RAILS_PACKAGING`, or in the
-initializer with `config.packaging_dir`.
+The packaged copy of the app is repaired, never your own files: path gems are
+copied into `vendor/path-gems`, `.bundle/config` leaves out the development and
+test groups, and a Gemfile `ruby` pin that differs from the runtime's Ruby only
+in the patch release (`ruby "4.0.6"` against a 4.0.7 runtime, as `rails new`
+writes for 7.0 and 7.1) is set to the runtime's. A requirement the runtime cannot
+meet, such as `~> 3.4`, stops `desktop:gems` and `desktop:package` with both
+versions named.
 
 ### The interpreter and the shell are downloaded
 
@@ -156,7 +157,7 @@ built without a window, with a warning saying so.
 
 The downloaded Linux shell needs WebKitGTK 4.1 (`libwebkit2gtk-4.1-0`), and
 Windows needs WebView2, which Windows 10 and 11 ship. macOS binaries are signed
-ad-hoc and not notarised; `pack.sh` signs the bundle it builds, and shipping to
+ad-hoc and not notarised; `desktop:package` signs the bundle it builds, and shipping to
 other people's Macs still needs a Developer ID (see `packaging/DISTRIBUTION.md`).
 
 The checksum proves a download arrived whole and is what the release workflow
@@ -246,7 +247,7 @@ DesktopRails.data_dir(create: true).join("ledger.sqlite3")
 | Windows | `%LOCALAPPDATA%\<app id>` |
 | Linux | `$XDG_DATA_HOME/<app id>`, or `~/.local/share/<app id>` |
 
-`DESKTOP_DATA_DIR` overrides all three. The launchers the packers write export it
+`DESKTOP_DATA_DIR` overrides all three. The launchers packaging writes export it
 after making the same decision in shell, so the shell and the Rails app can never
 disagree about where state lives.
 

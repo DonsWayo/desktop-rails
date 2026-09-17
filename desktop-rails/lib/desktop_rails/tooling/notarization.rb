@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "tmpdir"
+require "desktop_rails/packager"
 require "desktop_rails/tooling/command"
 
 module DesktopRails
@@ -28,7 +29,7 @@ module DesktopRails
         @app = File.expand_path(app.to_s)
         @identity = identity
         @keychain_profile = keychain_profile || DEFAULT_PROFILE
-        @entitlements = entitlements || Tooling.checkout_file("packaging", "entitlements.plist")
+        @entitlements = entitlements || Packager::MacApp::ENTITLEMENTS
         @runner = runner
         @log = log
       end
@@ -55,7 +56,7 @@ module DesktopRails
       end
 
       # Everything in Contents/MacOS counts as code, the launcher script
-      # included, and pack.sh signed it ad-hoc. The shell script this replaced
+      # included, and packaging signed it ad-hoc. The shell script this replaced
       # re-signed only Resources, which would have left the shell binary and the
       # launcher with signatures the notary service does not accept.
       def executables
@@ -100,7 +101,7 @@ module DesktopRails
       def validate!
         raise MissingPrerequisite, "--app must be a .app bundle, got #{app}" unless File.directory?(app)
         unless entitlements && File.file?(entitlements)
-          raise MissingPrerequisite, "No entitlements file; pass --entitlements (packaging/entitlements.plist in a checkout)."
+          raise MissingPrerequisite, "No entitlements file at #{entitlements}; pass --entitlements."
         end
         return if identity && !identity.empty?
 

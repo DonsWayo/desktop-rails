@@ -5,7 +5,7 @@ the measurements below say why.
 
 ## What Gatekeeper actually does, measured
 
-macOS 26.5.1, on the packaged app from `pack.sh`.
+macOS 26.5.1, on the packaged app from `pack.sh`, the shell script `desktop:package` has since replaced.
 
 | The app was signed with | `codesign --verify` | `spctl` (Gatekeeper) |
 |---|---|---|

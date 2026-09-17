@@ -5,10 +5,10 @@ download and open, on macOS, Linux or Windows.
 
 From a Rails app, `bin/rails desktop:runtime` and `bin/rails desktop:shell`
 download a prebuilt interpreter and shell for the machine they run on, verified
-against the release's `SHA256SUMS` (see `desktop-rails/README.md`). What those
-downloads were built with, and what to use by hand, is the gem's own tooling —
-Ruby, one code path for every platform, and shipped in the gem — plus the three
-packers here:
+against the release's `SHA256SUMS` (see `desktop-rails/README.md`), and
+`bin/rails desktop:package` builds the package. What those downloads were built
+with, and what to use by hand, is the gem's own tooling — Ruby, one code path
+for every platform, and shipped in the gem:
 
 ```bash
 # From a checkout, with any Ruby >= 3.2 and no bundle; from an app, the same
@@ -16,9 +16,9 @@ packers here:
 ruby desktop-rails/exe/desktop-rails-tool runtime build --out out/ruby   # or download: see Prebuilt releases
 ruby desktop-rails/exe/desktop-rails-tool runtime verify out/ruby
 
-packaging/pack.sh        --app ../my_app --runtime out/ruby --gems out/gems --name "Ledger"
-packaging/pack-linux.sh  --app ../my_app --runtime out/ruby --gems out/gems --name "Ledger"
-packaging\pack-windows.ps1 -App ..\my_app -Runtime out\ruby -Gems out\gems -Name "Ledger"
+# A .app on macOS, a tree and tarball on Linux, a directory and zip on Windows.
+ruby desktop-rails/exe/desktop-rails-tool package --app ../my_app --runtime out/ruby \
+  --gems out/gems --shell src-tauri/target/release/desktop-rails --name "Ledger" --app-id dev.example.ledger
 ```
 
 | `desktop-rails-tool` command | What it does |
@@ -26,7 +26,8 @@ packaging\pack-windows.ps1 -App ..\my_app -Runtime out\ruby -Gems out\gems -Name
 | `runtime build` | Builds a relocatable Ruby. macOS and Linux; Windows is fetched. |
 | `runtime verify DIR` | Proves one relocates before you trust it, on every platform. |
 | `runtime fetch-windows` | RubyInstaller's portable Ruby, checked the same way. |
-| `prune DIR` | Removes what a user's machine never reads. The packers run it. |
+| `package` | The app, its Ruby, its gems and the shell as this platform's package. What `desktop:package` builds. |
+| `prune DIR` | Removes what a user's machine never reads. `package` runs it. |
 | `dmg APP` | Disk image. No certificate needed. |
 | `notarize` | Signs and notarises. Needs a Developer ID. |
 | `updater generate-key` | The minisign keypair that signs updates. Once, ever. |
@@ -35,15 +36,34 @@ packaging\pack-windows.ps1 -App ..\my_app -Runtime out\ruby -Gems out\gems -Name
 
 The classes behind each are under `desktop-rails/lib/desktop_rails/tooling/`,
 and `desktop-rails/test/tooling/` tests their decisions without a compiler, a
-certificate or a GUI.
+certificate or a GUI. Packaging is `DesktopRails::BundledPackage` on the
+platform layouts in `desktop-rails/lib/desktop_rails/packager/`, and
+`desktop-rails/test/bundled_package_test.rb` builds every platform's package on
+any machine and reads it back. Nothing packaging needs lives outside the gem:
 
-| File here | What it does |
+| In the gem | What it does |
 |---|---|
-| `pack.sh` | macOS `.app`, pruned and signed. |
-| `pack-linux.sh` | Linux directory, tarball and `.desktop` entry. |
-| `pack-windows.ps1` | Windows directory and zip. |
-| `lib/updater-cli.mjs` | The minisign bytes behind `updater generate-key` and `updater sign`. |
-| `templates/boot.rb` | The boot sequence all three platforms share. |
+| `packager/templates/boot.rb` | The boot sequence all three platforms share. |
+| `packager/templates/launch-*.erb` | The launcher each platform's package runs the server with. |
+| `packager/entitlements.plist` | What the macOS interpreter is signed with. |
+| `tooling/updater/updater-cli.mjs` | The minisign bytes behind `updater generate-key` and `updater sign`. |
+
+What is left here is documentation and `smoke/Gemfile`, the hand-picked app
+`package-smoke.yml` packages.
+
+### Why a launcher script, and not the shell running Ruby
+
+Each package has a small generated launcher — `Contents/MacOS/launch`,
+`bin/<app>`, `<app>.cmd` — that works out the data directory, creates `tmp`,
+`log` and `storage` in it, sets `GEM_HOME`, `GEM_PATH`, `BUNDLE_GEMFILE` and
+`RAILS_ENV`, and runs the bundled `ruby boot.rb`. The shell could in principle
+run the interpreter itself with that environment from the config, but it is
+not better: the data directory has to be decided the same way the Rails side
+decides it before anything runs, the shell would need an environment block and
+directory creation that it does not have, and the launcher is also what runs
+the server with no shell at all — a bundle built without one, `smoke launch` in
+CI, and anyone debugging a package by hand. So the launchers stay, generated
+from templates in the gem.
 
 Longer notes: [CONTROL_CHANNEL.md](CONTROL_CHANNEL.md) for calling native from
 Ruby, [DISTRIBUTION.md](DISTRIBUTION.md) for what Gatekeeper actually does,
@@ -98,7 +118,7 @@ check at all.
 
 `railties .../server_command.rb:70` creates `tmp/cache`, `tmp/pids` and
 `tmp/sockets` under `Rails.root` without consulting `config.paths`. In a
-read-only bundle that is `Errno::EACCES`. `templates/boot.rb` starts Puma from
+read-only bundle that is `Errno::EACCES`. `boot.rb` starts Puma from
 `config.ru` instead.
 
 ### Writable state lives outside the application

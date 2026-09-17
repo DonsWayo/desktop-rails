@@ -164,12 +164,11 @@ class InstallGeneratorTest < Rails::Generators::TestCase
   end
 
   test "the boot script agrees with the packaging template" do
-    # bin/desktop-boot and packaging/templates/boot.rb are the same program in
+    # bin/desktop-boot and the packager's templates/boot.rb are the same program in
     # two places. A bug that appeared in only one of them would be a bug nobody
     # could reproduce, so the load-bearing lines are checked against the
-    # template the packers actually install.
-    template = File.expand_path("../../../packaging/templates/boot.rb", __dir__)
-    skip "no checkout at #{template}" unless File.exist?(template)
+    # template packaging actually installs.
+    template = File.expand_path("../../lib/desktop_rails/packager/templates/boot.rb", __dir__)
 
     packed = File.read(template)
     run_generator
@@ -204,10 +203,9 @@ class InstallGeneratorTest < Rails::Generators::TestCase
     # bootsnap, which happens while config.ru is parsed; the schema can only be
     # prepared once the app has loaded, and has to be before Puma accepts a
     # request.
-    template = File.expand_path("../../../packaging/templates/boot.rb", __dir__)
+    template = File.expand_path("../../lib/desktop_rails/packager/templates/boot.rb", __dir__)
     run_generator
-    scripts = [ File.read(File.join(destination_root, "bin/desktop-boot")) ]
-    scripts << File.read(template) if File.exist?(template)
+    scripts = [ File.read(File.join(destination_root, "bin/desktop-boot")), File.read(template) ]
 
     scripts.each do |script|
       bootsnap = script.index("BOOTSNAP_CACHE_DIR")

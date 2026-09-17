@@ -23,7 +23,7 @@ module DesktopRails
     # Packaging. Every one of these is nil by default and resolved at the point
     # of use, because the sensible answer depends on the Rails app and is not
     # known when this object is built. Set them in the initializer to override.
-    attr_accessor :app_name, :app_id, :packaging_dir, :runtime_dir, :gems_dir,
+    attr_accessor :app_name, :app_id, :runtime_dir, :gems_dir,
                   :shell_binary, :dist_dir, :signing_identity,
                   :release_url, :release_version
 
@@ -44,12 +44,11 @@ module DesktopRails
 
       @app_name = nil
       @app_id = nil
-      @packaging_dir = nil
       @runtime_dir = nil
       @gems_dir = nil
       @shell_binary = nil
       @dist_dir = nil
-      # "-" is ad-hoc signing, which is what pack.sh defaults to and all an
+      # "-" is ad-hoc signing, which is what packaging defaults to and all an
       # unreleased build needs. A Developer ID goes here to ship.
       @signing_identity = nil
       # Where desktop:runtime and desktop:shell download from. nil means this
