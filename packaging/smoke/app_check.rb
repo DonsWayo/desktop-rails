@@ -3,7 +3,7 @@
 # Launch a packaged app by its GUI shell on Windows, and check what a person
 # would see.
 #
-# The same checks, in the same order, as app_check.sh, which macOS and Linux
+# The same checks, in the same order, as `desktop-rails-tool smoke app`, which macOS and Linux
 # run: the window's own request for /, then the checks named on the command
 # line, then that force-quitting the shell takes the server with it. Everything
 # is asserted from outside the app, through the Rails log and the files the app
@@ -22,7 +22,7 @@
 #   set DESKTOP_DATA_DIR to an empty directory
 #   ruby app_check.rb <shell exe> [checks...]
 #
-# Checks, as in app_check.sh:
+# Checks, as in `desktop-rails-tool smoke app`:
 #   text=STRING      GET / contains STRING
 #   path=PATH        GET PATH answers 200
 #   marker=NAME      DESKTOP_DATA_DIR/native-reports/NAME.json appears and
@@ -253,7 +253,7 @@ module AppCheck
       puts "OK    shell announced #{url}"
       wait_for_window_root
       @checks.each { |check| run_check(check, url) }
-      # Run even after a check failed, unlike app_check.sh. A Windows run is
+      # Run even after a check failed, unlike `smoke app`. A Windows run is
       # long, and whether the server outlives the shell is the question a
       # failed check above would otherwise hide for another round.
       force_quit_and_confirm(url)
