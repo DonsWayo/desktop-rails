@@ -30,14 +30,49 @@ module DesktopRails
     # a Rails app for something run once per machine.
     class HttpFetcher
       MAX_REDIRECTS = 5
+      ATTEMPTS = 4
 
-      def initialize(open_timeout: 30, read_timeout: 300, max_redirects: MAX_REDIRECTS)
+      # A response worth asking for again: GitHub's release downloads answer 5xx
+      # and 429 now and then, and the next request usually succeeds.
+      class Transient < StandardError; end
+
+      def initialize(open_timeout: 30, read_timeout: 300, max_redirects: MAX_REDIRECTS,
+                     attempts: ATTEMPTS, sleeper: ->(seconds) { sleep(seconds) })
         @open_timeout = open_timeout
         @read_timeout = read_timeout
         @max_redirects = max_redirects
+        @attempts = attempts
+        @sleeper = sleeper
       end
 
+      # Retries what a moment can fix, with a short backoff. A single reset
+      # connection used to fail the whole of desktop:package; CI saw exactly that
+      # ("Connection reset by peer - SSL_connect") on a GitHub-hosted runner.
+      # Nothing that is an answer rather than an accident is retried: a missing
+      # release, a redirect loop, or a redirect to plain http.
       def call(url, destination)
+        attempt = 1
+        begin
+          follow(url, destination)
+        rescue NotPublished, DownloadFailed
+          raise
+        rescue StandardError => e
+          # Offline, DNS, TLS, a timeout, a 5xx: all of them are "try again", none
+          # of them is "this release does not exist", so none may fall back to a
+          # build.
+          if attempt < @attempts
+            @sleeper.call(2**(attempt - 1))
+            attempt += 1
+            retry
+          end
+          detail = e.is_a?(Transient) ? e.message : "#{e.class}: #{e.message}"
+          raise DownloadFailed, "Could not download #{url} after #{attempt} attempts: #{detail}"
+        end
+      end
+
+      private
+
+      def follow(url, destination)
         current = url.to_s
         (@max_redirects + 1).times do
           location = get(current, destination)
@@ -46,15 +81,7 @@ module DesktopRails
           current = Packaging.redirect_target(current, location)
         end
         raise DownloadFailed, "#{url} redirected more than #{@max_redirects} times; giving up."
-      rescue NotPublished, DownloadFailed
-        raise
-      rescue StandardError => e
-        # Offline, DNS, TLS, a timeout: all of them are "try again", none of them
-        # is "this release does not exist", so none may fall back to a build.
-        raise DownloadFailed, "Could not download #{url}: #{e.class}: #{e.message}"
       end
-
-      private
 
       # Returns the Location to follow, or nil once the body is on disk.
       def get(url, destination)
@@ -72,6 +99,8 @@ module DesktopRails
               return response["location"] || raise(DownloadFailed, "#{url} redirected without a Location.")
             when Net::HTTPNotFound
               raise NotPublished, "#{url} does not exist."
+            when Net::HTTPServerError, Net::HTTPTooManyRequests
+              raise Transient, "#{url} answered #{response.code} #{response.message}."
             else
               raise DownloadFailed, "#{url} answered #{response.code} #{response.message}."
             end

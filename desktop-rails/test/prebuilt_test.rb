@@ -419,13 +419,17 @@ class PrebuiltHttpFetcherTest < Minitest::Test
     @server = TCPServer.new("127.0.0.1", 0)
     @port = @server.addr[1]
     @routes = {}
+    @hits = Hash.new(0)
+    @slept = []
     @thread = Thread.new do
       loop do
         client = @server.accept
         request_line = client.gets.to_s
         while (line = client.gets) && line != "\r\n"; end
         path = request_line.split[1]
-        status, headers, body = @routes.fetch(path, [ 404, {}, "not found" ])
+        @hits[path] += 1
+        route = @routes.fetch(path, [ 404, {}, "not found" ])
+        status, headers, body = route.respond_to?(:call) ? route.call(@hits[path]) : route
         client.write("HTTP/1.1 #{status} X\r\nContent-Length: #{body.bytesize}\r\nConnection: close\r\n")
         headers.each { |k, v| client.write("#{k}: #{v}\r\n") }
         client.write("\r\n#{body}")
@@ -448,9 +452,13 @@ class PrebuiltHttpFetcherTest < Minitest::Test
     "http://127.0.0.1:#{@port}"
   end
 
+  def fetcher(**options)
+    DesktopRails::Prebuilt::HttpFetcher.new(sleeper: ->(seconds) { @slept << seconds }, **options)
+  end
+
   def fetch(path)
     destination = File.join(@tmp, "out")
-    DesktopRails::Prebuilt::HttpFetcher.new(open_timeout: 5, read_timeout: 5).call("#{base}#{path}", destination)
+    fetcher(open_timeout: 5, read_timeout: 5).call("#{base}#{path}", destination)
     File.binread(destination)
   end
 
@@ -487,7 +495,44 @@ class PrebuiltHttpFetcherTest < Minitest::Test
     @thread.kill
     destination = File.join(@tmp, "out")
     assert_raises(DesktopRails::Packaging::DownloadFailed) do
-      DesktopRails::Prebuilt::HttpFetcher.new(open_timeout: 2).call("http://127.0.0.1:#{port}/x", destination)
+      fetcher(open_timeout: 2).call("http://127.0.0.1:#{port}/x", destination)
     end
+  end
+
+  def test_a_server_error_is_retried_until_the_download_succeeds
+    @routes["/flaky"] = ->(hit) { hit < 3 ? [ 503, {}, "" ] : [ 200, {}, "arrived" ] }
+    assert_equal "arrived", fetch("/flaky")
+    assert_equal 3, @hits["/flaky"]
+    assert_equal [ 1, 2 ], @slept, "backs off before each retry"
+  end
+
+  def test_gives_up_after_the_last_attempt_and_says_how_many
+    @routes["/down"] = [ 502, {}, "" ]
+    error = assert_raises(DesktopRails::Packaging::DownloadFailed) { fetch("/down") }
+    assert_equal DesktopRails::Prebuilt::HttpFetcher::ATTEMPTS, @hits["/down"]
+    assert_match(/after 4 attempts: .* answered 502/, error.message)
+  end
+
+  def test_a_missing_release_is_not_retried
+    assert_raises(DesktopRails::Packaging::NotPublished) { fetch("/missing") }
+    assert_equal 1, @hits["/missing"]
+    assert_empty @slept
+  end
+
+  def test_a_redirect_loop_is_not_retried
+    @routes["/loop"] = [ 302, { "Location" => "/loop" }, "" ]
+    assert_raises(DesktopRails::Packaging::DownloadFailed) { fetch("/loop") }
+    assert_empty @slept
+  end
+
+  def test_a_refused_connection_is_retried_before_it_fails
+    port = @port
+    @server.close
+    @thread.kill
+    error = assert_raises(DesktopRails::Packaging::DownloadFailed) do
+      fetcher(open_timeout: 2).call("http://127.0.0.1:#{port}/x", File.join(@tmp, "out"))
+    end
+    assert_equal [ 1, 2, 4 ], @slept
+    assert_match(/after 4 attempts: Errno::ECONNREFUSED/, error.message)
   end
 end

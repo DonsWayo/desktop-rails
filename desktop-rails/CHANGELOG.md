@@ -44,6 +44,11 @@ later; the prebuilt shells of pre1 and pre2 still have the old defaults.
 
 ### Changed
 
+- Downloads of the prebuilt runtime and shell retry a failed connection or a
+  5xx answer up to four attempts, backing off 1, 2 and 4 seconds. A single
+  reset connection used to fail `desktop:package`. A missing release, a
+  redirect loop or a redirect to plain http still fail at once.
+
 - The build-machine tooling is Ruby and ships in the gem, as
   `desktop-rails-tool` (`DesktopRails::Tooling`): `runtime build`,
   `runtime verify`, `runtime fetch-windows`, `prune`, `dmg`, `notarize`,
@@ -217,6 +222,11 @@ clipboard, launch-at-login). No gem-side API changes.
   - `config.inspector_mount_path` to match a custom engine mount point.
 
 ### Changed
+
+- Downloads of the prebuilt runtime and shell retry a failed connection or a
+  5xx answer up to four attempts, backing off 1, 2 and 4 seconds. A single
+  reset connection used to fail `desktop:package`. A missing release, a
+  redirect loop or a redirect to plain http still fail at once.
 
 - The default app id is `dev.desktop-rails.<app>` instead of
   `dev.turbodesktop.<app>`. The app id names the data directory, so an app
