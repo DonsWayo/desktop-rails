@@ -1,0 +1,50 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# The server command in desktop-rails.config.json: Puma on the configured port,
+# started by the shell. A trimmed examples/notes/bin/desktop-boot. The port is
+# fixed because the check reaches this server from outside too, and it still
+# writes the handshake line so the window moves to the app as soon as Puma is up.
+
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("Gemfile", __dir__)
+ENV["RAILS_ENV"] ||= "production"
+require "bundler/setup"
+require "json"
+require "rack"
+require "puma"
+require "puma/configuration"
+require "puma/launcher"
+
+PORT = 3300
+
+# The handshake has stdout to itself; everything Puma prints goes to stderr.
+handshake = $stdout.dup
+handshake.sync = true
+$stdout.reopen($stderr)
+
+Dir.chdir(__dir__)
+# Loading config.ru boots Rails, and the desktop-rails engine reads the shell's
+# control channel handshake from stdin while it does.
+app, = Rack::Builder.parse_file(File.join(__dir__, "config.ru"))
+
+config = Puma::Configuration.new do |c|
+  c.bind "tcp://127.0.0.1:#{PORT}"
+  c.app app
+  c.workers 0
+  c.threads 1, 5
+  c.log_requests false
+end
+launcher = Puma::Launcher.new(config)
+
+hook = launcher.events.respond_to?(:after_booted) ? :after_booted : :on_booted
+launcher.events.public_send(hook) do
+  handshake.puts JSON.generate(protocol: "1.0", url: "http://127.0.0.1:#{PORT}", pid: Process.pid)
+end
+
+# Exit when the shell closes stdin, so a killed shell leaves no server behind.
+Thread.new do
+  $stdin.read
+  Process.exit!(0)
+end
+
+launcher.run

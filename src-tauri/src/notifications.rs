@@ -526,12 +526,10 @@ pub mod windows {
 #[cfg(target_os = "macos")]
 pub mod macos {
     use super::*;
-    use std::sync::Once;
+    use std::sync::OnceLock;
 
     #[derive(Default)]
     pub struct UserNotificationCenter;
-
-    static SENDER: Once = Once::new();
 
     /// The bundle identifier the process is running under, when it is a
     /// bundled app. The plugin uses the identifier compiled into the shell,
@@ -546,19 +544,34 @@ pub mod macos {
             .map(|identifier| identifier.to_string())
     }
 
+    /// Whether notifications can be sent under this app's name, decided once.
+    ///
+    /// mac-notification-sys lets the sender be chosen exactly once. Left to
+    /// itself it looks an application up by name through AppleScript, which
+    /// can put a "Where is use_default?" dialog in front of the user, and a
+    /// process with no bundle gets a nil notification center that swallows
+    /// everything without an error. Both are refused here instead, with the
+    /// reason, so "shown" is only ever said when macOS took the notification.
+    fn sender() -> &'static Result<String, String> {
+        static SENDER: OnceLock<Result<String, String>> = OnceLock::new();
+        SENDER.get_or_init(|| {
+            let identifier = running_bundle_identifier().ok_or_else(|| {
+                "Notifications on macOS need the app to run from its .app bundle; this process has no bundle identifier"
+                    .to_string()
+            })?;
+            notify_rust::set_application(&identifier).map_err(|e| {
+                format!(
+                    "macOS does not know the app {} yet (it is not registered with Launch Services), so it cannot notify: {}",
+                    identifier, e
+                )
+            })?;
+            Ok(identifier)
+        })
+    }
+
     impl Notifier for UserNotificationCenter {
         fn show(&self, request: &NotificationRequest) -> Result<Shown, String> {
-            SENDER.call_once(|| {
-                if let Some(identifier) = running_bundle_identifier() {
-                    if let Err(e) = notify_rust::set_application(&identifier) {
-                        log::warn!(
-                            "Notifications: macOS does not know {} yet, so they go out under a default sender: {}",
-                            identifier,
-                            e
-                        );
-                    }
-                }
-            });
+            sender().as_ref().map_err(Clone::clone)?;
             let mut notification = notify_rust::Notification::new();
             notification.summary(&request.title);
             if !request.body.is_empty() {
@@ -572,8 +585,12 @@ pub mod macos {
 
         fn permission(&self) -> Permission {
             // NSUserNotificationCenter has no authorization API, and the
-            // UserNotifications one prompts and needs a signed bundle.
-            Permission::Unknown
+            // UserNotifications one prompts and needs a signed bundle. What
+            // can be known is whether there is a sender at all.
+            match sender() {
+                Ok(_) => Permission::Unknown,
+                Err(_) => Permission::Unavailable,
+            }
         }
     }
 }

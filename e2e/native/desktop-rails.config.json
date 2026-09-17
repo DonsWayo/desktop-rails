@@ -1,0 +1,7 @@
+{
+  "app_name": "Native Check",
+  "server_url": "http://127.0.0.1:3300",
+  "window": { "width": 1000, "height": 760 },
+  "server": { "command": "serve", "directory": "." },
+  "shortcuts": { "summon": "Ctrl+Alt+S" }
+}
