@@ -40,6 +40,23 @@ class PrebuiltReleaseNamingTest < Minitest::Test
     assert_equal expected, JSON.parse(File.read(npm))["version"]
   end
 
+  def test_every_app_in_the_repository_locks_the_gem_at_its_version
+    # CI installs these apps' gems in frozen mode, which refuses a lockfile
+    # whose path gem changed version. The 0.3.0.pre3 bump missed
+    # e2e/hosted/Gemfile.lock and failed the hosted workflow on every platform.
+    root = File.expand_path("../..", __dir__)
+    locks = Dir.glob(File.join(root, "{examples,e2e}", "**", "Gemfile.lock"))
+    skip "not in a checkout" if locks.empty?
+
+    locks.each do |lock|
+      locked = File.read(lock)[/^    desktop-rails \(([^)]+)\)$/, 1]
+      next unless locked
+
+      assert_equal DesktopRails::VERSION, locked,
+                   "#{lock.delete_prefix("#{root}/")} locks desktop-rails #{locked}; run `bundle lock` in its directory"
+    end
+  end
+
   def test_prerelease_follows_rubygems
     assert P.prerelease?("0.3.0.pre1")
     refute P.prerelease?("0.3.0")
