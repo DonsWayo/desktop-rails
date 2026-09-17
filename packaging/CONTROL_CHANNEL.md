@@ -9,7 +9,9 @@ job cannot raise a notification while no page is open, which is exactly when it
 wants to.
 
 ```ruby
-DesktopRails::Native.notify(title: "Export finished", body: "invoice.pdf")
+DesktopRails::Native.notify(title: "Export finished", body: "invoice.pdf", id: "export-42")
+DesktopRails::Native.badge(3)
+DesktopRails::Native.call("shortcut", "register", id: "palette", accelerator: "CmdOrCtrl+Shift+K", focus: true)
 DesktopRails::Native.call("window", "resize", width: 1200, height: 900)
 text = DesktopRails::Native.clipboard_read
 ```

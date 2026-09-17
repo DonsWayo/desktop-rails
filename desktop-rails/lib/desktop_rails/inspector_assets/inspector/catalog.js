@@ -5,14 +5,14 @@
  */
 export const CATALOG = {
   "notification": {
-    description: "Show native OS notifications.",
+    description: "Show native OS notifications; a click focuses the window.",
     erb: `<button data-controller="notification"\n        data-action="click->notification#notify"\n        data-body="Saved!">Notify</button>`,
-    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends DesktopRails.stimulusBridge(Controller, "notification") {\n  notify(e) { this.sendBridge("connect", { title: "My App", body: e.target.dataset.body }) }\n}`,
+    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends Controller {\n  notify(e) { DesktopRails.notifications.show({ title: "My App", body: e.target.dataset.body, id: "saved" }) }\n}`,
   },
   "menu-item": {
-    description: "Register an item in the native menu bar.",
-    erb: `<%= tag.button "Export PDF",\n      **desktop_rails_bridge("menu-item", title: "Export PDF", shortcut: "Cmd+E") %>`,
-    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends DesktopRails.stimulusBridge(Controller, "menu-item") {\n  connect() { super.connect(); this.sendBridge("register", { title: "Export PDF", shortcut: "Cmd+E" }) }\n}`,
+    description: "Add an item to the native menu bar that triggers a page action.",
+    erb: `<div data-controller="menu-item"\n     data-action="desktop-rails:menu-item@document->menu-item#clicked"></div>`,
+    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends Controller {\n  connect() { DesktopRails.menu.add({ id: "export", title: "Export PDF", accelerator: "CmdOrCtrl+Shift+E" }) }\n  clicked(e) { if (e.detail.id === "export") console.log("export") }\n}`,
   },
   "file-picker": {
     description: "Open a native file open/save dialog.",
@@ -20,14 +20,14 @@ export const CATALOG = {
     stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends DesktopRails.stimulusBridge(Controller, "file-picker") {\n  open() { this.sendBridge("open", { multiple: false }) }\n  receiveBridge(msg) { console.log("picked", msg.data) }\n}`,
   },
   "badge": {
-    description: "Set the dock / taskbar badge count.",
+    description: "Set the Dock / launcher badge count (no-op on Windows).",
     erb: `<span data-controller="badge" data-badge-count-value="3"></span>`,
-    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends DesktopRails.stimulusBridge(Controller, "badge") {\n  static values = { count: Number }\n  connect() { super.connect(); this.sendBridge("set", { count: this.countValue }) }\n}`,
+    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends Controller {\n  static values = { count: Number }\n  connect() { DesktopRails.badge.set(this.countValue) }\n}`,
   },
   "shortcut": {
     description: "Register a global keyboard shortcut.",
-    erb: `<div data-controller="shortcut" data-shortcut-keys-value="CmdOrCtrl+K"></div>`,
-    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends DesktopRails.stimulusBridge(Controller, "shortcut") {\n  static values = { keys: String }\n  connect() { super.connect(); this.sendBridge("register", { keys: this.keysValue }) }\n  receiveBridge() { /* fired when the shortcut is pressed */ }\n}`,
+    erb: `<div data-controller="shortcut" data-shortcut-keys-value="CmdOrCtrl+Shift+K"\n     data-action="desktop-rails:shortcut@document->shortcut#fired"></div>`,
+    stimulus: `import { Controller } from "@hotwired/stimulus"\nexport default class extends Controller {\n  static values = { keys: String }\n  connect() { DesktopRails.shortcuts.register("palette", this.keysValue, { focus: true }) }\n  fired(e) { if (e.detail.id === "palette") { /* fired when the shortcut is pressed */ } }\n}`,
   },
   "shell": {
     description: "Spawn and manage native shell processes.",
