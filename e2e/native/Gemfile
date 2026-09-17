@@ -1,0 +1,17 @@
+source "https://rubygems.org"
+
+# A one-file Rails app the shell starts itself, in
+# .github/workflows/native-features.yml. Started by the shell rather than by
+# the job, so it gets the control channel and DesktopRails::Native reaches the
+# shell from Ruby the way a bundled app's does.
+gem "rails", "~> 8.1.3", ">= 8.1.3.1"
+gem "puma", ">= 5.0"
+
+gem "desktop-rails", path: "../../desktop-rails"
+
+# See examples/notes/Gemfile: json 3 breaks ActiveSupport::JSON.decode.
+gem "json", "< 3"
+
+# The stand-in notification service the Linux job runs on the session bus.
+# Pure Ruby, so it needs nothing compiled.
+gem "ruby-dbus", "~> 0.25", require: false
