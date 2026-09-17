@@ -45,7 +45,7 @@ it up the way you would back up a password.
 There is no `minisign` binary and no `tauri signer` on a machine that can
 otherwise build this project, and `cargo install tauri-cli` is a long build for
 one subcommand. So the keypair is made in Node, which has Ed25519 and BLAKE2b
-natively — `packaging/lib/minisign.mjs`, no dependencies. The files it writes
+natively — `minisign.mjs` in the gem (`desktop-rails/lib/desktop_rails/tooling/updater/`), no dependencies. The files it writes
 are ordinary minisign files: `minisign -Vm` and `tauri signer sign` both work on
 them, and a key made by either of those works here.
 
@@ -173,7 +173,7 @@ checked against something that did not come from it:
   the layout in `minisign-verify`'s source and checks them with Node's own
   Ed25519, rather than calling the library under test.
 
-The 32-byte BLAKE2b in `packaging/lib/blake2b.mjs` exists because Node only
+The 32-byte BLAKE2b in `blake2b.mjs`, beside it, exists because Node only
 exposes the 64-byte one and minisign's secret key checksum needs the other. Its
 64-byte output is held against Node's native `blake2b512`, which exercises the
 same compression function.

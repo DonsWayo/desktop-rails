@@ -11,8 +11,10 @@ There are two things you might distribute, and they are built differently.
 ## A bundled app
 
 `bin/rails desktop:package` writes the bundle to `.desktop-rails/dist/`: a `.app`
-on macOS, a directory tree on Linux, and a directory plus a zip of it on Windows.
-There is no installer step; the bundle is what you hand out.
+on macOS, a directory tree plus a tarball on Linux, and a directory plus a zip of
+it on Windows. There is no installer step; the bundle is what you hand out.
+Outside a Rails app, `desktop-rails-tool package` builds the same thing from
+explicit paths, which is what `package-smoke.yml` runs.
 
 - **macOS.** The bundle is signed ad hoc, which Gatekeeper rejects on anyone
   else's Mac. [packaging/DISTRIBUTION.md](../packaging/DISTRIBUTION.md) has the

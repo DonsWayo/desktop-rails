@@ -17,7 +17,7 @@ module DesktopRails
   #   DesktopRails.data_dir                  # => #<Pathname .../Application Support/dev.example.ledger>
   #   DesktopRails.data_dir(create: true)    # same, but it exists afterwards
   #
-  # The launchers the packers write already export DESKTOP_DATA_DIR, having
+  # The launchers packaging writes already export DESKTOP_DATA_DIR, having
   # made the same decision in shell. That variable wins when it is set, so the
   # launcher and the Rails app can never disagree about where state lives.
   module Paths

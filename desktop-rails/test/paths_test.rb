@@ -64,7 +64,7 @@ class PathsPlatformTest < Minitest::Test
   end
 
   def test_desktop_data_dir_env_wins_over_every_platform_rule
-    # The launchers the packers write export this after making the same
+    # The launchers packaging writes export this after making the same
     # decision in shell. If Ruby disagreed with the launcher, the app would
     # write its database somewhere the launcher had not created.
     %w[darwin24 mingw32 linux-gnu].each do |host_os|

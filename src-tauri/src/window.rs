@@ -744,10 +744,10 @@ mod tests {
         assert_eq!(reply["status"], "unknown_event");
     }
 
-    /// Exactly what `packaging/pack.sh --update-url --update-key` writes into a
-    /// bundle. Kept verbatim so a change to either side that stops them agreeing
-    /// fails here rather than in a shipped app, where a config that does not
-    /// parse is fatal at startup.
+    /// What `desktop-rails-tool package --update-url --update-key` writes into
+    /// a bundle (DesktopRails::BundledPackage#config). Kept so a change to either
+    /// side that stops them agreeing fails here rather than in a shipped app,
+    /// where a config that does not parse is fatal at startup.
     const PACKED_CONFIG: &str = r#"{
       "app_name": "Ledger",
       "server_url": "http://127.0.0.1:0",
@@ -762,7 +762,7 @@ mod tests {
 
     #[test]
     fn the_updater_settings_a_packaged_app_ships_with_parse() {
-        let config = parse_config(PACKED_CONFIG).expect("pack.sh must write a config that parses");
+        let config = parse_config(PACKED_CONFIG).expect("packaging must write a config that parses");
 
         assert_eq!(
             config.updater.endpoints,

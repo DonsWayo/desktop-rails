@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { blake2b } from "../packaging/lib/blake2b.mjs";
+import { blake2b } from "../desktop-rails/lib/desktop_rails/tooling/updater/blake2b.mjs";
 import {
   decodePublicKey,
   decodeSecretKey,
@@ -22,10 +22,10 @@ import {
   scryptParams,
   signBytes,
   verifyBytes,
-} from "../packaging/lib/minisign.mjs";
+} from "../desktop-rails/lib/desktop_rails/tooling/updater/minisign.mjs";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const CLI = join(PACKAGE_ROOT, "packaging", "lib", "updater-cli.mjs");
+const CLI = join(PACKAGE_ROOT, "desktop-rails", "lib", "desktop_rails", "tooling", "updater", "updater-cli.mjs");
 
 // Deriving a key costs ~100ms of scrypt, which is the point of scrypt. One
 // keypair is shared by the tests that only need *a* key.

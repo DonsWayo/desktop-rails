@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "optparse"
+require "desktop_rails/packager"
 require "desktop_rails/packaging"
 require "desktop_rails/tooling/command"
 
@@ -19,6 +20,7 @@ module DesktopRails
           runtime build [--out DIR] [--work DIR]    build a relocatable Ruby (macOS, Linux)
           runtime verify DIR                         prove an interpreter relocates
           runtime fetch-windows --out DIR            RubyInstaller's portable Ruby, checked
+          package --app APP --runtime DIR [options]  a Rails app and its Ruby, as this platform's package
           prune DIR [--keep-dev]                     remove what a user's machine never reads
           dmg APP [OUTPUT]                           wrap a .app in a disk image
           notarize --app APP --identity ID           sign, notarise and staple a .app
@@ -46,6 +48,7 @@ module DesktopRails
         command = argv.shift
         case command
         when "runtime" then runtime(argv)
+        when "package" then package(argv)
         when "prune" then prune(argv)
         when "dmg" then dmg(argv)
         when "notarize" then notarize(argv)
@@ -62,7 +65,8 @@ module DesktopRails
       rescue Error => e
         @err.puts "\n#{e.message}"
         1
-      rescue DesktopRails::Packaging::DownloadFailed, DesktopRails::Packaging::NotPublished => e
+      rescue DesktopRails::Packaging::DownloadFailed, DesktopRails::Packaging::NotPublished,
+             DesktopRails::Packaging::MissingPrerequisite, DesktopRails::Packager::InvalidInput => e
         @err.puts "\n#{e.message}"
         1
       end
@@ -125,6 +129,41 @@ module DesktopRails
         else
           usage_error("unknown runtime command: #{sub.inspect}")
         end
+      end
+
+      # What `bin/rails desktop:package` builds, from anywhere: a checkout, CI,
+      # or an app that wants to name every input itself. The options are the
+      # ones the shell packers took, so a workflow moved off pack.sh changes
+      # only the command.
+      def package(argv)
+        require "desktop_rails/bundled_package"
+        options, rest, parser = parse(argv, "package --app APP --runtime DIR [options]") do |opts, o|
+          opts.on("--app APP", "The Rails app to package") { |v| o[:app] = v }
+          opts.on("--runtime DIR", "The relocatable Ruby it ships with") { |v| o[:runtime] = v }
+          opts.on("--gems DIR", "The app's gems, installed for that Ruby") { |v| o[:gems] = v }
+          opts.on("--shell FILE", "The desktop shell; without one the package has no window") { |v| o[:shell] = v }
+          opts.on("--name NAME", "Display name (default: Desktop Rails App)") { |v| o[:name] = v }
+          opts.on("--app-id ID", "Bundle identifier (default: dev.desktop-rails.app)") { |v| o[:app_id] = v }
+          opts.on("--bundle-id ID", "The same, by its macOS name") { |v| o[:app_id] = v }
+          opts.on("--out DIR", "Where the package goes (default: ./dist)") { |v| o[:out] = v }
+          opts.on("--platform PLATFORM", "macos, linux or windows (default: this machine)") { |v| o[:platform] = v.to_sym }
+          opts.on("--identity ID", "macOS signing identity (default: ad hoc)") { |v| o[:identity] = v }
+          opts.on("--version VERSION", "The app's version (default: 1.0)") { |v| o[:version] = v }
+          opts.on("--update-url URL", "The update manifest the app checks") { |v| o[:update_url] = v }
+          opts.on("--update-key FILE", "The public key updates are signed with") { |v| o[:update_key] = v }
+          opts.on("--keep-dev", "Keep documentation and gem test suites (also KEEP_DEV=1)") { o[:keep_dev] = true }
+          opts.on("--appimage", "Also build an AppImage on Linux when appimagetool is installed") { o[:appimage] = true }
+        end
+        return usage_error(parser.help) unless rest.empty? && options[:app] && options[:runtime]
+
+        options[:keep_dev] ||= @env["KEEP_DEV"] == "1"
+        log = ->(message) { @out.puts(message) }
+        defaults = { name: "Desktop Rails App", app_id: "dev.desktop-rails.app", out: File.expand_path("dist") }
+        package = DesktopRails::BundledPackage.new(runner: runner, log: log, **defaults.merge(options))
+        layout = package.build
+        @out.puts "\n==> Result\n  #{layout.root}"
+        layout.artifacts.each { |artifact| @out.puts "  #{artifact}" }
+        0
       end
 
       def prune(argv)

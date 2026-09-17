@@ -32,9 +32,11 @@ env:
   RAILS_VERSION: "8.1.3.1"
   # The Ruby of the runtime desktop:runtime downloads for this gem version, not
   # merely the newest one. `rails new` for 7.0 and 7.1 writes it into the
-  # Gemfile, and the packaged interpreter refuses a bundle that names another:
-  # "Your Ruby version is 3.4.8, but your Gemfile specified 4.0.7". 0.3.0.pre3
-  # ships Ruby 4.0.7, so this moves with it.
+  # Gemfile, and the packaged interpreter refused a bundle that named another:
+  # "Your Ruby version is 3.4.8, but your Gemfile specified 4.0.7". Packaging
+  # now accepts a pin that differs only in the patch release, which the Rails
+  # 7.1 entry below proves by generating with another one. 0.3.0.pre3 ships
+  # Ruby 4.0.7.
   RUBY_VERSION: "4.0.7"
 
 jobs:
@@ -58,10 +60,15 @@ jobs:
         # 7.0 and 7.1 are past Rails' own maintenance, but the gemspec allows
         # them, so they are proven rather than assumed. They are what found that
         # the boot scripts read the app's config/puma.rb.
+        #
+        # 7.1 is generated with Ruby 4.0.6, so its Gemfile pins a Ruby the
+        # 4.0.7 runtime is not: what a developer one patch release behind the
+        # runtime gets. desktop:gems and desktop:package must accept it in
+        # their copies and leave the app's own Gemfile alone.
         rails:
           - { version: "8.1.3.1", example: true }
           - { version: "7.2.3.2", example: false }
-          - { version: "7.1.6", example: false }
+          - { version: "7.1.6", example: false, ruby: "4.0.6" }
           - { version: "7.0.10", example: false }
     env:
       FRESH: ${{ github.workspace }}/../fresh
@@ -76,11 +83,11 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb libwebkit2gtk-4.1-0 libgtk-3-0 rsync
+          sudo apt-get install -y -qq xvfb libwebkit2gtk-4.1-0 libgtk-3-0
 
       - uses: ruby/setup-ruby@v1
         with:
-          ruby-version: ${{ env.RUBY_VERSION }}
+          ruby-version: ${{ matrix.rails.ruby || env.RUBY_VERSION }}
 
       # ─── A brand new app, with downloaded runtime and shell ────────────────
 
@@ -122,9 +129,23 @@ jobs:
           set -euo pipefail
           bin/rails desktop:package | tee "$RUNNER_TEMP/fresh-package.log"
           # The shell has to be the downloaded one: nothing has been built here.
-          # Checked on what packaging reports, because pack.sh re-signs the
+          # Checked on what packaging reports, because packaging re-signs the
           # binary it embeds, so the bytes in the bundle differ on macOS.
           grep -E '^  shell: +.*/\.desktop-rails/shell/[^/]+/desktop-rails$' "$RUNNER_TEMP/fresh-package.log"
+
+      - name: A Ruby pinned one patch release off is accepted in the copies only
+        if: matrix.rails.ruby
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_OS" = macOS ]; then
+            packed="$FRESH/.desktop-rails/dist/Fresh.app/Contents/Resources/app"
+          else
+            packed="$FRESH/.desktop-rails/dist/fresh/lib/app"
+          fi
+          grep -n '^ruby' "$FRESH/Gemfile" "$packed/Gemfile"
+          grep -qx 'ruby "${{ matrix.rails.ruby }}"' "$FRESH/Gemfile"
+          grep -qx 'ruby "${{ env.RUBY_VERSION }}"' "$packed/Gemfile"
+          grep -q "Ruby requirement: the packed Gemfile now asks for ${{ env.RUBY_VERSION }}" "$RUNNER_TEMP/fresh-package.log"
 
       - name: Launch it and check the window loaded the app
         run: |

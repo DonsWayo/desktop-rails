@@ -11,7 +11,7 @@ module DesktopRails
     # The plugin verifies every downloaded bundle against a minisign public key
     # before it installs anything, so an app without a keypair has no update
     # path. The bytes — Ed25519, BLAKE2b, scrypt and minisign's file formats —
-    # are packaging/lib/updater-cli.mjs, which the JavaScript suite and the
+    # are updater/updater-cli.mjs beside this file, which the JavaScript suite and the
     # shell's own Rust tests hold to what the plugin accepts. This is the part
     # around it: arguments, defaults, where keys live, what is printed.
     #
@@ -30,10 +30,13 @@ module DesktopRails
       PASSWORD_VARIABLE = "DESKTOP_RAILS_SIGNING_PASSWORD"
       KEY_VARIABLE = "DESKTOP_RAILS_SIGNING_KEY"
 
+      # In the gem, so signing needs Node and nothing from a checkout.
+      CLI_SCRIPT = File.expand_path("updater/updater-cli.mjs", __dir__)
+
       module_function
 
       def cli_path(env: ENV)
-        Paths.presence(env["DESKTOP_RAILS_UPDATER_CLI"]) || Tooling.checkout_file("packaging", "lib", "updater-cli.mjs")
+        Paths.presence(env["DESKTOP_RAILS_UPDATER_CLI"]) || CLI_SCRIPT
       end
 
       def cli!(env: ENV)
@@ -41,10 +44,10 @@ module DesktopRails
         return path if path && File.file?(path)
 
         raise MissingPrerequisite, <<~MSG
-          Could not find packaging/lib/updater-cli.mjs, which does the signing.
+          Could not find #{path}, which does the signing.
 
-          It lives in the desktop-rails repository beside this gem. Run from a
-          checkout, or point at it with DESKTOP_RAILS_UPDATER_CLI=/path/to/updater-cli.mjs.
+          It ships in this gem. If DESKTOP_RAILS_UPDATER_CLI is set, point it at an
+          updater-cli.mjs that exists, or unset it.
         MSG
       end
 

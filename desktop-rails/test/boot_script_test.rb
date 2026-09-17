@@ -7,8 +7,8 @@ require "timeout"
 require "tmpdir"
 require "fileutils"
 
-# The two boot scripts, run for real against a real Puma: the one the packers
-# copy into a bundle, and the one the generator writes to bin/desktop-boot.
+# The two boot scripts, run for real against a real Puma: the one packaging
+# copies into a bundle, and the one the generator writes to bin/desktop-boot.
 #
 # What they must not do is read the app's config/puma.rb. Puma loads that file
 # on its own whenever the working directory has one, and it describes how the
@@ -18,10 +18,8 @@ require "fileutils"
 # bundle, writing a pidfile to a directory that is not there. Rails 7.2 and 8
 # only set a pidfile when PIDFILE is set, which is why it went unnoticed.
 class BootScriptTest < Minitest::Test
-  REPOSITORY = File.expand_path("../..", __dir__)
-
   SCRIPTS = {
-    "the packaged boot.rb" => File.join(REPOSITORY, "packaging", "templates", "boot.rb"),
+    "the packaged boot.rb" => File.expand_path("../lib/desktop_rails/packager/templates/boot.rb", __dir__),
     "the generated bin/desktop-boot" => File.expand_path(
       "../lib/generators/desktop_rails/install/templates/desktop-boot.tt", __dir__
     )

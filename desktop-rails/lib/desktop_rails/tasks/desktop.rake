@@ -10,14 +10,13 @@
 #   bin/rails desktop:package:hosted  # a window onto a server you run: shell + config, no Ruby
 #
 # The runtime is built and checked by the gem's own tooling
-# (exe/desktop-rails-tool, DesktopRails::Tooling). The bundled packers are
-# still the scripts under packaging/; see DesktopRails::Packaging for where
-# they are looked for. desktop:package:hosted has nothing to relocate, prune
-# or vendor, and assembles its package in Ruby with DesktopRails::Packager, the
-# layouts the bundled packers are meant to move onto.
+# (exe/desktop-rails-tool, DesktopRails::Tooling). Packages are assembled in
+# Ruby by DesktopRails::BundledPackage and DesktopRails::HostedPackage, on the
+# platform layouts in DesktopRails::Packager. All of it ships in the gem.
 
 require "fileutils"
 require "rbconfig"
+require "desktop_rails/bundled_package"
 require "desktop_rails/hosted_package"
 require "desktop_rails/packaging"
 require "desktop_rails/prebuilt"
@@ -45,7 +44,7 @@ run = lambda do |argv|
   # its RUBYOPT=-rbundler/setup and BUNDLE_* variables are inherited by every
   # process launched from here — including any Ruby those start, which then
   # tries to set up this app's bundle with the wrong interpreter and fails with
-  # GemNotFound. The tooling and the packers are standalone and must see a
+  # GemNotFound. The tooling is standalone and must see a
   # clean environment.
   launch = -> { system(*argv.map(&:to_s)) }
   ok = defined?(Bundler) ? Bundler.with_unbundled_env(&launch) : launch.call
@@ -153,10 +152,14 @@ namespace :desktop do
   task :gems do
     with_clear_failures.call do
       packaging = DesktopRails::Packaging
-      env, *argv = packaging.gems_command
       puts "Installing gems for the packaged interpreter"
       puts "  runtime: #{packaging.runtime_dir!}"
       puts "  into:    #{packaging.bundled_gems_dir}"
+      # A Ruby pinned in the Gemfile is checked against the runtime's first.
+      # See DesktopRails::Packaging.gems_gemfile!.
+      gemfile = packaging.gems_gemfile!
+      puts "  gemfile: #{gemfile}"
+      env, *argv = packaging.gems_command(gemfile: gemfile)
       FileUtils.mkdir_p(packaging.bundled_gems_dir)
       # A clean environment, not just an extra one. bin/rails starts with Bundler
       # loaded, which sets RUBYOPT=-rbundler/setup and BUNDLE_* variables; a
@@ -206,16 +209,21 @@ namespace :desktop do
   # task before minutes of asset and gem work rather than after.
   task package: %i[shell assets gems] do
     with_clear_failures.call do
-      packaging = DesktopRails::Packaging
-      argv = packaging.package_command
+      package = DesktopRails::Packaging.bundled_package(keep_dev: ENV["KEEP_DEV"] == "1")
 
-      puts "Packaging #{DesktopRails.app_name} (#{DesktopRails.app_id}) for #{packaging.platform}"
-      puts "  app:     #{packaging.app_root!}"
-      puts "  runtime: #{packaging.runtime_dir!}"
-      puts "  gems:    #{packaging.gems_dir || "(none — the bundle will use the runtime's own)"}"
-      puts "  shell:   #{packaging.shell_binary || "(none — the bundle will have no window)"}"
-      puts "  out:     #{packaging.dist_dir}"
-      run.call(argv)
+      puts "Packaging #{package.name} (#{package.app_id}) for #{package.platform}"
+      puts "  app:     #{package.app}"
+      puts "  runtime: #{package.runtime.dir}"
+      puts "  gems:    #{package.gems}"
+      puts "  shell:   #{package.shell || "(none — the bundle will have no window)"}"
+      puts "  out:     #{package.out}"
+
+      # In this process: packaging runs no Ruby of its own any more, so there
+      # is no Bundler environment to keep away from one. The programs it does
+      # run, codesign and strip, are started outside it by Tooling::Command.
+      layout = package.build
+      puts "\nPackaged: #{layout.root}"
+      layout.artifacts.each { |artifact| puts "  and #{artifact}" }
     end
   end
 

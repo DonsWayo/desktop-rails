@@ -35,6 +35,38 @@ class ToolingCLITest < Minitest::Test
     assert_equal 2, run_cli("runtime", "build", "--no-such-flag").first
   end
 
+  def test_package_needs_an_app_and_a_runtime
+    assert_equal 2, run_cli("package").first
+    assert_equal 2, run_cli("package", "--app", "x").first
+  end
+
+  # What package-smoke.yml runs in place of pack.sh and pack-linux.sh.
+  def test_package_builds_the_package_or_says_why_not
+    Dir.mktmpdir do |dir|
+      status, _, err = run_cli("package", "--app", File.join(dir, "nope"), "--runtime", dir, "--platform", "linux",
+                               "--out", File.join(dir, "dist"))
+      assert_equal 1, status
+      assert_match(/not a directory/, err)
+
+      app = File.join(dir, "app")
+      FileUtils.mkdir_p(app)
+      File.write(File.join(app, "config.ru"), "run ->(_) { [200, {}, []] }\n")
+      runtime = File.join(dir, "runtime")
+      FileUtils.mkdir_p(File.join(runtime, "bin"))
+      FileUtils.mkdir_p(File.join(runtime, "lib", "ruby", "4.0.0", "x86_64-linux"))
+      File.write(File.join(runtime, "bin", "ruby"), "")
+      File.write(File.join(runtime, "lib", "ruby", "4.0.0", "x86_64-linux", "rbconfig.rb"),
+                 %(CONFIG["MAJOR"] = "4"\nCONFIG["MINOR"] = "0"\nCONFIG["TEENY"] = "7"\n) +
+                 %(CONFIG["PATCHLEVEL"] = "0"\nCONFIG["ruby_version"] = "4.0.0"\n))
+
+      status, out, err = run_cli("package", "--app", app, "--runtime", runtime, "--platform", "linux",
+                                 "--name", "Smoke", "--app-id", "dev.desktop-rails.smoke", "--out", File.join(dir, "dist"))
+      assert_equal 0, status, err
+      assert File.executable?(File.join(dir, "dist", "smoke", "bin", "smoke"))
+      assert_match(/smoke-linux-.+\.tar\.gz/, out)
+    end
+  end
+
   def test_a_failed_step_is_a_sentence_and_exit_1
     Dir.mktmpdir do |dir|
       status, _, err = run_cli("dmg", File.join(dir, "Missing.app"))

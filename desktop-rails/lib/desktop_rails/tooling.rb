@@ -24,10 +24,9 @@ module DesktopRails
   # the decisions are tested without a compiler, a certificate or a GUI.
   #
   # What a package looks like is DesktopRails::Packager's, not this module's:
-  # its layouts assemble the .app and the trees, and run programs through the
-  # same Command. The bundled packers still under packaging/ are meant to move
-  # onto those layouts, calling Prune, RuntimeVerification and the Notarization
-  # and DiskImage steps here.
+  # its layouts assemble the .app and the trees, DesktopRails::BundledPackage
+  # fills them and prunes with Prune from here, and both run programs through
+  # the same Command.
   module Tooling
     class Error < StandardError; end
 
@@ -40,18 +39,7 @@ module DesktopRails
     # otool".
     class CheckFailed < Error; end
 
-    # The repository this gem sits in, when it sits in one. Some inputs are not
-    # part of the gem yet — the minisign implementation and the entitlements
-    # file are shared with the shell scripts that still pack apps — and are
-    # found here until those scripts move into the gem as well.
-    CHECKOUT_ROOT = File.expand_path("../../..", __dir__)
-
     module_function
-
-    def checkout_file(*parts)
-      path = File.join(CHECKOUT_ROOT, *parts)
-      File.exist?(path) ? path : nil
-    end
 
     # The path of the command line, for callers that run a step as a separate
     # process — the rake tasks, which must not share Bundler's environment with

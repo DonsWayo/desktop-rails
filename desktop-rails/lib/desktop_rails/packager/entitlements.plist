@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- On the interpreter, because ruby is the process that dlopens every
+       extension. Both were measured as needed under the hardened runtime:
+       without disable-library-validation the dlopen of an extension signed by
+       another identity is refused, and without allow-unsigned-executable-memory
+       the kernel kills the process. -->
+  <key>com.apple.security.cs.disable-library-validation</key><true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>
+</dict>
+</plist>
