@@ -31,11 +31,11 @@ concurrency:
 env:
   RAILS_VERSION: "8.1.3.1"
   # The Ruby of the runtime desktop:runtime downloads for this gem version, not
-  # the newest one. `rails new` for 7.0 and 7.1 writes it into the Gemfile, and
-  # the packaged interpreter then refuses the bundle: 4.0.7 here failed against
-  # the 0.3.0.pre2 runtime with "Your Ruby version is 3.4.8, but your Gemfile
-  # specified 4.0.7". Move it with the release that ships the Ruby 4 runtime.
-  RUBY_VERSION: "3.4.8"
+  # merely the newest one. `rails new` for 7.0 and 7.1 writes it into the
+  # Gemfile, and the packaged interpreter refuses a bundle that names another:
+  # "Your Ruby version is 3.4.8, but your Gemfile specified 4.0.7". 0.3.0.pre3
+  # ships Ruby 4.0.7, so this moves with it.
+  RUBY_VERSION: "4.0.7"
 
 jobs:
   unix:
