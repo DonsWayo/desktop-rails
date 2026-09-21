@@ -119,6 +119,13 @@ jobs:
           ruby -i -pe 'sub(/^Rails\.application\.routes\.draw do$/) { "#{$&}\n  root \"welcome#index\"" }' config/routes.rb
           grep -n root config/routes.rb
 
+      # The version bump and the release that carries it are two events, and
+      # this keeps the run on a release that exists. See the script.
+      - name: Which release to download from
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ruby .github/scripts/release_to_download.rb
+
       - name: bin/rails desktop:runtime
         working-directory: ${{ env.FRESH }}
         run: bin/rails desktop:runtime
@@ -304,6 +311,13 @@ jobs:
           (Get-Content config\routes.rb) -replace '^Rails\.application\.routes\.draw do$', "`$0`n  root `"welcome#index`"" | Set-Content config\routes.rb
           Pop-Location
 
+      # The version bump and the release that carries it are two events, and
+      # this keeps the run on a release that exists. See the script.
+      - name: Which release to download from
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ruby .github/scripts/release_to_download.rb
+
       - name: bin/rails desktop:runtime
         working-directory: ${{ env.FRESH }}
         run: ruby bin\rails desktop:runtime
@@ -395,6 +409,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+
+      # As in the other jobs: a release this run can actually download from.
+      - name: Which release to download from
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ruby .github/scripts/release_to_download.rb
 
       - name: Build the shell
         working-directory: src-tauri
