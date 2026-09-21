@@ -269,7 +269,8 @@ module NativeCheck
     # caller still checks that the event reached the page and says that
     # bringing the window forward was not observed.
     def move_focus_away
-      if (window = other_application_window) && activate(window) { active_window_name != APP_TITLE }
+      if (window = other_application_window) &&
+         activate(window) { (name = active_window_name) && name != APP_TITLE }
         note("another application's window has focus: #{active_window_name.inspect}")
         return "another application had focus"
       end
@@ -462,6 +463,8 @@ module NativeCheck
     abort "FAIL  the X display at #{ENV["DISPLAY"].inspect} never answered" unless display
     puts "OK    X display #{ENV["DISPLAY"]} is up"
 
+    start_window_manager(logs: logs, timeout: timeout)
+
     service = eventually(timeout) { jsonl(File.join(logs, "notifications.jsonl")).any? { |e| e["event"] == "ready" } }
     abort "FAIL  the stand-in notification service never owned its name" unless service
     output, = command("dbus-send", "--session", "--print-reply", "--dest=org.freedesktop.DBus", "/org/freedesktop/DBus",
@@ -470,6 +473,23 @@ module NativeCheck
     puts "OK    org.freedesktop.Notifications is owned on #{ENV["DBUS_SESSION_BUS_ADDRESS"]}"
 
     hold_a_shortcut(logs: logs, timeout: timeout)
+  end
+
+  # Which window has focus is a window manager's business, and a bare X server
+  # has none: without one `xdotool getactivewindow` answers nothing, and
+  # "the summon shortcut brought the window forward" cannot be observed at all.
+  #
+  # Started here rather than by the workflow because openbox has to come after
+  # the display, and starting both as background jobs in one step raced: the
+  # run that lost left no window manager and every focus check unanswerable.
+  def start_window_manager(logs:, timeout: 60)
+    Process.spawn("openbox", out: File.join(logs, "openbox.log"), err: [ :child, :out ], pgroup: true)
+    running = eventually(timeout) do
+      output, success = command("xprop", "-root", "-notype", "_NET_SUPPORTING_WM_CHECK")
+      success && output.include?("window id")
+    end
+    abort "FAIL  no window manager on #{ENV["DISPLAY"]}: #{File.read(File.join(logs, "openbox.log")) rescue ""}" unless running
+    puts "OK    a window manager is running, so focus can be observed"
   end
 
   # Another X client holding Ctrl+Alt+K, so the app's attempt to register it is
