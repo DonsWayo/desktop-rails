@@ -3,7 +3,7 @@ module DesktopRails
   # by inspecting the User-Agent string.
   #
   # The Desktop Rails shell sets a User-Agent like:
-  #   "Desktop Rails/0.3.0-pre.3 (macOS; aarch64)"
+  #   "Desktop Rails/0.3.0-pre.4 (macOS; aarch64)"
   #
   # This mirrors how turbo-rails detects Turbo Native mobile apps.
   module Detection

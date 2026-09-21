@@ -1081,7 +1081,7 @@ The `desktop-rails` gem gives your Rails app awareness of the desktop shell.
 | Platforms | iOS, iPadOS | Android | macOS, Windows, Linux |
 
 The sizes are measured rather than estimated. The shells in the
-[v0.3.0.pre3 release](https://github.com/DonsWayo/desktop-rails/releases/tag/v0.3.0.pre3)
+[v0.3.0.pre4 release](https://github.com/DonsWayo/desktop-rails/releases/tag/v0.3.0.pre4)
 are 21.6 MB (Windows), 22.6 MB (macOS Apple Silicon), 23.8 MB (macOS Intel) and
 31.6 MB (Linux). A bundled app also carries a relocatable Ruby and every gem the
 app needs, so it is far larger: after pruning, a freshly generated Rails 8.1 app
@@ -1130,7 +1130,7 @@ and shell that `bin/rails desktop:runtime` and `desktop:shell` download, built b
 [release-prebuilt.yml](.github/workflows/release-prebuilt.yml):
 
 ```bash
-git tag v0.3.0.pre3 && git push origin v0.3.0.pre3
+git tag v0.3.0.pre4 && git push origin v0.3.0.pre4
 ```
 
 See **[docs/DISTRIBUTION.md](docs/DISTRIBUTION.md)** for local builds, using it in your own app,

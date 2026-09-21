@@ -1,6 +1,6 @@
 [package]
 name = "desktop-rails"
-version = "0.3.0-pre.3"
+version = "0.3.0-pre.4"
 description = "Native desktop shell for Rails and Hotwire apps, bundled or hosted"
 authors = ["Juan Carracedo", "aguspe"]
 license = "MIT"

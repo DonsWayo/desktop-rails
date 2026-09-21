@@ -44,6 +44,12 @@ later; the prebuilt shells of pre1 and pre2 still have the old defaults.
 
 ### Changed
 
+- Version 0.3.0.pre4 (Cargo and npm: 0.3.0-pre.4): the first release whose
+  shell carries real notifications, badge, global shortcuts and menu items,
+  and the Windows fixes — no console window over the app, an interpreter that
+  does not write into the installed app, and a window that does not wait when
+  its server was quicker.
+
 - Downloads of the prebuilt runtime and shell retry a failed connection or a
   5xx answer up to four attempts, backing off 1, 2 and 4 seconds. A single
   reset connection used to fail `desktop:package`. A missing release, a
@@ -315,16 +321,6 @@ clipboard, launch-at-login). No gem-side API changes.
   - `config.inspector_mount_path` to match a custom engine mount point.
 
 ### Changed
-
-- Downloads of the prebuilt runtime and shell retry a failed connection or a
-  5xx answer up to four attempts, backing off 1, 2 and 4 seconds. A single
-  reset connection used to fail `desktop:package`. A missing release, a
-  redirect loop or a redirect to plain http still fail at once.
-
-- The default app id is `dev.desktop-rails.<app>` instead of
-  `dev.turbodesktop.<app>`. The app id names the data directory, so an app
-  that relied on the default and already has users should set `config.app_id`
-  to its old value.
 
 - Minimum Ruby version is now 3.3.
 

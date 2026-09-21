@@ -1,6 +1,6 @@
 {
   "name": "desktop-rails",
-  "version": "0.3.0-pre.3",
+  "version": "0.3.0-pre.4",
   "description": "Ship your Rails app, or any Hotwire app, as a native desktop app",
   "author": "Juan Carracedo",
   "license": "MIT",

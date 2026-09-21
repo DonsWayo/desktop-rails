@@ -22,7 +22,7 @@ bin/rails generate desktop_rails:install
 
 ### Detection
 
-The gem detects Desktop Rails requests via the User-Agent header (`Desktop Rails/0.3.0-pre.3 (macOS; aarch64)`, where the version is the shell's).
+The gem detects Desktop Rails requests via the User-Agent header (`Desktop Rails/0.3.0-pre.4 (macOS; aarch64)`, where the version is the shell's).
 
 ```ruby
 # In controllers
