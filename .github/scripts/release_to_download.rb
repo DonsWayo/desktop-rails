@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # Which release this run's fresh app should download from.
 #
 # `desktop:runtime` and `desktop:shell` download the release named after the
