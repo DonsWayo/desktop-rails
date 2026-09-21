@@ -265,8 +265,9 @@ jobs:
   # Windows runs the same journey in two jobs rather than one, because each
   # half has a long compile of its own (the fresh app's gems, the shell) and
   # they need not wait for each other. The window checks are the ones the unix
-  # jobs make, in the same order; packaging/smoke/app_check.rb says why Windows
-  # runs them from its own harness.
+  # jobs make, in the same order, from the same `smoke app` command;
+  # DesktopRails::Tooling::Smoke::WindowsAppCheck says why Windows runs them
+  # through a harness of its own.
   windows:
     name: Windows
     runs-on: windows-latest
@@ -368,7 +369,7 @@ jobs:
           $env:DESKTOP_DATA_DIR = Join-Path $env:RUNNER_TEMP "fresh-gui-data"
           $env:APP_CHECK_SCREENSHOT = Join-Path $env:RUNNER_TEMP "screenshots\fresh.png"
           New-Item -ItemType Directory -Force -Path $env:DESKTOP_DATA_DIR, (Join-Path $env:RUNNER_TEMP "screenshots") | Out-Null
-          ruby packaging\smoke\app_check.rb "$tree\fresh.exe" "text=Welcome#index" "unchanged=$tree"
+          ruby desktop-rails\exe\desktop-rails-tool smoke app "$tree\fresh.exe" "text=Welcome#index" "unchanged=$tree"
           if ($LASTEXITCODE -ne 0) { throw "the window check failed" }
 
       - uses: actions/upload-artifact@v4
@@ -422,7 +423,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $env:DESKTOP_DATA_DIR, (Join-Path $env:RUNNER_TEMP "screenshots") | Out-Null
           # A model-backed page on an empty data directory proves the schema and
           # seeds were loaded; the reports prove the bridge worked in the window.
-          ruby packaging\smoke\app_check.rb "$tree\notes.exe" `
+          ruby desktop-rails\exe\desktop-rails-tool smoke app "$tree\notes.exe" `
             "text=Welcome to Notes" `
             "marker=javascript" `
             "marker=stream" `

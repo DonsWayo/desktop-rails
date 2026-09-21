@@ -1,21 +1,17 @@
-require_relative "test_helper"
+require_relative "tooling_test_helper"
+require "desktop_rails/tooling/smoke/windows_app_check"
 require "tmpdir"
 require "fileutils"
 
-# The Windows window check, packaging/smoke/app_check.rb, only runs on a CI
-# runner that can open a window. The decisions in it that can go wrong without
-# one — which request was the window's, which processes were the server's, what
-# counts as writing inside the bundle — are tested here, so a mistake in the
-# harness is not first seen as a mysterious red Windows job.
+# `smoke app` on Windows only runs for real on a CI runner that can open a
+# window. The decisions in it that can go wrong without one — which request was
+# the window's, which processes were the server's, what counts as writing inside
+# the bundle — are tested here, so a mistake in the harness is not first seen as
+# a mysterious red Windows job.
 class AppCheckTest < Minitest::Test
-  HARNESS = File.expand_path("../../packaging/smoke/app_check.rb", __dir__)
+  AppCheck = DesktopRails::Tooling::Smoke::WindowsAppCheck
 
-  def setup
-    super
-    skip "no checkout at #{HARNESS}" unless File.exist?(HARNESS)
-    load HARNESS unless defined?(::AppCheck)
-  end
-
+  # The same reading of a Rails log as the Unix check: Smoke.root_request_completion.
   def test_the_windows_request_for_root_is_the_first_one_that_completed
     log = <<~LOG
       Started GET "/desktop-rails/path-configuration.json" for 127.0.0.1 at 2026-09-16 13:37:30 +0000
@@ -29,18 +25,18 @@ class AppCheckTest < Minitest::Test
 
     # The path configuration completed first, and a later request for / by the
     # harness itself succeeded; neither is the window's.
-    assert_equal "Completed 500 Internal Server Error in 47ms", AppCheck.window_root_request(log)
+    assert_equal "Completed 500 Internal Server Error in 47ms", DesktopRails::Tooling::Smoke.root_request_completion(log)
   end
 
   def test_no_request_for_root_yet_is_nil_even_with_other_requests_logged
-    assert_nil AppCheck.window_root_request(%(Started GET "/up" for 127.0.0.1\nCompleted 200 OK\n))
-    assert_nil AppCheck.window_root_request(%(Started GET "/" for 127.0.0.1\nProcessing by X\n))
+    assert_nil DesktopRails::Tooling::Smoke.root_request_completion(%(Started GET "/up" for 127.0.0.1\nCompleted 200 OK\n))
+    assert_nil DesktopRails::Tooling::Smoke.root_request_completion(%(Started GET "/" for 127.0.0.1\nProcessing by X\n))
   end
 
   # Ruby writes its logs in text mode on Windows, so every line ends in CRLF.
   def test_a_log_written_on_windows_reads_the_same
     log = %(Started GET "/" for 127.0.0.1\r\nCompleted 200 OK in 5ms\r\n)
-    assert_equal "Completed 200 OK in 5ms", AppCheck.window_root_request(log)
+    assert_equal "Completed 200 OK in 5ms", DesktopRails::Tooling::Smoke.root_request_completion(log)
   end
 
   def test_the_server_tree_is_followed_through_the_launcher
@@ -120,10 +116,21 @@ class AppCheckTest < Minitest::Test
   end
 
   def test_a_report_is_ok_only_when_it_says_so
-    assert AppCheck.report_ok?(%({"kind": "ruby", "ok": true}))
-    refute AppCheck.report_ok?(%({"kind": "ruby", "ok": false}))
-    refute AppCheck.report_ok?(%({"kind": "ruby", "ok": "true"}))
-    refute AppCheck.report_ok?("not json")
+    assert DesktopRails::Tooling::Smoke.report_ok?(%({"kind": "ruby", "ok": true}))
+    refute DesktopRails::Tooling::Smoke.report_ok?(%({"kind": "ruby", "ok": false}))
+    refute DesktopRails::Tooling::Smoke.report_ok?(%({"kind": "ruby", "ok": "true"}))
+    refute DesktopRails::Tooling::Smoke.report_ok?("not json")
+  end
+
+  # The one thing the harness decides before it starts anything, and the check
+  # every CI step depends on being made: without a data directory there is
+  # nothing to read the app's own reports from.
+  def test_without_a_data_directory_it_fails_before_launching_anything
+    out = StringIO.new
+    status = AppCheck::Check.new("C:/nope/app.exe", [], data_dir: nil, out: out).run
+
+    assert_equal 1, status
+    assert_includes out.string, "DESKTOP_DATA_DIR"
   end
 
   private

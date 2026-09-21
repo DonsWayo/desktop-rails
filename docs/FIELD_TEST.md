@@ -245,7 +245,7 @@ was found here too, but was fixed on the prebuilt-downloads branch first.
   `ruby.json`, written by `GET /native/window`, which calls
   `DesktopRails::Native.call("window", "state")` over the control channel; then
   the update launch above.
-- Windows asserts the same, from `packaging/smoke/app_check.rb`: see below.
+- Windows asserts the same, from `smoke app`'s Windows harness: see below.
 
 ## Windows, with a window
 
@@ -270,12 +270,12 @@ nothing Windows-specific. What it found:
    and a file watcher named it: `writable_p`, created and deleted. RubyInstaller's
    `rubygems/defaults/operating_system.rb` does that whenever RubyGems loads, to
    choose where `gem install` puts gems. A packaged app never installs a gem,
-   and one under `C:\Program Files` cannot write there, so `pack-windows.ps1`
-   now runs `packaging/windows-runtime-readonly.rb` over the interpreter it
-   ships, replacing the probe with the `EACCES` a read-only install gets. The
-   first version of the fix found nothing, because the packer's backslashed
-   path was used as a glob pattern; that is fixed and tested too.
-   *`test/windows_runtime_readonly_test.rb`.*
+   and one under `C:\Program Files` cannot write there, so packaging now
+   rewrites the probe in the interpreter it ships
+   (`DesktopRails::Packager::WindowsGemProbe`), replacing it with the `EACCES`
+   a read-only install gets. The first version of the fix found nothing,
+   because the packer's backslashed path was used as a glob pattern; that is
+   fixed and tested too. *`test/packager_windows_gem_probe_test.rb`.*
 
 2. **The window waited for a probe when its server was quicker than WebView2.**
    The server is started before the window is built, and on the runner the
@@ -324,11 +324,11 @@ shell's end of the stdin pipe closes with its process, `ruby.exe` reads EOF in
 watch stdin — a hosted-mode `bin/rails server` through `cmd` — but no bundled
 app needs it, and nothing here proves it is needed, so it was not added.
 
-The harness is Ruby rather than `app_check.sh` under Git Bash for that kill:
-`kill -9` there acts on the MSYS process that started the exe. It runs the
-same checks in the same order, runs the kill even after a check failed (a
-Windows round takes half an hour), and reports each change inside the tree
-with the watcher's record of it.
+`smoke app` runs a Windows harness of its own for that kill: `kill -9` under
+Git Bash acts on the MSYS process that started the exe. It runs the same checks
+in the same order, runs the kill even after a check failed (a Windows round
+takes half an hour), and reports each change inside the tree with a file
+watcher's record of it.
 
 Recorded, not fixed here:
 

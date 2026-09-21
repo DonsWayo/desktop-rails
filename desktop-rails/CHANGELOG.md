@@ -227,7 +227,8 @@ later; the prebuilt shells of pre1 and pre2 still have the old defaults.
   app and for `examples/notes`, and assert what macOS and Linux do: the
   window's own request for `/`, the JavaScript, stream and Ruby bridge reports,
   nothing written inside the tree, and no server left after `Stop-Process
-  -Force` on the shell. `packaging/smoke/app_check.rb` is their harness.
+  -Force` on the shell. `desktop-rails-tool smoke app` runs them there too,
+  through `DesktopRails::Tooling::Smoke::WindowsAppCheck`.
 
 ### Fixed
 

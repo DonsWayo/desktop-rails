@@ -249,8 +249,16 @@ module DesktopRails
           return usage_error("usage: DESKTOP_DATA_DIR=DIR desktop-rails-tool smoke app SHELL [CHECKS...]") if argv.empty?
 
           binary, *checks = argv
-          Smoke::AppCheck.new(binary, checks, data_dir: @env["DESKTOP_DATA_DIR"],
-                                              deadline: integer(@env["APP_CHECK_TIMEOUT"], 240), out: @out).run
+          # Windows has its own harness for the same checks: the kill that ends
+          # the run has to reach a process tree, not a child. See
+          # Smoke::WindowsAppCheck.
+          arguments = { data_dir: @env["DESKTOP_DATA_DIR"], deadline: integer(@env["APP_CHECK_TIMEOUT"], 240), out: @out }
+          if Tooling.windows?
+            require "desktop_rails/tooling/smoke/windows_app_check"
+            Smoke::WindowsAppCheck::Check.new(binary, checks, env: @env, **arguments).run
+          else
+            Smoke::AppCheck.new(binary, checks, **arguments).run
+          end
         else
           usage_error("unknown smoke command: #{sub.inspect}")
         end
