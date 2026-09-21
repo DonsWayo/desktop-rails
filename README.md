@@ -99,10 +99,16 @@ RubyGems until it has been proven with more apps than its own examples.
 |---|---|---|---|
 | macOS (Apple Silicon, Intel) | `.app` | yes | JavaScript and Ruby |
 | Linux x86_64 (glibc) | directory tree | yes | JavaScript and Ruby |
-| Windows x64 | directory and zip | no | no |
+| Windows x64 | directory and zip | yes | JavaScript and Ruby |
 
 Known limits:
 
+- **Native features.** Notifications, the badge, global shortcuts and menu
+  items are exercised in CI on Linux and macOS
+  ([native-features.yml](.github/workflows/native-features.yml)); on Windows
+  they compile and are unit-tested but nothing drives them at runtime. The
+  badge has no Windows equivalent and says so. Shipping shells carry them
+  from 0.3.0.pre4 on.
 - **macOS signing.** Bundles are signed ad hoc. Gatekeeper blocks them on other
   people's Macs until they are signed with a Developer ID and notarized; see
   [packaging/DISTRIBUTION.md](packaging/DISTRIBUTION.md).
