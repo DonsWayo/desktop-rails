@@ -11,7 +11,7 @@
 #
 # The app is launched by the workflow rather than from here. A GUI process
 # started from a scripting language's subprocess API has aborted in tao before
-# (see packaging/smoke/shell_check.sh), and a shell's background job is the way
+# (see DesktopRails::Tooling::Smoke), and a shell's background job is the way
 # known to work.
 
 require "json"

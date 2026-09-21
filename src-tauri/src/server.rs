@@ -594,8 +594,8 @@ mod tests {
     }
 
     /// A stand-in for the bundled server: it exits when stdin reaches EOF, the
-    /// way `packaging/templates/boot.rb` does, and leaves a file behind when it
-    /// goes so the test can tell without racing on a pid.
+    /// way the packaged boot.rb does (the gem's packager/templates/boot.rb), and
+    /// leaves a file behind when it goes so the test can tell without racing on a pid.
     #[cfg(unix)]
     fn a_server_that_exits_on_eof(
         marker: &Path,
