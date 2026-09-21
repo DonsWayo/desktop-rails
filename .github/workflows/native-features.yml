@@ -14,8 +14,9 @@ name: Native features, end to end
 #       (a stand-in service that logs every Notify call as it crossed the bus),
 #     * the badge went out as the Unity LauncherEntry signal docks read,
 #     * a combination another X client holds (xbindkeys) is refused,
-#     * xdotool pressing the config's summon shortcut brings the window in front
-#       of another application's, and the page hears it,
+#     * xdotool pressing the config's summon shortcut brings the window forward
+#       from behind another application's window (or, where a bare X session
+#       will not move focus, from being minimized), and the page hears it,
 #     * pressing a shortcut the page registered reaches the page once, and once
 #       unregistered, nothing,
 #     * a menu item's accelerator reaches the page,
@@ -92,12 +93,13 @@ jobs:
           echo "DISPLAY=:99" >> "$GITHUB_ENV"
           echo "DBUS_SESSION_BUS_ADDRESS=unix:path=$RUNNER_TEMP/session-bus" >> "$GITHUB_ENV"
 
+      # check.rb starts xbindkeys itself and waits until its grab actually
+      # fires, so the app cannot register the combination first.
       - name: A window manager, a notification service, and a shortcut someone else holds
         if: runner.os == 'Linux'
         run: |
           openbox > "$LOGS/openbox.log" 2>&1 &
           (cd e2e/native && bundle exec ruby notification_service.rb --log "$LOGS/notifications.jsonl" > "$LOGS/notification-service.out" 2>&1 &)
-          xbindkeys -n -f e2e/native/xbindkeysrc > "$LOGS/xbindkeys.log" 2>&1 &
           ruby e2e/native/check.rb session --logs "$LOGS"
 
       # macOS notifies on behalf of an app bundle, so the shell runs from one.

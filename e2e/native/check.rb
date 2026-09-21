@@ -252,36 +252,83 @@ module NativeCheck
 
     # Give focus to another application's window, so bringing the app forward
     # is something that has to happen rather than something already true.
-    def focus_someone_else
+    def app_window
+      NativeCheck.eventually(15) do
+        output, success = xdotool("search", "--name", "^#{APP_TITLE}$")
+        success && output.lines.first&.strip
+      end
+    end
+
+    # Summoning only means something when the app is not already in front, so
+    # the app is pushed to the back first. Two ways, because a bare X session
+    # is not a desktop: another application's window taking focus, and, when
+    # that does not settle, iconifying the app's own window — which is the
+    # state a summon shortcut exists for anyway.
+    #
+    # Returns what was done, or nil when neither worked, in which case the
+    # caller still checks that the event reached the page and says that
+    # bringing the window forward was not observed.
+    def move_focus_away
+      if (window = other_application_window) && activate(window) { active_window_name != APP_TITLE }
+        note("another application's window has focus: #{active_window_name.inspect}")
+        return "another application had focus"
+      end
+
+      window = app_window
+      return nil unless window
+
+      xdotool("windowminimize", "--sync", window)
+      minimized = NativeCheck.eventually(10) do
+        output, success = xdotool("search", "--onlyvisible", "--name", "^#{APP_TITLE}$")
+        !success || output.strip.empty?
+      end
+      return nil unless minimized
+
+      note("the app's window is minimized")
+      "the window was minimized"
+    end
+
+    def other_application_window
       @other ||= Process.spawn("xmessage", "-name", "someone-else", "Someone else's window",
                                out: File.join(@logs, "xmessage.log"), err: [ :child, :out ])
-      window = NativeCheck.eventually(15) do
+      NativeCheck.eventually(15) do
         output, success = xdotool("search", "--classname", "someone-else")
         success && output.lines.last&.strip
       end
-      return problem("the other application's window never appeared") unless window
-
-      xdotool("windowactivate", "--sync", window)
-      name = NativeCheck.eventually(10) { (n = active_window_name) && n != APP_TITLE && n }
-      name ? note("another window has focus: #{name.inspect}") : problem("could not move focus away from the app")
-      name
     end
 
-    def app_became_active(what)
-      active = NativeCheck.eventually(15) { active_window_name == APP_TITLE }
-      check(active, "#{what} brought #{APP_TITLE.inspect} to the front",
+    # Ask for the window repeatedly: a window manager may refuse the first
+    # request while it is still mapping windows.
+    def activate(window)
+      NativeCheck.eventually(10, interval: 1) do
+        xdotool("windowactivate", "--sync", window)
+        yield
+      end
+    end
+
+    def app_became_active(what, moved)
+      unless moved
+        return note("not observed: focus could not be taken away from the app first, so " \
+                    "#{what} bringing the window forward was not checked")
+      end
+
+      active = NativeCheck.eventually(15) do
+        visible, = xdotool("search", "--onlyvisible", "--name", "^#{APP_TITLE}$")
+        active_window_name == APP_TITLE && !visible.strip.empty?
+      end
+      check(active, "#{what} brought #{APP_TITLE.inspect} to the front (from #{moved})",
             "#{what} left #{active_window_name.inspect} active, not #{APP_TITLE.inspect}")
     end
 
     def check_summon
-      return unless focus_someone_else
+      moved = move_focus_away
 
       xdotool("key", "--clearmodifiers", "ctrl+alt+s")
       summoned = NativeCheck.eventually(15) { reports("summon").first }
       check(summoned && summoned["accelerator"] == "Ctrl+Alt+S",
             "the config's summon shortcut fired with no page code registering it (desktop-rails:summon reached the page)",
             "pressing Ctrl+Alt+S never reached the page as desktop-rails:summon")
-      app_became_active("Ctrl+Alt+S")
+      app_became_active("Ctrl+Alt+S", moved)
     end
 
     def check_global_shortcut
@@ -304,13 +351,10 @@ module NativeCheck
     end
 
     def check_menu_item
-      window = NativeCheck.eventually(10) do
-        output, success = xdotool("search", "--name", "^#{APP_TITLE}$")
-        success && output.lines.first&.strip
-      end
+      window = app_window
       return problem("could not find the app's window to press the menu accelerator in") unless window
 
-      xdotool("windowactivate", "--sync", window)
+      activate(window) { active_window_name == APP_TITLE }
       xdotool("key", "--clearmodifiers", "ctrl+shift+e")
       clicked = NativeCheck.eventually(15) { reports("menu-item").first }
       check(clicked && clicked["id"] == "export",
@@ -321,8 +365,8 @@ module NativeCheck
     def check_notification_click(ready)
       clickable = ready["clickable"]
       return problem("the clickable notification was not shown: #{clickable.inspect}") unless clickable && clickable["ok"]
-      return unless focus_someone_else
 
+      moved = move_focus_away
       output, success = NativeCheck.command(
         "dbus-send", "--session", "--print-reply", "--dest=org.freedesktop.Notifications",
         "/org/freedesktop/Notifications", "org.desktop_rails.NotificationStub.Click", "string:Click me"
@@ -333,7 +377,7 @@ module NativeCheck
       check(clicked && clicked["id"] == "click-me",
             "clicking the notification (ActionInvoked \"default\") reached the page as desktop-rails:notification-click",
             "the notification click never reached the page")
-      app_became_active("Clicking the notification")
+      app_became_active("Clicking the notification", moved)
     end
 
     # ─── macOS: what can honestly be observed ────────────────────────────
@@ -424,6 +468,38 @@ module NativeCheck
                       "org.freedesktop.DBus.NameHasOwner", "string:org.freedesktop.Notifications")
     abort "FAIL  org.freedesktop.Notifications has no owner: #{output}" unless output.include?("boolean true")
     puts "OK    org.freedesktop.Notifications is owned on #{ENV["DBUS_SESSION_BUS_ADDRESS"]}"
+
+    hold_a_shortcut(logs: logs, timeout: timeout)
+  end
+
+  # Another X client holding Ctrl+Alt+K, so the app's attempt to register it is
+  # refused by the X server the way it would be if the person's window manager
+  # or another application had that combination.
+  #
+  # Started here rather than by the workflow, and only reported as up once the
+  # grab has actually fired: xbindkeys takes a moment to grab, and an app that
+  # registers in that moment gets the combination, which used to make this
+  # check fail for a reason that had nothing to do with the shell.
+  def hold_a_shortcut(logs:, timeout: 60)
+    fired = File.join(logs, "xbindkeys-fired")
+    File.delete(fired) if File.exist?(fired)
+    config = File.join(logs, "xbindkeysrc")
+    File.write(config, <<~CONFIG)
+      # Touch a file, so the grab can be seen from outside before the app starts.
+      "touch #{fired}"
+          control+alt + k
+    CONFIG
+
+    Process.spawn("xbindkeys", "-n", "-f", config,
+                  out: File.join(logs, "xbindkeys.log"), err: [ :child, :out ], pgroup: true)
+
+    grabbed = eventually(timeout) do
+      command("xdotool", "key", "--clearmodifiers", "ctrl+alt+k")
+      sleep 1
+      File.exist?(fired)
+    end
+    abort "FAIL  xbindkeys never took Ctrl+Alt+K: #{File.read(File.join(logs, "xbindkeys.log")) rescue ""}" unless grabbed
+    puts "OK    another X client (xbindkeys) holds Ctrl+Alt+K"
   end
 end
 
