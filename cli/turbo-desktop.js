@@ -107,7 +107,7 @@ function cmdNew(args) {
     // Constrained on purpose. Unpinned, Bundler quietly resolves back to an
     // ancient version when the current one does not support the running Ruby,
     // and the failure only shows up later as a missing generator.
-    appendFileSync(gemfilePath, '\ngem "turbo_desktop-rails", "~> 0.1"\n');
+    appendFileSync(gemfilePath, `\ngem "turbo_desktop-rails", "${gemConstraint()}"\n`);
   }
 
   // Steps 3 and 4 run other people's tools against a Rails app that already
@@ -296,43 +296,9 @@ function cmdInit(args) {
     JSON.stringify(desktopPackage(appName), null, 2) + "\n"
   );
 
-  // Create the app config file. The filesystem and sudo bridges start closed —
-  // an app widens them by naming the roots and commands it actually needs.
-  const config = {
-    server_url: "http://localhost:3000",
-    app_name: guessAppName(projectDir),
-    user_agent: defaultUserAgent(),
-    window: {
-      width: 1200,
-      height: 800,
-      min_width: 800,
-      min_height: 600,
-      resizable: true,
-    },
-    filesystem: {
-      allowed_roots: [],
-    },
-    sudo: {
-      enabled: false,
-      allowed_commands: [],
-      confirm: true,
-    },
-    // Off-origin links open in the system browser. List a host here to keep it
-    // in the app window instead — an identity provider, say.
-    navigation: {
-      internal_hosts: [],
-    },
-    // Opening the app starts the Rails server too, from the project root one
-    // level above this config. Remove `command` to manage the server yourself.
-    server: {
-      command: "bin/rails server",
-      directory: "..",
-    },
-  };
-
   writeFileSync(
     join(desktopDir, "turbo-desktop.config.json"),
-    JSON.stringify(config, null, 2)
+    JSON.stringify(appConfig(guessAppName(projectDir)), null, 2)
   );
 
   console.log(`
@@ -340,7 +306,7 @@ Turbo Desktop initialized successfully!
 
 Next steps:
   1. Add the gem to your Gemfile:
-     gem 'turbo_desktop-rails', path: '../turbo_desktop/turbo_desktop-rails'
+     gem "turbo_desktop-rails", "${gemConstraint()}"
 
   2. Mount the engine in config/routes.rb:
      mount TurboDesktop::Engine => "/turbo-desktop"
@@ -453,7 +419,7 @@ Commands:
   new <appname> [--icon <file>]   Create a new Rails app with Turbo Desktop
   init [path] [--icon <file>]     Add desktop support to an existing Rails app
   dev                             Start the desktop app in development mode
-  build [--target <arch>]         Build for distribution (default: aarch64-apple-darwin)
+  build [--target <arch>]         Build for distribution (default: this machine's target)
   help                            Show this help message
 
 Options:
@@ -465,7 +431,7 @@ Examples:
   turbo-desktop new myapp --icon ./logo.png    # ...with a custom icon
   turbo-desktop init .                         # Add desktop to existing Rails app
   turbo-desktop dev                            # Start dev mode
-  turbo-desktop build                          # Build for Apple Silicon
+  turbo-desktop build                          # Build for this machine
   turbo-desktop build --target universal-apple-darwin  # Universal binary
 `);
 }
@@ -510,14 +476,55 @@ export function packageVersion() {
   return pkg.version;
 }
 
-export function defaultUserAgent() {
-  const os =
-    { darwin: "macOS", win32: "Windows", linux: "Linux" }[process.platform] ||
-    process.platform;
-  const arch =
-    { arm64: "aarch64", x64: "x86_64" }[process.arch] || process.arch;
+/**
+ * The constraint a scaffolded app's Gemfile gets for turbo_desktop-rails.
+ *
+ * The gem is released in step with the shell, so it follows the shell's own
+ * minor version. Written out by hand it went stale: "~> 0.1" does not admit
+ * any 0.2.x gem.
+ */
+export function gemConstraint(version = packageVersion()) {
+  const [major, minor] = version.split(".");
+  return `~> ${major}.${minor}`;
+}
 
-  return `Turbo Desktop/${packageVersion()} (${os}; ${arch})`;
+/**
+ * The configuration a new app starts with. The filesystem and sudo bridges
+ * start closed: an app widens them by naming the roots and commands it needs.
+ */
+export function appConfig(appName) {
+  return {
+    server_url: "http://localhost:3000",
+    app_name: appName,
+    // No user_agent: the shell names the machine it runs on. Written here,
+    // it named the machine the app was scaffolded on, in every build.
+    window: {
+      width: 1200,
+      height: 800,
+      min_width: 800,
+      min_height: 600,
+      resizable: true,
+    },
+    filesystem: {
+      allowed_roots: [],
+    },
+    sudo: {
+      enabled: false,
+      allowed_commands: [],
+      confirm: true,
+    },
+    // Off-origin links open in the system browser. List a host here to keep it
+    // in the app window instead — an identity provider, say.
+    navigation: {
+      internal_hosts: [],
+    },
+    // Opening the app starts the Rails server too, from the project root one
+    // level above this config. Remove `command` to manage the server yourself.
+    server: {
+      command: "bin/rails server",
+      directory: "..",
+    },
+  };
 }
 
 // Pull an optional `--icon <file>` flag out of args. Returns the resolved

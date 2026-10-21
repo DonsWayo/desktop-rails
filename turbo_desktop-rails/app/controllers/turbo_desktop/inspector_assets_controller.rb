@@ -10,6 +10,12 @@ module TurboDesktop
   # path traversal). Enabled implicitly by mounting the engine; the meta-tag
   # helper points the shell at these URLs.
   class InspectorAssetsController < ActionController::Base
+    # These are public, static modules fetched by import(), which is a plain
+    # GET for JavaScript. Rails reads that as a cross-origin <script> embed and
+    # refuses it with a 422. Nothing here depends on the session or carries
+    # per-user data, so there is nothing for that check to protect.
+    skip_forgery_protection
+
     ASSET_ROOT = TurboDesktop::Engine.root.join("lib/turbo_desktop/inspector_assets").freeze
 
     # Relative paths (as requested by the browser) → allowed. Anything else 404s.
@@ -30,8 +36,14 @@ module TurboDesktop
       path = ASSET_ROOT.join(rel)
       return head(:not_found) unless File.file?(path)
 
-      response.set_header("Cache-Control", "public, max-age=3600")
-      render body: File.read(path), content_type: "text/javascript"
+      body = File.read(path)
+
+      # Kept, but asked about every time: these change when the gem does, and
+      # a copy trusted for an hour is the old inspector for an hour.
+      response.set_header("Cache-Control", "no-cache")
+      return unless stale?(etag: body, public: false, template: false)
+
+      render body: body, content_type: "text/javascript"
     end
 
     private

@@ -24,6 +24,8 @@ export interface WindowInfo {
   isMaximized: boolean;
   platform: string;
   arch: string;
+  /** True in a development build; false in an app built for release. */
+  development: boolean;
 }
 
 /** A bridge message passed between web and native. */
@@ -95,9 +97,9 @@ export declare class BridgeComponent {
   static component: string;
 
   /** The DOM element this component is attached to. */
-  element: HTMLElement;
+  element: Element;
 
-  constructor(element: HTMLElement);
+  constructor(element: Element);
 
   /** Called when the component connects. Sets up native event listeners. */
   connect(): void;
@@ -112,6 +114,34 @@ export declare class BridgeComponent {
   onReceive(message: BridgeResponse): void;
 }
 
+/** What a dialog says besides its message. */
+export interface DialogOptions {
+  title?: string;
+  /** The button that goes ahead. "OK" unless said. */
+  confirm?: string;
+  /** The button that does not. "Cancel" unless said. */
+  cancel?: string;
+}
+
+/** Why a visit failed, in Hotwire Native's vocabulary. */
+export type VisitFailure =
+  | "network_failure"
+  | "timeout_failure"
+  | "http_failure"
+  | "page_load_failure";
+
+/** What the screen underneath a modal does when the modal is dismissed. */
+export type DismissAction = "recede" | "refresh" | "resume" | "visit";
+
+/** What a drag or a drop carries. */
+export interface DragDropPayload {
+  /** Absolute paths of the files and folders being dragged. */
+  paths: string[];
+
+  /** Where in the window, in physical pixels. */
+  position?: { x: number; y: number };
+}
+
 /** The main Turbo Desktop API exposed on `window.TurboDesktop`. */
 export interface TurboDesktopAPI {
   /** The turbo-desktop.js version. */
@@ -122,6 +152,13 @@ export interface TurboDesktopAPI {
 
   /** Always `true` inside a Turbo Desktop shell. */
   readonly isNative: true;
+
+  /**
+   * True once the document has loaded. The API itself is there before the
+   * page's own scripts run; `turbo-desktop:ready` is dispatched on `document`
+   * when this becomes true.
+   */
+  readonly ready: boolean;
 
   /**
    * Send a visit proposal to the native shell.
@@ -157,15 +194,117 @@ export interface TurboDesktopAPI {
    */
   getWindowInfo(): Promise<WindowInfo | null>;
 
-  /**
-   * Close a modal window by its label.
-   */
-  closeModal(label: string): Promise<void>;
+  /** The label of the window this page is in, or null outside the shell. */
+  readonly windowLabel: string | null;
+
+  /** True when this page is in a modal window rather than the main one. */
+  readonly isModal: boolean;
 
   /**
-   * Toggle the developer tools / bridge inspector.
+   * Close a modal window. Defaults to the window this page is in, so a page
+   * can dismiss itself without being told which window it was opened in.
    */
-  toggleDevTools(): void;
+  closeModal(label?: string): Promise<void>;
+
+  /**
+   * Close this modal and go back on the screen underneath, as if it had never
+   * been opened. Named after Hotwire Native's dismissal semantics.
+   */
+  recede(): Promise<void>;
+
+  /**
+   * Close this modal and reload the screen underneath — what you usually want
+   * after a form submits. Goes through Turbo when it is present.
+   */
+  refresh(): Promise<void>;
+
+  /** Close this modal and leave the screen underneath as it was. */
+  resume(): Promise<void>;
+
+  /**
+   * Close a modal and say what the screen underneath should do. `recede()`,
+   * `refresh()` and `resume()` call this for the window the page is in.
+   */
+  dismiss(then?: DismissAction, label?: string, url?: string): Promise<void>;
+
+  /**
+   * Ask before going ahead, with a dialog of the system's own. The browser's
+   * `confirm()` is not shown by a webview in the shell, and answers no.
+   * Turbo's `data-turbo-confirm` uses this without being told to.
+   */
+  confirm(message: string, options?: DialogOptions): Promise<boolean>;
+
+  /** Say something, with a dialog of the system's own. */
+  alert(message: string, options?: Omit<DialogOptions, "cancel">): Promise<void>;
+
+  /**
+   * Open the webview's developer tools, or close them if they are open.
+   * Development builds only: resolves with `{ status: "unavailable" }` in an
+   * app built for release.
+   */
+  toggleDevTools(): Promise<unknown | null>;
+
+  /**
+   * Files dragged onto a window from the Finder or Explorer, with their real
+   * paths. A drop grants the dropped paths for reading, like a dialog pick.
+   * Also dispatched as DOM events: `turbo-desktop:drop`,
+   * `turbo-desktop:drag-enter` and `turbo-desktop:drag-leave`.
+   */
+  dragDrop: {
+    /** Files were dropped. Returns a function that stops listening. */
+    onDrop(callback: (drop: DragDropPayload) => void): () => boolean;
+
+    /** A drag entered the window. Returns a function that stops listening. */
+    onEnter(callback: (drop: DragDropPayload) => void): () => boolean;
+
+    /** A drag left the window without dropping. Returns a function that stops listening. */
+    onLeave(callback: (drop: DragDropPayload) => void): () => boolean;
+  };
+
+  /**
+   * The system clipboard, beyond what the webview can do itself: read what
+   * another application put there, write without a user gesture.
+   */
+  clipboard: {
+    /** The clipboard's text, or null when it holds none. */
+    readText(): Promise<string | null>;
+
+    /** Set the clipboard's text. */
+    writeText(text: string): Promise<unknown | null>;
+  };
+
+  /**
+   * Launch at login. Meant to be driven by a toggle in the app's own settings
+   * page rather than turned on silently.
+   */
+  autostart: {
+    enable(): Promise<unknown | null>;
+    disable(): Promise<unknown | null>;
+
+    /** The current state as the operating system has it. */
+    isEnabled(): Promise<boolean>;
+  };
+
+  /**
+   * Report a failed visit the way the shell does: dispatches
+   * `turbo-desktop:visit-error`, and shows the shell's banner unless a
+   * listener cancels it. For an app that detects a failure of its own.
+   */
+  reportVisitError(
+    error: VisitFailure,
+    options?: { status?: number | null; retry?: (() => void) | null }
+  ): void;
+
+  /**
+   * Why a visit failed, in Hotwire Native's vocabulary. Compare against
+   * `event.detail.error` from `turbo-desktop:visit-error`.
+   */
+  errors: {
+    readonly NETWORK_FAILURE: "network_failure";
+    readonly TIMEOUT_FAILURE: "timeout_failure";
+    readonly HTTP_FAILURE: "http_failure";
+    readonly PAGE_LOAD_FAILURE: "page_load_failure";
+  };
 
   /** Shell execution API for spawning and managing child processes. */
   shell: {
@@ -228,11 +367,19 @@ export interface TurboDesktopAPI {
 
   /** File system API for reading and writing files. Supports ~/ expansion. */
   fs: {
-    /** Read a file's contents as a string. */
+    /**
+     * Read a file: its text, or with `"base64"` its bytes, which is how to
+     * read a file that is not text.
+     */
     read(
       path: string,
       encoding?: "utf8" | "base64"
-    ): Promise<{ status: string; content?: string; error?: string } | null>;
+    ): Promise<{
+      status: string;
+      content?: string;
+      encoding?: "utf8" | "base64";
+      error?: string;
+    } | null>;
 
     /** Write content to a file. Use `append: true` to append instead of overwrite. */
     write(

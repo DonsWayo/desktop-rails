@@ -11,8 +11,9 @@ import {
   desktopPackage,
   urlScheme,
   defaultBuildTarget,
-  defaultUserAgent,
+  appConfig,
   extractIconFlag,
+  gemConstraint,
   guessAppName,
   packageVersion,
   run,
@@ -55,17 +56,16 @@ test("defaultBuildTarget matches the host platform", () => {
   if (process.platform === "win32") assert.ok(target.endsWith("-pc-windows-msvc"));
 });
 
-test("defaultUserAgent reports the running version and platform", () => {
-  const ua = defaultUserAgent();
+test("a scaffolded app leaves the user agent to the shell", () => {
+  // The shell names the machine it is running on. A user agent written at
+  // scaffold time named the machine the scaffold ran on, in every build: an
+  // app made on a Mac told Rails it was on macOS when it ran on Windows.
+  const config = appConfig("Task Manager");
 
-  assert.ok(
-    ua.startsWith(`Turbo Desktop/${packageVersion()}`),
-    `user agent should carry the package version, got: ${ua}`
-  );
-  assert.doesNotMatch(ua, /undefined/);
-
-  if (process.platform === "darwin") assert.match(ua, /\(macOS; /);
-  if (process.platform === "linux") assert.match(ua, /\(Linux; /);
+  assert.equal(config.app_name, "Task Manager");
+  assert.ok(!("user_agent" in config), "the scaffold should not fix the user agent");
+  assert.equal(config.server.command, "bin/rails server");
+  assert.equal(config.sudo.enabled, false);
 });
 
 test("run passes arguments through without a shell", () => {
@@ -213,3 +213,219 @@ test("missing prerequisites stop before anything is created", () => {
     "a stack trace buries the thing the reader needs to see"
   );
 });
+
+test("a scaffolded app pins the gem to the shell's minor version", () => {
+  assert.equal(gemConstraint("0.2.2"), "~> 0.2");
+  assert.equal(gemConstraint("1.4.0"), "~> 1.4");
+});
+
+test("the gem constraint follows package.json by default", () => {
+  const [major, minor] = packageVersion().split(".");
+
+  assert.equal(gemConstraint(), `~> ${major}.${minor}`);
+});
+
+test("the CLI carries no hard-coded gem constraint", () => {
+  const source = read("cli", "turbo-desktop.js");
+
+  assert.doesNotMatch(
+    source,
+    /turbo_desktop-rails["'],\s*["']~>\s*\d/,
+    "a literal constraint goes stale at the next minor release; use gemConstraint()"
+  );
+  assert.doesNotMatch(
+    source,
+    /turbo_desktop-rails['"],\s*path:/,
+    "the next-steps text should point at the published gem, not a local path"
+  );
+});
+
+test("tauri.conf.json reports the same version as package.json", () => {
+  const conf = JSON.parse(read("src-tauri", "tauri.conf.json"));
+
+  assert.equal(conf.version, packageVersion(), "tauri.conf.json version drifted from package.json");
+});
+
+test("the documentation pages quote the current version", () => {
+  for (const page of [["docs", "index.html"], ["site", "index.html"]]) {
+    const quoted = [...read(...page).matchAll(/(?:Turbo Desktop\/|\bv)(\d+\.\d+\.\d+)/g)].map(
+      (match) => match[1]
+    );
+
+    assert.ok(quoted.length > 0, `${page.join("/")} should quote a version`);
+    for (const version of quoted) {
+      assert.equal(version, packageVersion(), `${page.join("/")} quotes ${version}`);
+    }
+  }
+});
+
+const READMES = [["README.md"], ["turbo_desktop-rails", "README.md"]];
+const GUIDES = [...READMES, ["docs", "DISTRIBUTION.md"], ["docs", "RELEASING.md"]];
+
+test("the READMEs tell readers to pin the gem the way the CLI does", () => {
+  for (const readme of READMES) {
+    const lines = read(...readme)
+      .split("\n")
+      .filter((line) => /^\s*gem ["']turbo_desktop-rails["']/.test(line));
+
+    assert.ok(lines.length > 0, `${readme.join("/")} should show the Gemfile line`);
+    for (const line of lines) {
+      assert.ok(
+        line.includes(`"${gemConstraint()}"`),
+        `${readme.join("/")} shows \`${line.trim()}\`; unpinned, Bundler can resolve to an ancient version`
+      );
+    }
+  }
+});
+
+test("the READMEs and guides quote the current version", () => {
+  for (const readme of GUIDES) {
+    const quoted = [...read(...readme).matchAll(/(?:Turbo Desktop\/|\bv)(\d+\.\d+\.\d+)/g)].map(
+      (match) => match[1]
+    );
+
+    for (const version of quoted) {
+      assert.equal(version, packageVersion(), `${readme.join("/")} quotes ${version}`);
+    }
+  }
+});
+
+test("the gem's README states the Ruby version the gemspec requires", () => {
+  const gemspec = read("turbo_desktop-rails", "turbo_desktop-rails.gemspec");
+  const required = gemspec.match(/required_ruby_version\s*=\s*">=\s*(\d+\.\d+)/);
+  const stated = read("turbo_desktop-rails", "README.md").match(/Ruby >= (\d+\.\d+)/);
+
+  assert.ok(required, "the gemspec should declare required_ruby_version");
+  assert.ok(stated, "the gem's README should state a Ruby version");
+  assert.equal(stated[1], required[1], "the README and the gemspec disagree about the Ruby floor");
+});
+
+test("the README's Docs link opens the documentation, not the README again", () => {
+  const link = read("README.md").match(/<a href="([^"]+)">Docs<\/a>/);
+
+  assert.ok(link, "README.md should link to the docs");
+  assert.equal(link[1], "https://aguspe.github.io/turbo_desktop/docs/");
+});
+
+test("the release guide covers every place a release has to reach", () => {
+  const guide = read("docs", "RELEASING.md");
+
+  // 0.2.1 was tagged and announced but never reached either registry, because
+  // nothing written down said that a tag alone publishes neither.
+  for (const step of ["gem push", "npm publish", "git tag", "turbo_desktop_site"]) {
+    assert.ok(guide.includes(step), `docs/RELEASING.md should cover \`${step}\``);
+  }
+});
+
+// ─── What the documentation and the types promise ────────────────────────────
+
+test("the README mounts the engine rather than routing to a controller that does not exist", () => {
+  const readme = read("README.md");
+
+  assert.doesNotMatch(readme, /to:\s*"turbo_desktop#path_configuration"/);
+  assert.match(readme, /mount TurboDesktop::Engine => "\/turbo-desktop"/);
+});
+
+test("the README lists every bridge component the shell dispatches", () => {
+  const dispatch = read("src-tauri", "src", "bridge.rs").match(
+    /match message\.component\.as_str\(\) \{([\s\S]*?)\n {8}_ =>/
+  );
+  assert.ok(dispatch, "bridge.rs should dispatch on the component name");
+
+  const components = [...dispatch[1].matchAll(/^ {8}"([a-z-]+)" =>/gm)].map((match) => match[1]);
+  assert.ok(components.length >= 10, `expected the full dispatch table, found ${components}`);
+
+  const table = read("README.md").match(/### Built-in Components([\s\S]*?)\n### /)[1];
+  for (const component of components) {
+    assert.ok(table.includes(`\`${component}\``), `README.md does not list \`${component}\``);
+  }
+});
+
+// The public members of the object the shell injects, and of each namespace on
+// it. Members starting with an underscore are internal.
+function runtimeApi() {
+  const source = read("src", "turbo-desktop.js");
+  const body = source.slice(
+    source.indexOf("const TurboDesktop = {"),
+    source.indexOf("\n  };", source.indexOf("const TurboDesktop = {"))
+  );
+  const keywords = new Set(["if", "for", "while", "switch", "return", "catch"]);
+  const members = (indent) =>
+    [...body.matchAll(new RegExp(`^ {${indent}}(?:async |get )?([a-zA-Z]\\w*)\\s*[(:]`, "gm"))]
+      .map((match) => match[1])
+      .filter((name) => !keywords.has(name));
+
+  return { body, topLevel: members(4), nested: members(6) };
+}
+
+test("the type definitions declare every member of the runtime API", () => {
+  const types = read("src", "turbo-desktop.d.ts");
+  const api = types.slice(types.indexOf("export interface TurboDesktopAPI"));
+  const { topLevel, nested } = runtimeApi();
+
+  assert.ok(topLevel.includes("proposeVisit"), "the runtime API was not found in turbo-desktop.js");
+
+  const missing = [...new Set([...topLevel, ...nested])].filter(
+    (name) => !new RegExp(`\\b${name}\\??\\s*[(:<]`).test(api)
+  );
+  assert.deepEqual(missing, [], "turbo-desktop.d.ts is missing members the runtime has");
+});
+
+test("the bridge package carries the same version as the shell", () => {
+  const bridge = JSON.parse(read("packages", "bridge", "package.json"));
+
+  assert.equal(bridge.version, packageVersion(), "packages/bridge drifted from package.json");
+});
+
+test("the bridge package ships every file its types import", () => {
+  const bridge = JSON.parse(read("packages", "bridge", "package.json"));
+  const imports = [...read("packages", "bridge", "index.d.ts").matchAll(/from "(\.[^"]+)"/g)].map(
+    (match) => match[1]
+  );
+
+  assert.ok(imports.length > 0, "index.d.ts should import the shared types");
+  for (const path of imports) {
+    assert.ok(!path.startsWith(".."), `index.d.ts imports ${path}, which is outside the package`);
+    assert.match(path, /\.js$/, `index.d.ts imports ${path} without an extension, which node16 refuses`);
+
+    const declarations = path.replace(/^\.\//, "").replace(/\.js$/, ".d.ts");
+    assert.ok(
+      bridge.files.includes(declarations),
+      `${declarations} is imported but not listed in "files", so it is not published`
+    );
+  }
+});
+
+test("the bridge package's copy of the types matches the shell's", () => {
+  assert.equal(
+    read("packages", "bridge", "turbo-desktop.d.ts"),
+    read("src", "turbo-desktop.d.ts"),
+    "packages/bridge/turbo-desktop.d.ts drifted; copy src/turbo-desktop.d.ts over it"
+  );
+});
+
+// Most apps resolve modules one of these two ways. Under node16 and nodenext a
+// relative import has to name its extension, which the types once did not.
+for (const [module, resolution] of [
+  ["esnext", "bundler"],
+  ["nodenext", "nodenext"],
+]) {
+  test(`the published types compile against the documented usage (${resolution})`, () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        join(PACKAGE_ROOT, "node_modules", "typescript", "bin", "tsc"),
+        "--noEmit",
+        "--strict",
+        "--target", "es2022",
+        "--lib", "es2022,dom",
+        "--module", module,
+        "--moduleResolution", resolution,
+        join(PACKAGE_ROOT, "fixtures", "types", "usage.mts"),
+      ],
+      { encoding: "utf-8" }
+    );
+
+    assert.equal(result.status, 0, `the types do not compile:\n${result.stdout}${result.stderr}`);
+  });
+}
