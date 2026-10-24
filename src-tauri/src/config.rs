@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::RwLock;
+use std::time::Duration;
 
 /// Path Configuration — the core routing mechanism.
 ///
@@ -173,7 +174,8 @@ pub fn load_from_file(path: &Path) -> Result<PathConfiguration, String> {
     let contents = std::fs::read_to_string(path)
         .map_err(|e| format!("Could not read {}: {}", path.display(), e))?;
 
-    serde_json::from_str(&contents).map_err(|e| format!("{} is not valid: {}", path.display(), e))
+    serde_json::from_str(crate::window::without_byte_order_mark(&contents))
+        .map_err(|e| format!("{} is not valid: {}", path.display(), e))
 }
 
 /// Rules to start with, before the server has been asked.
@@ -222,6 +224,14 @@ pub fn save_cache(dir: &Path, config: &PathConfiguration) -> Result<(), String> 
         .map_err(|e| format!("Could not cache path configuration: {}", e))
 }
 
+/// How long a path-configuration fetch may take, connect to parsed body.
+///
+/// Startup blocks on this fetch to tell the app's own server from a stranger
+/// on the port, before any window exists. A listener that accepts and then
+/// says nothing — a stuck process, a half-open socket — must not hold the
+/// launch open. The server is local, so this is generous.
+pub const PATH_CONFIGURATION_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// Load path configuration from a remote URL (your Rails server).
 ///
 /// Sends the app's user agent so this request is recognisable to the server as
@@ -230,8 +240,18 @@ pub async fn fetch_path_configuration(
     url: &str,
     user_agent: &str,
 ) -> Result<PathConfiguration, String> {
+    fetch_path_configuration_within(url, user_agent, PATH_CONFIGURATION_TIMEOUT).await
+}
+
+/// [`fetch_path_configuration`] with an explicit deadline for the whole request.
+pub async fn fetch_path_configuration_within(
+    url: &str,
+    user_agent: &str,
+    timeout: Duration,
+) -> Result<PathConfiguration, String> {
     let client = reqwest::Client::builder()
         .user_agent(user_agent)
+        .timeout(timeout)
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
 
@@ -249,6 +269,30 @@ pub async fn fetch_path_configuration(
     Ok(config)
 }
 
+/// Ask the server for its rules, put them in force, and keep them for the
+/// next launch. Returns how many rules arrived.
+///
+/// On failure the rules already in force are left alone.
+pub async fn refresh_from_server(
+    url: &str,
+    user_agent: &str,
+    store: &PathConfigurationStore,
+    cache_dir: Option<&Path>,
+) -> Result<usize, String> {
+    let config = fetch_path_configuration(url, user_agent).await?;
+    let rules = config.rules.len();
+
+    // Keep it for the next launch before handing it over.
+    if let Some(dir) = cache_dir {
+        if let Err(e) = save_cache(dir, &config) {
+            log::warn!("{}", e);
+        }
+    }
+
+    store.set(config);
+    Ok(rules)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,7 +306,7 @@ mod tests {
     }
 
     fn scratch(name: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("turbo-desktop-pathconfig-{name}"));
+        let dir = crate::test_temp_dir().join(format!("turbo-desktop-pathconfig-{name}"));
         std::fs::remove_dir_all(&dir).ok();
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -291,6 +335,88 @@ mod tests {
         .expect("settings the desktop shell ignores must not break parsing");
 
         assert_eq!(config.rules.len(), 1);
+    }
+
+    /// A server that answers one request with the given rules, then goes away.
+    fn serve_once(body: &'static str) -> String {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut request = [0u8; 2048];
+                let _ = stream.read(&mut request);
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+            }
+        });
+
+        format!("http://{address}/turbo-desktop/path-configuration.json")
+    }
+
+    // An app that starts its own server always finds it down at launch. The
+    // rules were asked for once, then, and never again: modals did not work
+    // until the app had been quit and opened a second time.
+    #[tokio::test]
+    async fn the_servers_rules_come_into_force_when_it_answers() {
+        let dir = scratch("refresh");
+        let store = PathConfigurationStore::new();
+        let url = serve_once(
+            r#"{"rules":[{"patterns":["/new$"],"properties":{"presentation":"modal"}}]}"#,
+        );
+
+        let rules = refresh_from_server(&url, "Turbo Desktop/test", &store, Some(&dir)).await;
+
+        assert_eq!(rules, Ok(1));
+        assert_eq!(
+            store.properties_for_path("/tasks/new").presentation,
+            Presentation::Modal
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn the_servers_rules_are_kept_for_the_next_launch() {
+        let dir = scratch("refresh-cache");
+        let store = PathConfigurationStore::new();
+        let url = serve_once(
+            r#"{"rules":[{"patterns":["/new$"],"properties":{"presentation":"modal"}}]}"#,
+        );
+
+        refresh_from_server(&url, "Turbo Desktop/test", &store, Some(&dir))
+            .await
+            .unwrap();
+
+        let (kept, _) = startup_configuration(Some(&dir), None).expect("the rules were not cached");
+        assert_eq!(kept.rules.len(), 1);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_server_leaves_the_rules_in_force_alone() {
+        let store = store_with(
+            r#"{"rules":[{"patterns":["/edit$"],"properties":{"presentation":"modal"}}]}"#,
+        );
+
+        // Nothing listens on port 9 of the loopback address.
+        let outcome = refresh_from_server(
+            "http://127.0.0.1:9/turbo-desktop/path-configuration.json",
+            "Turbo Desktop/test",
+            &store,
+            None,
+        )
+        .await;
+
+        assert!(outcome.is_err());
+        assert_eq!(
+            store.properties_for_path("/tasks/1/edit").presentation,
+            Presentation::Modal
+        );
     }
 
     #[test]
@@ -447,5 +573,47 @@ mod tests {
             store.properties_for_path("/posts/edit").presentation,
             Presentation::Native
         );
+    }
+
+    /// A listener that accepts and then says nothing, holding the connection
+    /// open — the shape of a stuck process on the port.
+    fn hanging_listener() -> u16 {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let mut held = Vec::new();
+            for stream in listener.incoming().flatten() {
+                held.push(stream);
+            }
+        });
+        port
+    }
+
+    #[tokio::test]
+    async fn a_server_that_never_answers_does_not_hold_the_fetch_forever() {
+        let url = format!(
+            "http://127.0.0.1:{}/turbo-desktop/path-configuration.json",
+            hanging_listener()
+        );
+        let started = std::time::Instant::now();
+
+        let result =
+            fetch_path_configuration_within(&url, "test", Duration::from_millis(300)).await;
+
+        assert!(
+            result.is_err(),
+            "a silent listener is not a path configuration"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "the fetch should give up at the deadline, took {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn the_default_fetch_is_bounded() {
+        // Startup blocks on this fetch before any window exists, so it must end.
+        assert!(PATH_CONFIGURATION_TIMEOUT <= Duration::from_secs(5));
     }
 }

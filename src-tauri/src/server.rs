@@ -8,6 +8,7 @@
 //! connection monitor moves the window off the waiting page once the server
 //! answers. This only decides whether to start one and does so.
 
+use crate::connection::Liveness;
 use crate::window::ServerConfig;
 use std::path::{Path, PathBuf};
 
@@ -58,21 +59,41 @@ pub fn handshake_url(line: &str) -> Option<String> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
     Start,
-    /// Something is already listening — very likely a server the developer is
+    /// This app's server is already answering — very likely one the developer is
     /// running themselves, which we must not duplicate or later kill.
     AlreadyRunning,
+    /// Something holds the port but does not answer as this app. Starting ours
+    /// could only fail to bind, so this is reported rather than retried.
+    PortHeldByAnotherApp,
     /// No command configured, so the app expects a server it does not own.
     NotConfigured,
 }
 
-pub fn decide(config: &ServerConfig, reachable: bool) -> Decision {
+pub fn decide(config: &ServerConfig, liveness: Liveness) -> Decision {
     if config.command.as_deref().unwrap_or("").trim().is_empty() {
         return Decision::NotConfigured;
     }
-    if reachable {
-        return Decision::AlreadyRunning;
+    match liveness {
+        Liveness::Absent => Decision::Start,
+        Liveness::Ours => Decision::AlreadyRunning,
+        Liveness::Foreign => Decision::PortHeldByAnotherApp,
     }
-    Decision::Start
+}
+
+/// Whether the window may open straight on the app, or must wait on the error
+/// page for the server to come up.
+///
+/// A port held by another app is the case that was slipping through: it was
+/// reported in the log and then opened in the window anyway, because anything
+/// accepting a connection counted as reachable.
+pub fn opens_app_at_startup(decision: &Decision, liveness: Liveness) -> bool {
+    match decision {
+        Decision::AlreadyRunning => true,
+        // Not ours to judge: a hosted app may not mount the engine at all.
+        Decision::NotConfigured => liveness != Liveness::Absent,
+        // Just asked to start, or cannot start: not there yet either way.
+        Decision::Start | Decision::PortHeldByAnotherApp => false,
+    }
 }
 
 /// Where the command runs, resolved against the directory the config was read from.
@@ -169,7 +190,8 @@ pub async fn start(
     let stderr = child.stderr.take();
 
     // Registered so quitting the app stops the server it started.
-    let (kill_tx, kill_rx) = tokio::sync::oneshot::channel::<()>();
+    let (kill_tx, kill_rx) =
+        tokio::sync::oneshot::channel::<crate::process_manager::StopRequest>();
     app.state::<crate::process_manager::ProcessManager>()
         .register(
             SERVER_PROCESS_ID.to_string(),
@@ -242,15 +264,18 @@ pub async fn start(
 async fn supervise(
     mut child: tokio::process::Child,
     stdin: Option<tokio::process::ChildStdin>,
-    kill_rx: tokio::sync::oneshot::Receiver<()>,
+    kill_rx: tokio::sync::oneshot::Receiver<crate::process_manager::StopRequest>,
 ) {
     let _stdin = stdin;
     let mut kill_rx = kill_rx;
 
     tokio::select! {
-        _ = &mut kill_rx => {
+        request = &mut kill_rx => {
             log::info!("Stopping the app server");
-            let _ = child.kill().await;
+            crate::process_manager::stop_tree(&mut child).await;
+            if let Ok(request) = request {
+                request.stopped();
+            }
         }
         status = child.wait() => {
             log::warn!("The app server exited: {:?}", status.ok().and_then(|s| s.code()));
@@ -302,7 +327,7 @@ mod tests {
     #[test]
     fn nothing_to_start_without_a_command() {
         assert_eq!(
-            decide(&ServerConfig::default(), false),
+            decide(&ServerConfig::default(), Liveness::Absent),
             Decision::NotConfigured
         );
         assert_eq!(
@@ -311,7 +336,7 @@ mod tests {
                     command: Some("   ".into()),
                     directory: None
                 },
-                false
+                Liveness::Absent
             ),
             Decision::NotConfigured
         );
@@ -319,19 +344,32 @@ mod tests {
 
     #[test]
     fn starts_when_nothing_is_listening() {
-        assert_eq!(decide(&configured(), false), Decision::Start);
+        assert_eq!(decide(&configured(), Liveness::Absent), Decision::Start);
     }
 
     #[test]
-    fn leaves_a_server_someone_else_is_running_alone() {
+    fn leaves_our_own_server_alone() {
         // Starting a second one would fail on the port, and quitting the app
         // would kill a server the developer started by hand.
-        assert_eq!(decide(&configured(), true), Decision::AlreadyRunning);
+        assert_eq!(
+            decide(&configured(), Liveness::Ours),
+            Decision::AlreadyRunning
+        );
+    }
+
+    #[test]
+    fn reports_a_port_held_by_a_different_app() {
+        // The failure this prevents: a second Rails app on 3000 was silently
+        // adopted, so the desktop app opened someone else's project.
+        assert_eq!(
+            decide(&configured(), Liveness::Foreign),
+            Decision::PortHeldByAnotherApp
+        );
     }
 
     #[test]
     fn the_rails_app_is_a_level_above_the_config_by_default() {
-        let dir = std::env::temp_dir().join("turbo-desktop-server-default");
+        let dir = crate::test_temp_dir().join("turbo-desktop-server-default");
         let desktop = dir.join("desktop");
         std::fs::create_dir_all(&desktop).unwrap();
 
@@ -343,7 +381,7 @@ mod tests {
 
     #[test]
     fn an_explicit_directory_wins() {
-        let dir = std::env::temp_dir().join("turbo-desktop-server-explicit");
+        let dir = crate::test_temp_dir().join("turbo-desktop-server-explicit");
         let api = dir.join("api");
         std::fs::create_dir_all(&api).unwrap();
 
@@ -390,7 +428,7 @@ mod tests {
         std::fs::remove_file(&marker).ok();
         let (child, stdin) = a_server_that_exits_on_eof(&marker);
 
-        let (kill_tx, kill_rx) = tokio::sync::oneshot::channel::<()>();
+        let (kill_tx, kill_rx) = tokio::sync::oneshot::channel::<crate::process_manager::StopRequest>();
         let supervisor = tokio::spawn(supervise(child, Some(stdin), kill_rx));
 
         // What `state()` on unmanaged state did, in the task next door.
@@ -404,7 +442,9 @@ mod tests {
         );
 
         // And it still stops when it is told to.
-        kill_tx.send(()).ok();
+        kill_tx
+            .send(crate::process_manager::StopRequest::detached())
+            .ok();
         supervisor.await.ok();
         std::fs::remove_file(&marker).ok();
     }
@@ -418,10 +458,15 @@ mod tests {
         std::fs::remove_file(&marker).ok();
         let (child, stdin) = a_server_that_exits_on_eof(&marker);
 
-        let (kill_tx, kill_rx) = tokio::sync::oneshot::channel::<()>();
+        let (kill_tx, kill_rx) = tokio::sync::oneshot::channel::<crate::process_manager::StopRequest>();
         let supervisor = tokio::spawn(supervise(child, Some(stdin), kill_rx));
 
-        kill_tx.send(()).expect("nothing was listening for the kill");
+        assert!(
+            kill_tx
+                .send(crate::process_manager::StopRequest::detached())
+                .is_ok(),
+            "nothing was listening for the kill"
+        );
         let stopped = tokio::time::timeout(std::time::Duration::from_secs(5), supervisor).await;
         assert!(stopped.is_ok(), "supervision did not return after the kill");
         std::fs::remove_file(&marker).ok();
@@ -429,7 +474,7 @@ mod tests {
 
     #[test]
     fn a_missing_directory_is_left_for_the_spawn_to_report() {
-        let dir = std::env::temp_dir().join("turbo-desktop-server-missing");
+        let dir = crate::test_temp_dir().join("turbo-desktop-server-missing");
         let config = ServerConfig {
             command: Some("bin/rails server".into()),
             directory: Some("nope".into()),
@@ -439,5 +484,42 @@ mod tests {
             working_directory(&config, Some(&dir)).unwrap(),
             dir.join("nope")
         );
+    }
+
+    #[test]
+    fn the_window_does_not_open_on_a_port_held_by_another_app() {
+        // The bug this prevents: the stranger was reported in the log and then
+        // opened in the window anyway.
+        assert!(!opens_app_at_startup(
+            &Decision::PortHeldByAnotherApp,
+            Liveness::Foreign
+        ));
+    }
+
+    #[test]
+    fn the_window_opens_on_our_own_running_server() {
+        assert!(opens_app_at_startup(
+            &Decision::AlreadyRunning,
+            Liveness::Ours
+        ));
+    }
+
+    #[test]
+    fn a_hosted_app_opens_on_whatever_answers() {
+        // Without a server command the shell cannot tell whose server it is,
+        // and a hosted app need not mount the engine at all.
+        assert!(opens_app_at_startup(
+            &Decision::NotConfigured,
+            Liveness::Foreign
+        ));
+        assert!(!opens_app_at_startup(
+            &Decision::NotConfigured,
+            Liveness::Absent
+        ));
+    }
+
+    #[test]
+    fn a_server_just_asked_to_start_is_not_there_yet() {
+        assert!(!opens_app_at_startup(&Decision::Start, Liveness::Absent));
     }
 }

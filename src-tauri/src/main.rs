@@ -18,6 +18,18 @@ mod tray;
 mod updater_bridge;
 mod window;
 
+/// A temporary directory belonging to this test run alone.
+///
+/// The tests used to share fixed names under the system's temporary directory,
+/// so two runs at once — two checkouts, or two apps scaffolded from this shell —
+/// created, wrote and removed each other's files and failed at random.
+#[cfg(test)]
+pub(crate) fn test_temp_dir() -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("turbo-desktop-tests-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("create this test run's temporary directory");
+    dir
+}
+
 use config::PathConfigurationStore;
 use connection::{ConnectionMonitor, Transition, VisitError};
 use std::sync::Arc;
@@ -29,14 +41,61 @@ use tauri_plugin_deep_link::DeepLinkExt;
 /// How often to check that the app server is still answering.
 const PROBE_INTERVAL: Duration = Duration::from_secs(5);
 
+/// Import the Dev Inspector where the page asks for it, and hand it to the
+/// bridge to start.
+const LOAD_THE_INSPECTOR: &str = r#"(function () {
+  var bridge = window.__TURBO_DESKTOP__;
+  if (!bridge || !bridge._inspectorUrl) return;
+
+  var url = bridge._inspectorUrl();
+  if (!url) return;
+
+  import(url).then(bridge._startInspector).catch(bridge._inspectorFailed);
+})()"#;
+
 fn main() {
     env_logger::init();
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    // A link followed, or a file opened, while the app is running starts the
+    // app a second time on Windows and Linux. That copy hands over what it
+    // was started with and leaves; this is the one that receives it. Links
+    // go on to the deep link handler; files are taken from the arguments.
+    // Registered before anything else, so the second copy gets no further.
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+        let files = deep_link::paths_from_launch(args.into_iter(), std::path::Path::new(&cwd));
+        if files.is_empty() {
+            deep_link::bring_forward(app);
+        } else {
+            deep_link::handle_files(app, files);
+        }
+    }));
+
+    builder
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, shortcut, event| {
+                    use tauri::Manager;
+                    use tauri_plugin_global_shortcut::ShortcutState;
+
+                    if event.state() != ShortcutState::Pressed {
+                        return;
+                    }
+                    let registered = app.state::<bridge::RegisteredShortcuts>();
+                    if let Some((id, accelerator)) = registered.named(shortcut.id()) {
+                        bridge::shortcut_pressed(app, &id, &accelerator);
+                    }
+                })
+                .build(),
+        )
+        .manage(bridge::RegisteredShortcuts::default())
+        .manage(bridge::BridgeMenuItems::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_autostart::init(
@@ -50,6 +109,8 @@ fn main() {
         .manage(window::FocusTracker::default())
         .manage(security::UserGrants::default())
         .manage(deep_link::PendingOpenedFiles::default())
+        .manage(deep_link::PendingLink::default())
+        .manage(deep_link::RecentlyOpened::default())
         // Files dragged from the Finder/Explorer onto any window reach the web
         // layer as bridge events, with their paths granted for the session.
         .on_window_event(|window, event| {
@@ -60,13 +121,27 @@ fn main() {
         // Inject turbo-desktop.js into every page load across all webviews.
         .on_page_load(|webview, payload| {
             if let PageLoadEvent::Finished = payload.event() {
+                // Already there in a window this shell built, which runs it
+                // before the page. Does nothing the second time.
                 let js = include_str!("../../src/turbo-desktop.js");
                 let _ = webview.eval(js);
+
+                // The inspector is a module, and a script run before the
+                // page cannot import one. This one, run after it, can.
+                let _ = webview.eval(LOAD_THE_INSPECTOR);
 
                 log::info!("Injected turbo-desktop.js into {}", payload.url());
             }
         })
         .setup(move |app| {
+            quit_when_asked_to_stop(app.handle().clone());
+
+            // Under `tauri dev` the bundled pages come from a development
+            // server rather than from the bundle. Its address is ours too.
+            if let Some(dev_url) = app.config().build.dev_url.as_ref() {
+                security::trust_development_origin(dev_url);
+            }
+
             // Loaded here rather than in main() because a packaged app reads it
             // from the bundle's resource directory, which needs the app handle.
             let loaded = window::ConfigLookup::for_app(app)
@@ -142,10 +217,18 @@ fn main() {
             // app opens on its own rather than waiting for someone to run the
             // server by hand. The waiting page and the connection monitor take it
             // from here: the window moves to the app as soon as it answers.
-            let mut reachable_at_startup = connection::server_is_reachable(&url);
+            // Ask whose server is there, not merely whether something answers:
+            // a different Rails app on the same port would otherwise be adopted
+            // silently, and the window would open on someone else's project.
+            let liveness = tauri::async_runtime::block_on(connection::server_liveness(
+                &url,
+                &path_config_url,
+                &user_agent,
+            ));
             let config_dir = loaded.source.as_deref().and_then(|p| p.parent());
+            let decision = server::decide(&shell_defaults.server, liveness);
 
-            match server::decide(&shell_defaults.server, reachable_at_startup) {
+            match &decision {
                 server::Decision::Start => {
                     let handle = app.handle().clone();
                     let server_config = shell_defaults.server.clone();
@@ -169,23 +252,41 @@ fn main() {
                     )) {
                         log::warn!("{}", e);
                     }
-
-                    // Not reachable yet — it has only just been asked to start.
-                    reachable_at_startup = false;
                 }
                 server::Decision::AlreadyRunning => {
                     log::info!("A server is already answering; leaving it alone")
                 }
+                server::Decision::PortHeldByAnotherApp => {
+                    log::warn!(
+                        "Something is listening at {} but it does not answer as this app. \
+                         Not starting the app server: the port is already taken. \
+                         Stop whatever is using it, or set a different server_url in {}.",
+                        url,
+                        window::CONFIG_FILENAME
+                    );
+                }
                 server::Decision::NotConfigured => {}
             }
 
+            // From here on, "up" means what the decision above meant by it: an
+            // app that owns its server waits for its own, a hosted app for any.
+            let probe = connection::Probe::for_app(
+                &shell_defaults.server,
+                path_config_url.clone(),
+                user_agent.clone(),
+            );
+            app.manage(probe.clone());
+
+            let reachable_at_startup = server::opens_app_at_startup(&decision, liveness);
             let target = if reachable_at_startup {
                 WebviewUrl::External(url.clone())
             } else {
+                let error = match decision {
+                    server::Decision::PortHeldByAnotherApp => VisitError::PortInUse,
+                    _ => VisitError::NetworkFailure,
+                };
                 log::info!("Waiting for {}", url);
-                WebviewUrl::App(
-                    format!("error.html?error={}", VisitError::NetworkFailure.slug()).into(),
-                )
+                WebviewUrl::App(format!("error.html?error={}", error.slug()).into())
             };
 
             // A bundled server picks its own port, so the window opens on the
@@ -244,36 +345,26 @@ fn main() {
             });
 
             // Fetch path configuration from the server in the background
-            let pc_url = path_config_url.clone();
-            let pc_user_agent = user_agent.clone();
-            let store = config_store_for_fetch.clone();
-            let pc_cache_dir = cache_dir.clone();
-            tauri::async_runtime::spawn(async move {
-                match config::fetch_path_configuration(&pc_url, &pc_user_agent).await {
-                    Ok(pc) => {
-                        log::info!("Path configuration: {} rules from the server", pc.rules.len());
-
-                        // Keep it for the next launch before handing it over.
-                        if let Some(dir) = &pc_cache_dir {
-                            if let Err(e) = config::save_cache(dir, &pc) {
-                                log::warn!("{}", e);
-                            }
-                        }
-
-                        store.set(pc);
-                    }
-                    Err(e) => {
-                        log::warn!("Could not fetch path configuration: {}", e);
-                        log::info!("Keeping the rules already loaded");
-                    }
-                }
-            });
+            let rules = PathConfigurationSource {
+                url: path_config_url.clone(),
+                user_agent: user_agent.clone(),
+                store: config_store_for_fetch.clone(),
+                cache_dir: cache_dir.clone(),
+            };
+            let at_startup = rules.clone();
+            tauri::async_runtime::spawn(async move { at_startup.refresh().await });
 
             // Watch the server so a drop is noticed while the app sits idle.
             // The web layer cannot see this on its own: the browser's `offline`
             // event reports the machine losing its network, not the app server
             // going away, which is the case that actually happens.
-            watch_connection(app_handle.clone(), url.clone(), reachable_at_startup);
+            watch_connection(
+                app_handle.clone(),
+                url.clone(),
+                probe,
+                reachable_at_startup,
+                rules,
+            );
 
             // Links from outside the app: your-app://orders/123
             let deep_link_app = app_handle.clone();
@@ -281,11 +372,23 @@ fn main() {
                 deep_link::handle(&deep_link_app, event.urls());
             });
 
+            // The link that started the app, if one did. It arrived before
+            // anything was listening.
+            if let Ok(Some(urls)) = app.deep_link().get_current() {
+                deep_link::handle(&app_handle, urls);
+            }
+
             // Files from outside the app: a double-click on an associated
             // type. Windows and Linux pass them as launch arguments; macOS
             // raises RunEvent::Opened instead, handled in run() below.
             #[cfg(not(target_os = "macos"))]
-            deep_link::handle_files(&app_handle, deep_link::paths_from_args(std::env::args()));
+            deep_link::handle_files(
+                &app_handle,
+                deep_link::paths_from_launch(
+                    std::env::args(),
+                    &std::env::current_dir().unwrap_or_default(),
+                ),
+            );
 
             // Set up the system tray icon
             if let Err(e) = tray::setup_tray(&app_handle) {
@@ -325,8 +428,8 @@ fn main() {
             }
 
             // macOS delivers associated files as an event — at launch or into
-            // the running app. Other platforms pass them as arguments instead,
-            // handled at setup.
+            // the running app. Other platforms pass them as arguments instead:
+            // to this process at setup, or to a second one that hands them on.
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { urls } = &event {
                 let files: Vec<std::path::PathBuf> = urls
@@ -384,11 +487,79 @@ pub fn open_externally(app: &tauri::AppHandle, url: &url::Url) {
     }
 }
 
+/// Quit properly when the process is told to stop.
+///
+/// Ctrl+C on `turbo-desktop dev`, a `kill`, or the terminal closing ends the
+/// process where it stands, and the server it started is left running with
+/// nothing to stop it. Quitting instead goes through the same exit as the
+/// Quit menu, which stops what the app started.
+#[cfg(unix)]
+fn quit_when_asked_to_stop(app: tauri::AppHandle) {
+    use tokio::signal::unix::{signal, SignalKind};
+
+    tauri::async_runtime::spawn(async move {
+        let (Ok(mut terminate), Ok(mut interrupt), Ok(mut hangup)) = (
+            signal(SignalKind::terminate()),
+            signal(SignalKind::interrupt()),
+            signal(SignalKind::hangup()),
+        ) else {
+            log::warn!("Could not listen for signals; a kill will not stop the app server");
+            return;
+        };
+
+        tokio::select! {
+            _ = terminate.recv() => {}
+            _ = interrupt.recv() => {}
+            _ = hangup.recv() => {}
+        }
+
+        log::info!("Asked to stop; quitting");
+        app.exit(0);
+    });
+}
+
+#[cfg(not(unix))]
+fn quit_when_asked_to_stop(_app: tauri::AppHandle) {}
+
+/// Where the path configuration comes from and where it goes.
+#[derive(Clone)]
+struct PathConfigurationSource {
+    url: String,
+    user_agent: String,
+    store: std::sync::Arc<config::PathConfigurationStore>,
+    cache_dir: Option<std::path::PathBuf>,
+}
+
+impl PathConfigurationSource {
+    async fn refresh(&self) {
+        match config::refresh_from_server(
+            &self.url,
+            &self.user_agent,
+            &self.store,
+            self.cache_dir.as_deref(),
+        )
+        .await
+        {
+            Ok(rules) => log::info!("Path configuration: {} rules from the server", rules),
+            Err(e) => {
+                log::warn!("Could not fetch path configuration: {}", e);
+                log::info!("Keeping the rules already loaded");
+            }
+        }
+    }
+}
+
 /// Poll the app server and tell the web layer when reachability changes.
 ///
 /// Only transitions are emitted, so a server that stays down is reported once
 /// rather than every few seconds.
-fn watch_connection(app: tauri::AppHandle, url: url::Url, reachable_at_startup: bool) {
+fn watch_connection(
+    app: tauri::AppHandle,
+    url: url::Url,
+    probe: connection::Probe,
+    reachable_at_startup: bool,
+    rules: PathConfigurationSource,
+) {
     tauri::async_runtime::spawn(async move {
         let mut monitor = ConnectionMonitor::new();
 
@@ -410,11 +581,7 @@ fn watch_connection(app: tauri::AppHandle, url: url::Url, reachable_at_startup: 
                 .and_then(|address| address.parse::<url::Url>().ok())
                 .unwrap_or_else(|| url.clone());
 
-            let probe_url = watching.clone();
-            let reachable =
-                tokio::task::spawn_blocking(move || connection::server_is_reachable(&probe_url))
-                    .await
-                    .unwrap_or(false);
+            let reachable = probe.server_is_up(&watching).await;
 
             let payload = match monitor.record(reachable) {
                 Transition::WentOffline(error) => {
@@ -423,6 +590,11 @@ fn watch_connection(app: tauri::AppHandle, url: url::Url, reachable_at_startup: 
                 }
                 Transition::CameOnline => {
                     log::info!("Reconnected to {}", watching);
+                    // Before going back to the app, so the first page it
+                    // shows is already presented by the server's rules. An
+                    // app that starts its own server always finds it down at
+                    // launch, and this is the first time it can be asked.
+                    rules.refresh().await;
                     return_to_app_if_on_error_page(&app, &watching);
                     serde_json::json!({ "online": true, "error": null })
                 }
