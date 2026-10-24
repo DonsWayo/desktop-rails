@@ -306,6 +306,7 @@ The Bridge is the desktop equivalent of **Strada**. It lets your web components 
 | `updater` | Check for and install app updates |
 | `dialog` | Ask or tell with a dialog of the system's own; what `data-turbo-confirm` uses |
 | `devtools` | Open the webview's developer tools (development builds) |
+| `window` | Resize, minimize, maximize, fullscreen or focus the window, within the app's own limits |
 
 A file dialog can be told what it is for:
 
@@ -346,8 +347,8 @@ TurboDesktop.sendBridgeMessage("notification", "show", {
 })
 ```
 
-`filesystem`, `shell`, `sudo`, `clipboard`, `autostart`, `updater`, `dialog` and
-`devtools` have a JavaScript API of their own on `TurboDesktop`
+`filesystem`, `shell`, `sudo`, `clipboard`, `autostart`, `updater`, `dialog`,
+`devtools` and `window` have a JavaScript API of their own on `TurboDesktop`
 (`TurboDesktop.fs`, `.shell`, `.clipboard`, and so on). The others are reached
 with `sendBridgeMessage`, from markup with `turbo_desktop_bridge`, or arrive as
 DOM events. All of it is typed in `src/turbo-desktop.d.ts` and in the
